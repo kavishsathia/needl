@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c yellow,cyan \"tsx watch server.ts --api-only\" \"vite\"",
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
     "serve": "tsx server.ts",
     "e2e": "playwright test"
   },

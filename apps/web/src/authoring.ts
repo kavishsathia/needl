@@ -1,6 +1,7 @@
 import { compileAssertion } from "../../../src/ltl/assertion.js";
 import { formatFormula, parseFormula } from "../../../src/ltl/formula.js";
 import type { AssertionDraft, AuthoringTemplate } from "./domain.js";
+import { assertAssertionCapacity } from "./collection.js";
 
 function slug(value: string): string {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36);
@@ -13,6 +14,7 @@ export function createDraftFromTemplate(
   existingIds: readonly string[],
   now = new Date().toISOString(),
 ): AssertionDraft {
+  assertAssertionCapacity(existingIds.length);
   const base = `local-${slug(expectation)}`;
   let localId = base;
   let suffix = 2;

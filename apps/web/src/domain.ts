@@ -9,6 +9,8 @@ import type { NormalizedEvent, Provider } from "../../../src/core/types.js";
 
 export type AssertionStatus = "monitoring" | "paused";
 export type TemplateId = "recurrence" | "feature" | "provisioning";
+export const DEMO_TENANT_ID = "synthetic-demo";
+export const MAX_ASSERTIONS = 25;
 
 export interface AssertionDraft {
   readonly localId: string;

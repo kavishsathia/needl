@@ -39,8 +39,10 @@ describe("assertion storage", () => {
     const duplicate = { version: 1, assertions: [valid, structuredClone(valid)] };
     expect(parseStoredAssertions(JSON.stringify(duplicate))).toEqual([]);
 
-    const wrongTenant = structuredClone(valid);
-    wrongTenant.definition.tenantId = "another-tenant";
+    const wrongTenant = {
+      ...structuredClone(valid),
+      definition: { ...structuredClone(valid.definition), tenantId: "another-tenant" },
+    };
     expect(parseStoredAssertions(JSON.stringify({ version: 1, assertions: [wrongTenant] }))).toEqual([]);
 
     const oversized = Array.from({ length: 26 }, (_, index) => ({

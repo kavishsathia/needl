@@ -14,8 +14,10 @@ import type {
   DemoReplay,
   DemoReplayRequest,
 } from "./src/domain.js";
+import { validateAssertionCollection } from "./src/collection.js";
+import { DEMO_TENANT_ID } from "./src/domain.js";
 
-export const TENANT_ID = "synthetic-demo";
+export const TENANT_ID = DEMO_TENANT_ID;
 export const DEMO_ANCHOR = "2026-02-18T10:40:00.000Z";
 export const DEMO_REPLAY_HORIZON = "2026-02-18T12:11:00.000Z";
 
@@ -120,22 +122,9 @@ function eventsFor(scenario: DemoReplayRequest["scenario"]): readonly Normalized
   return base;
 }
 
-function validateDrafts(input: readonly AssertionDraft[]): readonly AssertionDraft[] {
-  if (input.length > 25) throw new Error("Demo replay accepts at most 25 assertions");
-  const ids = new Set<string>();
-  for (const draft of input) {
-    if (draft.localId !== draft.definition.id) throw new Error("Assertion localId must match definition id");
-    if (draft.definition.tenantId !== TENANT_ID) throw new Error(`Demo assertions must use tenant ${TENANT_ID}`);
-    if (ids.has(draft.localId)) throw new Error(`Duplicate assertion id ${draft.localId}`);
-    ids.add(draft.localId);
-  }
-  return input;
-}
-
 export async function runDemoScenario(request: DemoReplayRequest): Promise<DemoReplay> {
   if (request.scenario !== "violating" && request.scenario !== "healthy") throw new Error("Unknown demo scenario");
-  if (!Array.isArray(request.assertions)) throw new Error("assertions must be an array");
-  const drafts = validateDrafts(request.assertions);
+  const drafts = validateAssertionCollection(request.assertions);
   const active = drafts.filter((draft) => draft.status === "monitoring");
   const assertions: readonly AssertionDefinition[] = active.map((draft) => draft.definition);
   const store = new InMemoryMonitorStore();

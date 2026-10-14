@@ -1,0 +1,20 @@
+{
+  "id": "evt_stripe_1",
+  "object": "event",
+  "type": "payment_intent.succeeded",
+  "created": 1791968400,
+  "account": "acct_1",
+  "livemode": false,
+  "data": {
+    "object": {
+      "id": "pi_123",
+      "object": "payment_intent",
+      "status": "succeeded",
+      "amount": 2500,
+      "currency": "usd",
+      "customer": "cus_7",
+      "invoice": "in_9"
+    }
+  }
+}
+

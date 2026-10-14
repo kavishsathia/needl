@@ -1,0 +1,22 @@
+{
+  "action": "resolved",
+  "installation": {
+    "uuid": "sentry-installation-1"
+  },
+  "data": {
+    "issue": {
+      "id": "98765",
+      "shortId": "NEEDL-9",
+      "title": "CheckoutError",
+      "status": "resolved",
+      "level": "error",
+      "lastSeen": "2026-10-14T09:00:00.000Z",
+      "permalink": "https://needl.sentry.io/issues/98765/",
+      "project": {
+        "id": "12",
+        "slug": "api"
+      }
+    }
+  }
+}
+

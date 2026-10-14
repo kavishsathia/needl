@@ -1,0 +1,20 @@
+{
+  "event": {
+    "uuid": "ph-event-1",
+    "event": "checkout_failed",
+    "timestamp": "2026-10-14T09:00:00.000Z",
+    "distinct_id": "customer-7",
+    "properties": {
+      "$session_id": "session-3",
+      "$current_url": "https://app.needl.dev/checkout"
+    }
+  },
+  "project_id": 42,
+  "relationships": [
+    {
+      "type": "customer",
+      "id": "customer-7"
+    }
+  ]
+}
+

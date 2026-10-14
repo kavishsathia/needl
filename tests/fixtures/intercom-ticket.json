@@ -1,0 +1,19 @@
+{
+  "type": "notification_event",
+  "id": "notif-ticket-1",
+  "topic": "ticket.updated",
+  "app_id": "workspace-1",
+  "created_at": 1791968400,
+  "delivery_attempts": 1,
+  "data": {
+    "type": "notification_event_data",
+    "item": {
+      "type": "ticket",
+      "id": "ticket-object-5",
+      "ticket_id": "5",
+      "ticket_state": "in_progress",
+      "contact_id": "contact-2"
+    }
+  }
+}
+

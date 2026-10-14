@@ -9,6 +9,7 @@ import { FormulaValidationError } from "./types.js";
 
 const atomPattern = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 const temporalKinds = new Set(["next", "always", "eventually", "until"]);
+const maximumDeadlineMs = 31_536_000_000;
 
 function object(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -87,6 +88,9 @@ export function validateFormula(input: unknown, options: FormulaValidationOption
         exactKeys(value, ["kind", "trigger", "response", "withinMs"], path);
         if (!Number.isSafeInteger(value.withinMs) || (value.withinMs as number) <= 0) {
           throw new FormulaValidationError("withinMs must be a positive safe integer", `${path}.withinMs`);
+        }
+        if ((value.withinMs as number) > maximumDeadlineMs) {
+          throw new FormulaValidationError("withinMs cannot exceed 365 days", `${path}.withinMs`);
         }
         const trigger = visit(value.trigger, `${path}.trigger`, depth + 1, false);
         const response = visit(value.response, `${path}.response`, depth + 1, false);

@@ -91,6 +91,12 @@ function assertScalar(value: unknown, label: string): asserts value is Scalar {
   if (typeof value === "number" && !Number.isFinite(value)) throw new Error(`${label} must be finite`);
 }
 
+function exactKeys(candidate: Record<string, unknown>, allowed: readonly string[], label: string): void {
+  for (const key of Object.keys(candidate)) {
+    if (!allowed.includes(key)) throw new Error(`${label} contains unknown field ${JSON.stringify(key)}`);
+  }
+}
+
 function validateSegments(segments: unknown, label: string): asserts segments is readonly string[] {
   if (!Array.isArray(segments) || segments.length === 0 || segments.length > 32) {
     throw new Error(`${label} must contain 1 to 32 path segments`);
@@ -105,7 +111,8 @@ function validateSegments(segments: unknown, label: string): asserts segments is
 
 function validatePath(path: unknown, label: string): asserts path is DataPath {
   if (typeof path !== "object" || path === null || Array.isArray(path)) throw new Error(`${label} must be a data path`);
-  const candidate = path as Partial<DataPath>;
+  const candidate = path as Partial<DataPath> & Record<string, unknown>;
+  exactKeys(candidate, ["root", "segments"], label);
   if (candidate.root !== "event" && candidate.root !== "state") throw new Error(`${label}.root is invalid`);
   validateSegments(candidate.segments, `${label}.segments`);
 }
@@ -114,14 +121,23 @@ function validatePredicate(predicate: unknown, label: string, depth = 0): assert
   if (depth > 32) throw new Error(`${label} predicate nesting is too deep`);
   if (typeof predicate !== "object" || predicate === null || Array.isArray(predicate)) throw new Error(`${label} must be a predicate object`);
   const candidate = predicate as Record<string, unknown>;
-  if (candidate.op === "true" || candidate.op === "false") return;
-  if (candidate.op === "exists") { validatePath(candidate.path, `${label}.path`); return; }
+  if (candidate.op === "true" || candidate.op === "false") {
+    exactKeys(candidate, ["op"], label);
+    return;
+  }
+  if (candidate.op === "exists") {
+    exactKeys(candidate, ["op", "path"], label);
+    validatePath(candidate.path, `${label}.path`);
+    return;
+  }
   if (["equal", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual"].includes(String(candidate.op))) {
+    exactKeys(candidate, ["op", "path", "value"], label);
     validatePath(candidate.path, `${label}.path`);
     assertScalar(candidate.value, `${label}.value`);
     return;
   }
   if (candidate.op === "in") {
+    exactKeys(candidate, ["op", "path", "values"], label);
     validatePath(candidate.path, `${label}.path`);
     if (!Array.isArray(candidate.values) || candidate.values.length === 0 || candidate.values.length > 100) {
       throw new Error(`${label}.values must contain 1 to 100 scalars`);
@@ -129,8 +145,13 @@ function validatePredicate(predicate: unknown, label: string, depth = 0): assert
     candidate.values.forEach((value, index) => assertScalar(value, `${label}.values[${index}]`));
     return;
   }
-  if (candidate.op === "not") { validatePredicate(candidate.operand, `${label}.operand`, depth + 1); return; }
+  if (candidate.op === "not") {
+    exactKeys(candidate, ["op", "operand"], label);
+    validatePredicate(candidate.operand, `${label}.operand`, depth + 1);
+    return;
+  }
   if (candidate.op === "and" || candidate.op === "or") {
+    exactKeys(candidate, ["op", "operands"], label);
     if (!Array.isArray(candidate.operands) || candidate.operands.length < 2 || candidate.operands.length > 100) {
       throw new Error(`${label}.operands must contain 2 to 100 predicates`);
     }

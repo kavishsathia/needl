@@ -8,5 +8,5 @@
     "strict": true,
     "types": ["node"]
   },
-  "include": ["server.ts", "vite.config.ts", "playwright.config.ts"]
+  "include": ["server.ts", "backend/**/*.ts", "vite.config.ts", "vitest.config.ts", "playwright.config.ts"]
 }

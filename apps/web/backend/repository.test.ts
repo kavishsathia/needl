@@ -1,0 +1,79 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { getDemoBootstrap, runDemoScenario } from "../demo.js";
+import { defaultMeaningValues } from "../src/meaning.js";
+import type { AssertionDraft } from "../src/domain.js";
+import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
+import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./repository.js";
+
+const runtimes: DatabaseRuntime[] = [];
+afterEach(async () => { await Promise.all(runtimes.splice(0).map((runtime) => runtime.close())); });
+
+async function setup(filename?: string) {
+  const path = filename ?? join(await mkdtemp(join(tmpdir(), "needl-app-")), "needl.sqlite");
+  const runtime = createDatabaseRuntime({ NODE_ENV: "test", NEEDL_SQLITE_PATH: path });
+  runtimes.push(runtime);
+  await migrateApplicationDatabase(runtime);
+  const repository = new NeedlRepository(runtime, 2);
+  return { path, runtime, repository };
+}
+
+function draft(index = 0): AssertionDraft {
+  const template = getDemoBootstrap().templates[index]!;
+  return {
+    localId: template.definition.id,
+    expectation: template.prompt,
+    definition: template.definition,
+    status: "monitoring",
+    templateId: template.id,
+    meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
+    createdAt: "2026-02-18T10:39:00.000Z",
+    updatedAt: "2026-02-18T10:39:00.000Z",
+  };
+}
+
+describe("NeedlRepository", () => {
+  it("isolates tenants and rejects stale versions", async () => {
+    const { repository } = await setup();
+    const tenantA = await repository.tenantForUser("user-a");
+    const tenantB = await repository.tenantForUser("user-b");
+    await repository.saveAssertion(tenantA, draft());
+    expect(await repository.listAssertions(tenantA)).toHaveLength(1);
+    expect(await repository.listAssertions(tenantB)).toEqual([]);
+
+    const next = { ...draft(), definition: { ...draft().definition, version: 2 }, updatedAt: "2026-02-18T10:40:00.000Z" };
+    await expect(repository.saveAssertion(tenantA, next, 1)).resolves.toMatchObject({ definition: { version: 2 } });
+    await expect(repository.saveAssertion(tenantA, { ...next, definition: { ...next.definition, version: 3 } }, 1)).rejects.toBeInstanceOf(StaleAssertionError);
+  });
+
+  it("persists deduplicated replay state across a restart", async () => {
+    const first = await setup();
+    const tenant = await first.repository.tenantForUser("user-a");
+    const assertion = draft();
+    await first.repository.saveAssertion(tenant, assertion);
+    const replay = await runDemoScenario({ assertions: [assertion], scenario: "violating" });
+    await first.repository.persistReplay(tenant, replay);
+    await first.repository.persistReplay(tenant, replay);
+    const before = await first.repository.loadMonitorSnapshot(tenant);
+    expect(before.events).toHaveLength(replay.events.length);
+    expect(before.counterexamples).toHaveLength(1);
+    expect(before.outbox).toHaveLength(1);
+    await first.runtime.close();
+    runtimes.splice(runtimes.indexOf(first.runtime), 1);
+
+    const restarted = await setup(first.path);
+    const after = await restarted.repository.loadMonitorSnapshot(tenant);
+    expect(after).toEqual(before);
+  });
+
+  it("applies a durable daily quota per tenant", async () => {
+    const { repository } = await setup();
+    const tenant = await repository.tenantForUser("user-a");
+    const now = new Date("2026-10-14T12:00:00.000Z");
+    await expect(repository.consumeTranslationQuota(tenant, now)).resolves.toBe(1);
+    await expect(repository.consumeTranslationQuota(tenant, now)).resolves.toBe(0);
+    await expect(repository.consumeTranslationQuota(tenant, now)).rejects.toBeInstanceOf(QuotaExceededError);
+  });
+});

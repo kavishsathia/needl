@@ -2,7 +2,7 @@
 
 `@needl/integrations` is a strict TypeScript package for authenticating webhook requests, turning selected provider events into evidence-bearing normalized observations, and monitoring those observations with a durable LTL runtime. It covers GitLab, Linear, LaunchDarkly, Sentry, PostHog, Intercom, and Stripe.
 
-The published package does not translate natural language or execute agents. Assertions are trusted configuration supplied as validated JSON AST; violations create transactional outbox requests for a future dispatcher but perform no external action. This repository also contains a separate local-only demonstration frontend in `apps/web`; it uses explicit authoring templates and the actual runtime through a localhost bridge rather than claiming general AI translation or live integrations.
+The published package does not translate natural language or execute agents. Assertions are trusted configuration supplied as validated JSON AST; violations create transactional outbox requests for a future dispatcher but perform no external action. This repository also contains a separate local-only demonstration frontend in `apps/web`; it uses explicit authoring templates and the actual runtime through a localhost bridge rather than claiming general AI translation or live integrations. The product demo accepts only a conservative safety subset even though the underlying library retains its general LTL and deadline capabilities; see [the safety product policy](docs/safety-product-policy.md).
 
 ## Design
 
@@ -82,7 +82,7 @@ npm run web:build
 npm run web:serve
 ```
 
-The production-build server listens only on `127.0.0.1:4173`. See [FRONTEND-HANDOFF.md](FRONTEND-HANDOFF.md) for browser-test commands, screenshots, and integration boundaries.
+The production-build server listens only on `127.0.0.1:4173`. See [SAFETY-UX-HANDOFF.md](SAFETY-UX-HANDOFF.md) for current browser-test commands, screenshots, and integration boundaries.
 
 The runtime package has one portable dependency, Zod. SQLite is an optional subpath backed by Node's `node:sqlite`; importing the core or receiver does not load it.
 

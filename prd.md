@@ -1,6 +1,6 @@
 # Needl — Product Requirements Document
 
-Status: product direction / initial build
+Status: safety-only local product demonstration implemented
 Owner and concept author: Kavish
 Domain: needl.dev
 
@@ -21,8 +21,8 @@ Job: express what should remain true without inspecting every implementation det
 ## 3. Core user journey
 
 1. Connect relevant services.
-2. Type a business assertion in natural language.
-3. Inspect the structured interpretation produced by an LLM and select scope/response.
+2. Describe a business condition that must never occur.
+3. Confirm a reviewed template-assisted interpretation and edit its readable meaning chips.
 4. Enable monitoring.
 5. See the assertion as a persistent card on a board.
 6. When a violation occurs, open the counterexample and its source events.
@@ -31,7 +31,7 @@ Job: express what should remain true without inspecting every implementation det
 
 ## 4. Interface direction
 
-Google Keep-inspired interface: a natural-language input box above a collage of assertion cards. Cards show the structured interpretation, connected services, monitoring status, and violation count. Exact LTL is available for inspection, not required as the primary authoring experience.
+Google Keep-inspired interface: a plain-language safety composer above a collage of assertion cards. Cards read as normal sentences with editable, data-backed inline chips plus sources, observation status, and violation count. Exact LTL and structured JSON are available only under a collapsed advanced affordance and pass the same product safety gate.
 
 Clicking a card uses view transitions to morph that card into its detail view. Preserve its visual identity through the transition. The detail view contains:
 
@@ -44,11 +44,11 @@ No Scratch-style canvas or agent organization dashboard in the initial product.
 
 ## 5. Assertion authoring and monitoring
 
-An LLM translates natural-language intent into a typed structured LTL representation using connected providers' schemas. The user sees the interpreted rule before enabling it. Store the original text, structured representation, scope, and version together.
+The current product has no connected LLM. An honestly labeled template-assisted seam maps user-confirmed meanings into a typed structured representation. Store the original text, selected meaning, structured representation, scope, and version together, and validate that the visible meaning deterministically matches the monitor.
 
 The runtime monitor consumes normalized events deterministically; an LLM is not required for every event. Bind observations to specific entities such as an issue, service, release, customer, or subscription. Record sufficient provenance to reconstruct why a rule was violated.
 
-Support an explicit initial monitorable subset. Safety violations such as recurrence after a fix can be demonstrated by finite evidence. Deadline-based expectations require explicit time bounds and timer events; unbounded eventualities remain pending while evidence is incomplete. Unsupported expressions should be identified during authoring rather than silently approximated.
+The product supports only a conservative, recognized safety subset whose violations have finite evidence: global invariants and the reviewed recurrence form. Unbounded eventualities, deadlines, next/until forms, and unrecognized temporal nesting remain library/research capabilities and are rejected by product authoring, restore/enablement, advanced editing, and API gates. Existing unsupported saved rules survive as disabled `needs-review` records. See `docs/safety-product-policy.md`.
 
 Distinguish monitoring, pending obligation, violated, paused, and unavailable/stale observation states. A quiet source is not automatically evidence that a business expectation is satisfied.
 
@@ -76,8 +76,7 @@ These are candidate product scenarios, not a promise that all are in the first d
 
 - Once a Linear bug is marked Done and its linked fix is deployed, the corresponding Sentry issue should not recur in that environment.
 - While a feature is disabled in LaunchDarkly, errors attributed to executing that feature should not occur.
-- After signup completes, workspace creation should follow within a chosen deadline, observed through PostHog events.
-- A customer charged despite failed provisioning should receive a support ticket within ten minutes.
+- After an observed order-accepted lifecycle boundary, that correlated order must not be fulfilled before its payment is observed.
 - When support tells a customer an issue is fixed, the linked fix should already be deployed to that customer's environment.
 
 Statements derived from free-text support messages need an explicit interpretation step; provider webhooks do not themselves assert the semantic meaning of a promise.
@@ -106,7 +105,7 @@ The assertion board reads assertion state, violations, and investigation progres
 
 Codex is building only the reusable TypeScript integration package in this repository: all seven providers, raw-body verification, payload validation, normalization, backend receiver abstractions, persistence/replay example, tests, and documentation. Frequent focused commits are required.
 
-Frontend, natural-language authoring, LTL monitoring, full entity correlation, and live GitLab agent orchestration are subsequent phases, not implied to exist because integrations have been implemented.
+The repository now includes a local safety-only frontend and deterministic monitor replay. General natural-language translation, full production entity correlation, live provider accounts, durable production frontend storage, and live GitLab agent orchestration remain subsequent phases.
 
 ## 11. First complete demonstration
 

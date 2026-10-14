@@ -2,6 +2,8 @@
 
 Status: implemented and locally verified on 2026-10-14. No deployment, push, provider connection, paid API, or external mutation was performed.
 
+Current product scope is the safety-only, meaning-first revision documented in `SAFETY-UX-HANDOFF.md` and `docs/safety-product-policy.md`. The reusable engine remains broader than the product UI.
+
 ## Delivered
 
 The approved Needl frontend now lives in `apps/web` as a responsive React/TypeScript application. It preserves the engine package and its exports while adding a localhost-only Node bridge for deterministic demo replay.
@@ -11,11 +13,12 @@ The complete local journey includes:
 - a graphite, warm-white, and restrained amber assertion workspace matching the approved desktop composition;
 - a Keep-like variable-height assertion collage with search, status filters, three sort modes, and compact/comfortable density;
 - explicit template-guided authoring that keeps the user's natural-language expectation but does not claim general AI translation;
-- an editable LTL/formula field and full structured assertion JSON editor validated by the existing parser/compiler;
+- readable sentence rules with accessible, data-backed inline chips whose changes version and rebuild canonical formula, predicates, state, and scope;
+- a collapsed advanced formula/JSON inspector validated by both the existing compiler and the product safety gate;
 - enable and pause controls, version increments, validated browser persistence, and rejection of malformed or executable-looking restored predicate data;
 - deterministic violating and healthy replays through the existing `RuntimeMonitor` and `InMemoryMonitorStore`;
 - generic replay-horizon clock advancement for every actually instantiated timed partition, including custom IDs and scopes, without advancing beyond the fixture horizon;
-- genuine engine checkpoints, predicate evaluations, deadline ticks, counterexample traces, and outbox state in the interface;
+- genuine engine checkpoints, predicate evaluations, counterexample traces, source evidence links, and outbox state in the interface;
 - a shared 25-rule collection contract across authoring, editing, persistence, restore, and replay API validation, with friendly pre-save capacity feedback;
 - latest-request replay state management so stale successes and stale failures cannot overwrite current evidence or error state;
 - safe malformed-hash fallback that preserves accepted browser-local assertion data;
@@ -38,17 +41,19 @@ POST /api/demo/replay
 
 Replay requests contain validated assertion definitions and a `violating` or `healthy` scenario name. `apps/web/demo.ts` constructs fixed synthetic normalized observations, validates and compiles every supplied definition before filtering paused records, registers active definitions with the actual runtime, processes each observation, advances all instantiated timed checkpoints to the explicit 12:11 UTC replay horizon, and returns the store's real checkpoints, counterexamples, traces, predicate explanations, and outbox requests.
 
-The three reviewed templates use the engine's existing presets:
+The three reviewed product templates are safety properties:
 
 - Linear completion + linked GitLab deployment + Sentry recurrence;
 - persisted LaunchDarkly disabled state + explicitly attributed Sentry error; and
-- Stripe payment + PostHog provisioning failure + an Intercom support deadline.
+- explicit PostHog order-accepted lifecycle state + correlated Stripe payment + PostHog fulfillment-before-payment evidence.
 
 All fixture timestamps are anchored on 2026-02-18 UTC and all evidence is labeled synthetic. Replay is in-memory and deterministic. User-authored assertions are stored separately in `localStorage` under the versioned `needl.assertions.v1` envelope. Restores are compiled and collection-validated before acceptance; an invalid envelope is discarded as a unit and safe samples are restored. Invalid authoring or editing attempts do not replace the last accepted collection. Resetting sample rules preserves locally authored rules. Removing authored rules requires confirmation.
 
 ## Authoring boundary
 
-Natural-language LLM translation is not implemented. The composer therefore opens an explicit interpretation-template picker. Choosing a template copies its reviewed formula, predicates, state updates, and scope while preserving the user's expectation text. The structured editor supports arbitrary valid engine definitions and ordinary LTL text (or deadline JSON) without arbitrary JavaScript execution.
+Natural-language LLM translation is not implemented. The composer therefore opens an explicit interpretation-template picker. Choosing a template preserves the user's wording and creates a readable, editable meaning backed by a reviewed formula, predicates, state updates, and scope. Eventuality/deadline wording receives friendly unsupported feedback and requires explicit confirmation of an offered safety alternative; it is never silently rewritten.
+
+The normal journey requires no formula or JSON. The collapsed advanced editor supports only the documented product safety shapes and uses the same validation as enablement and the replay API. Existing unsupported saved rules are preserved as disabled `needs-review` records; the reusable engine's general LTL/deadline implementation and tests remain intact.
 
 The local bridge caps replay payloads at 1 MB and 25 assertions, requires the synthetic demo tenant, rejects duplicate IDs and unknown statuses, and relies on the existing compiler's closed predicate validation. Paused definitions are compiled too, so inactive malformed rules receive a controlled HTTP 400 instead of entering storage or crashing replay.
 
@@ -127,10 +132,10 @@ The Playwright suite exercises create/template selection, edit/version, enable/p
 
 ## Reviewed screenshots
 
-- [Desktop board](apps/web/artifacts/screenshots/needl-desktop.png)
-- [Desktop board with detail](apps/web/artifacts/screenshots/needl-desktop-detail.png)
-- [Mobile board](apps/web/artifacts/screenshots/needl-mobile.png)
-- [Mobile detail](apps/web/artifacts/screenshots/needl-mobile-detail.png)
+- [Safety desktop board](apps/web/artifacts/screenshots/safety-desktop-board.png)
+- [Expanded engine evidence](apps/web/artifacts/screenshots/safety-desktop-evidence.png)
+- [Safety mobile board](apps/web/artifacts/screenshots/safety-mobile-board.png)
+- [Safety mobile detail](apps/web/artifacts/screenshots/safety-mobile-detail.png)
 
 All four were captured from the freshly built output and visually inspected. The desktop detail screenshot most closely mirrors the approved split-board reference; the narrow screenshots confirm readable cards, a full-width detail surface, and bottom navigation without horizontal overflow.
 
@@ -141,7 +146,7 @@ All four were captured from the freshly built output and visually inspected. The
 - No live GitLab investigation dispatcher exists. Engine outbox requests are shown as pending simulated response state; the launch control is disabled.
 - No browser secrets or API keys are used. The bridge contacts no external system.
 - The local bridge uses in-memory monitor storage for each replay. Durable SQLite behavior remains covered by the existing engine tests and examples, not duplicated in the frontend.
-- A custom assertion whose scope does not bind any fixture is shown as unavailable/no matching evidence, never satisfied.
+- A meaning choice without fixture coverage is explicitly labeled **No matching evidence**, never satisfied or safe.
 - Analytics are derived only from current replay events, checkpoints, violations, and outbox records.
 - The synthetic evidence URLs are displayed as fixture provenance and are not presented as working provider links.
 - This is a local demonstration server, not a production API, authentication boundary, or deployment configuration.

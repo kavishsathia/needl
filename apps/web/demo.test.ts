@@ -39,4 +39,44 @@ describe("deterministic demo replay", () => {
     const output = await runDemoScenario({ scenario: "violating", assertions: input });
     expect(output.checkpoints.some((checkpoint) => checkpoint.assertionId === input[0]!.localId)).toBe(false);
   });
+
+  it("advances every instantiated timed assertion through the replay horizon", async () => {
+    const provisioning = authoringTemplates.find((template) => template.id === "provisioning")!;
+    const timedDraft = (id: string, withinMs: number, status: AssertionDraft["status"] = "monitoring"): AssertionDraft => ({
+      localId: id,
+      expectation: `Probe ${id}`,
+      definition: {
+        ...structuredClone(provisioning.definition),
+        id,
+        name: `Probe ${id}`,
+        formula: { ...provisioning.definition.formula, withinMs },
+      },
+      status,
+      createdAt: "2026-02-18T10:39:00.000Z",
+      updatedAt: "2026-02-18T10:39:00.000Z",
+    });
+    const input = [
+      timedDraft("local-probe", 600_000),
+      timedDraft("local-second-scope", 600_000),
+      timedDraft("local-long-deadline", 1_200_000),
+      timedDraft("local-paused-probe", 600_000, "paused"),
+    ];
+
+    const violating = await runDemoScenario({ scenario: "violating", assertions: input });
+    expect(violating.violations.map((item) => item.assertionId).sort()).toEqual([
+      "local-probe",
+      "local-second-scope",
+    ]);
+    expect(violating.checkpoints.filter((item) => item.assertionId !== "local-paused-probe"))
+      .toHaveLength(3);
+    expect(violating.checkpoints.every((item) => item.lastLogicalTime === violating.replayedAt)).toBe(true);
+    expect(violating.checkpoints.find((item) => item.assertionId === "local-long-deadline")?.pendingObligations)
+      .toHaveLength(1);
+    expect(violating.checkpoints.some((item) => item.assertionId === "local-paused-probe")).toBe(false);
+
+    const healthy = await runDemoScenario({ scenario: "healthy", assertions: input });
+    expect(healthy.violations).toHaveLength(0);
+    expect(healthy.checkpoints.every((item) => item.pendingObligations.length === 0)).toBe(true);
+    expect(healthy.checkpoints.every((item) => item.lastLogicalTime === healthy.replayedAt)).toBe(true);
+  });
 });

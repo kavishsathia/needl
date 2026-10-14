@@ -31,7 +31,8 @@ names, excessive nesting, and formulas that reference undeclared atoms.
 means: every observation satisfying a propositional trigger must be followed
 by a matching propositional response in the same monitor partition no later
 than `withinMs`. Temporal operators are rejected inside its trigger and
-response. Each trigger creates its own durable obligation.
+response. Each trigger creates its own durable obligation. Durations must be
+positive integral milliseconds and cannot exceed 365 days.
 
 ## Prefix verdicts and finalization
 
@@ -139,4 +140,3 @@ Every new violation atomically creates a deterministic pending outbox item.
 Dispatchers can claim and record attempts through the store seam. This provides
 deduplicated requests to a future GitLab agent-flow dispatcher, not exactly-once
 external execution. The monitor itself performs no network action.
-

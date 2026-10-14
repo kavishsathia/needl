@@ -1,5 +1,8 @@
 # Implementation handoff
 
+> This integrations handoff predates the LTL monitor assignment. See
+> `LTL-HANDOFF.md` for the current complete package status.
+
 ## Delivered
 
 - Strict TypeScript package targeting supported Node.js 22.13+.

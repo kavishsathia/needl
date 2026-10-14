@@ -239,6 +239,36 @@ test("unsupported saved rules are preserved disabled and excluded from replay", 
   expect(stored.definition.formula.kind).toBe("eventually");
 });
 
+test("migration restores canonical chips and business evidence for a legacy authored clone with a renamed ID", async ({ page, request }) => {
+  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
+  const template = bootstrap.templates.find((item: { id: string }) => item.id === "recurrence");
+  const localId = "local-legacy-renamed-recurrence";
+  await page.addInitScript(({ definition, localId }) => {
+    const saved = [{
+      localId,
+      expectation: "A legacy renamed repair stays repaired",
+      definition: { ...definition, id: localId, name: "A legacy renamed repair stays repaired", version: 7 },
+      status: "monitoring",
+      templateId: "recurrence",
+      createdAt: "2026-02-18T10:39:00.000Z",
+      updatedAt: "2026-02-18T10:39:00.000Z",
+    }];
+    localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions: saved }));
+  }, { definition: template.definition, localId });
+
+  await page.goto("/#/assertions");
+  const card = page.getByTestId(`assertion-card-${localId}`);
+  await expect(card.getByRole("button", { name: "Trigger: a fix is deployed" })).toBeVisible();
+  await card.getByRole("button", { name: "Open A legacy renamed repair stays repaired" }).click();
+  const detail = page.getByRole("complementary", { name: "A legacy renamed repair stays repaired detail" });
+  await detail.getByRole("button", { name: /Counterexamples/ }).click();
+  await expect(detail.locator(".counterexample").getByRole("heading", { name: "The linked issue occurred again after a fix was deployed in Production." })).toBeVisible();
+  await expect.poll(async () => page.evaluate((id) => {
+    const saved = JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}");
+    return saved.assertions.find((item: { localId: string }) => item.localId === id)?.meaning?.templateId;
+  }, localId)).toBe("recurrence");
+});
+
 test("a delayed pause replay cannot overwrite the newer enabled result", async ({ page }) => {
   await page.goto("/#/assertions");
   await page.getByRole("button", { name: "Open Fixed means fixed" }).click();
@@ -418,6 +448,15 @@ test("replay API returns controlled 400 responses for malformed inactive drafts"
   });
   expect(deadlineNeedsReview.status()).toBe(400);
   expect((await deadlineNeedsReview.json()).error).toMatch(/deadline/i);
+
+  const safeNeedsReview = await request.post("/api/demo/replay", {
+    data: {
+      scenario: "violating",
+      assertions: [{ ...base, status: "needs-review", reviewReason: "Manual review" }],
+    },
+  });
+  expect(safeNeedsReview.status()).toBe(400);
+  expect((await safeNeedsReview.json()).error).toMatch(/reviewed before replay/i);
 });
 
 test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page, request }) => {

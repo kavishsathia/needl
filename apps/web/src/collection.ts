@@ -53,6 +53,9 @@ export function validateProductAssertionCollection(
       if (draft.status === "needs-review" && (typeof draft.reviewReason !== "string" || draft.reviewReason.trim().length === 0)) {
         throw new Error(`Assertion ${draft.localId} needs a review reason`);
       }
+      if (draft.status === "needs-review" && options.allowNeedsReview === false) {
+        throw new Error(`Assertion ${draft.localId} must be reviewed before replay`);
+      }
       continue;
     }
     if (options.allowNeedsReview !== false && draft.status === "needs-review") {

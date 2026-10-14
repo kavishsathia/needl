@@ -13,6 +13,7 @@ export interface MeaningField {
   readonly id: string;
   readonly accessibleLabel: string;
   readonly options: readonly MeaningOption[];
+  readonly eventKinds: readonly string[];
 }
 
 export type MeaningSegment = string | { readonly field: string };
@@ -45,13 +46,13 @@ export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
     id: "recurrence",
     sentence: ["After ", { field: "trigger" }, ", ", { field: "subject" }, " must not ", { field: "outcome" }, " in ", { field: "environment" }, "."],
     fields: [
-      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "deployed-fix", label: "a fix is deployed", evidence: "matched" }] },
-      { id: "subject", accessibleLabel: "Protected subject", options: [{ value: "linked-issue", label: "the linked issue", evidence: "matched" }] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "recur", label: "occur again", evidence: "matched" }] },
+      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "deployed-fix", label: "a fix is deployed", evidence: "matched" }], eventKinds: ["fix.deployed"] },
+      { id: "subject", accessibleLabel: "Protected subject", options: [{ value: "linked-issue", label: "the linked issue", evidence: "matched" }], eventKinds: ["work.issue_done", "fix.deployed", "error.recurred"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "recur", label: "occur again", evidence: "matched" }], eventKinds: ["error.recurred"] },
       { id: "environment", accessibleLabel: "Environment", options: [
         { value: "production", label: "Production", evidence: "matched" },
         { value: "staging", label: "Staging", evidence: "none" },
-      ] },
+      ], eventKinds: ["work.issue_done", "fix.deployed", "error.recurred"] },
     ],
   },
   feature: {
@@ -61,21 +62,21 @@ export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
       { id: "feature", accessibleLabel: "Feature", options: [
         { value: "checkout-v2", label: "checkout-v2", evidence: "matched" },
         { value: "recommendations-v1", label: "recommendations-v1", evidence: "none" },
-      ] },
-      { id: "state", accessibleLabel: "Flag state", options: [{ value: "disabled", label: "disabled", evidence: "matched" }] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "feature-errors", label: "errors from the feature", evidence: "matched" }] },
+      ], eventKinds: ["feature.disabled", "feature.enabled", "feature.error"] },
+      { id: "state", accessibleLabel: "Flag state", options: [{ value: "disabled", label: "disabled", evidence: "matched" }], eventKinds: ["feature.disabled", "feature.enabled"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "feature-errors", label: "errors from the feature", evidence: "matched" }], eventKinds: ["feature.error"] },
     ],
   },
   order: {
     id: "order",
     sentence: ["After ", { field: "boundary" }, ", ", { field: "subject" }, " must not be ", { field: "outcome" }, "."],
     fields: [
-      { id: "boundary", accessibleLabel: "Observed lifecycle boundary", options: [{ value: "accepted", label: "an order is accepted", evidence: "matched" }] },
+      { id: "boundary", accessibleLabel: "Observed lifecycle boundary", options: [{ value: "accepted", label: "an order is accepted", evidence: "matched" }], eventKinds: ["order.accepted"] },
       { id: "subject", accessibleLabel: "Order", options: [
         { value: "ord_1042", label: "order ord_1042", evidence: "matched" },
         { value: "ord_2048", label: "order ord_2048", evidence: "none" },
-      ] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "fulfilled-before-payment", label: "fulfilled before payment is observed", evidence: "matched" }] },
+      ], eventKinds: ["order.accepted", "payment.succeeded", "order.fulfilled"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "fulfilled-before-payment", label: "fulfilled before payment is observed", evidence: "matched" }], eventKinds: ["payment.succeeded", "order.fulfilled"] },
     ],
   },
 };
@@ -86,6 +87,14 @@ export function defaultMeaningValues(templateId: TemplateId): Readonly<Record<st
 
 export function meaningOption(templateId: TemplateId, fieldId: string, value: string): MeaningOption | undefined {
   return meaningTemplates[templateId].fields.find((field) => field.id === fieldId)?.options.find((option) => option.value === value);
+}
+
+export function fieldForEventKind(templateId: TemplateId, eventKind: string): string | undefined {
+  return meaningTemplates[templateId].fields.find((field) => field.eventKinds.includes(eventKind))?.id;
+}
+
+export function eventKindsForField(templateId: TemplateId, fieldId: string): readonly string[] {
+  return meaningTemplates[templateId].fields.find((field) => field.id === fieldId)?.eventKinds ?? [];
 }
 
 export function meaningHasFixtureEvidence(draft: AssertionDraft): boolean {

@@ -65,7 +65,7 @@ export function updateDraft(
   };
   compileAssertion(definition);
   assertProductSafety(definition);
-  return { ...draft, expectation, definition, meaning: undefined, reviewReason: undefined, updatedAt: now };
+  return { ...draft, expectation, definition, status: draft.status === "needs-review" ? "paused" : draft.status, meaning: undefined, reviewReason: undefined, updatedAt: now };
 }
 
 export function updateMeaningChoice(

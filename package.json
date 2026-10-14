@@ -1,0 +1,56 @@
+{
+  "name": "@needl/integrations",
+  "version": "0.1.0",
+  "description": "Framework-independent, authenticated webhook adapters for Needl",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js"
+    },
+    "./receiver": {
+      "types": "./dist/receiver/index.d.ts",
+      "import": "./dist/receiver/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm test && npm run build",
+    "example": "tsx examples/server.ts"
+  },
+  "keywords": [
+    "webhook",
+    "gitlab",
+    "linear",
+    "launchdarkly",
+    "sentry",
+    "posthog",
+    "intercom",
+    "stripe"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.10",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.4"
+  }
+}

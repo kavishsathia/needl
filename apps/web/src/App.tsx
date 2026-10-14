@@ -12,13 +12,14 @@ import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
 import { createDraftFromTemplate, formulaText, updateDraft } from "./authoring.js";
 import { fetchBootstrap, replayDemo } from "./api.js";
+import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
   AuthoringTemplate,
   DemoReplay,
   DemoReplayRequest,
 } from "./domain.js";
-import { STORAGE_KEY } from "./domain.js";
+import { MAX_ASSERTIONS, STORAGE_KEY } from "./domain.js";
 import { Icon } from "./icons.js";
 import { parseStoredAssertions, serializeAssertions } from "./storage.js";
 
@@ -71,7 +72,7 @@ function mergeRestored(defaults: readonly AssertionDraft[], restored: readonly A
   const saved = new Map(restored.map((draft) => [draft.localId, draft]));
   const merged = defaults.map((draft) => saved.get(draft.localId) ?? draft);
   for (const draft of restored) if (!defaults.some((item) => item.localId === draft.localId)) merged.push(draft);
-  return merged;
+  return merged.length <= MAX_ASSERTIONS ? merged : [...restored];
 }
 
 function routeFromLocation(): { section: Section; selectedId?: string } {
@@ -240,7 +241,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
   readonly replay: DemoReplay | null;
   readonly selectedId?: string;
   readonly search: string;
-  readonly onCreate: (text: string) => void;
+  readonly onCreate: (text: string) => string | undefined;
   readonly onOpen: (id: string) => void;
   readonly onReplay: (scenario: DemoReplayRequest["scenario"]) => void;
 }) {
@@ -248,6 +249,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
   const [filter, setFilter] = useState<Filter>("all");
   const [sort, setSort] = useState<SortMode>("attention");
   const [compact, setCompact] = useState(false);
+  const [authoringError, setAuthoringError] = useState<string | null>(null);
   const list = useMemo(() => {
     const needle = search.trim().toLowerCase();
     const score = (draft: AssertionDraft) => ({ violated: 0, pending: 1, unavailable: 2, monitoring: 3, paused: 4 })[assertionTone(draft, replay)] ?? 5;
@@ -259,8 +261,9 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (input.trim().length === 0) return;
-    onCreate(input.trim());
-    setInput("");
+    const message = onCreate(input.trim());
+    setAuthoringError(message ?? null);
+    if (message === undefined) setInput("");
   };
   return <main className={`board ${selectedId === undefined ? "" : "has-detail"}`} id="main-content">
     <div className="board-heading">
@@ -272,8 +275,9 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
     </div>
     <form className="composer" onSubmit={submit}>
       <label htmlFor="assertion-input">Describe an expectation</label>
-      <div><input id="assertion-input" value={input} onChange={(event) => setInput(event.target.value)} placeholder="When a fix is deployed, the linked issue should not recur"/><button type="submit" disabled={input.trim().length === 0} aria-label="Continue authoring"><Icon name="arrow"/></button></div>
+      <div><input id="assertion-input" value={input} onChange={(event) => { setInput(event.target.value); setAuthoringError(null); }} placeholder="When a fix is deployed, the linked issue should not recur"/><button type="submit" disabled={input.trim().length === 0} aria-label="Continue authoring"><Icon name="arrow"/></button></div>
       <span>Template-guided local authoring · arbitrary rules use the structured editor</span>
+      {authoringError ? <p className="form-error" role="alert">{authoringError}</p> : null}
     </form>
     <div className="board-tools">
       <div className="filters" role="tablist" aria-label="Assertion filters">
@@ -512,9 +516,25 @@ export function App() {
     else navigate("assertions", undefined, true);
   };
   const updateAssertions = (next: AssertionDraft[], replayNow = true) => {
-    localStorage.setItem(STORAGE_KEY, serializeAssertions(next));
-    setAssertions(next);
-    if (replayNow) void runReplay(next);
+    try {
+      const accepted = validateAssertionCollection(next);
+      localStorage.setItem(STORAGE_KEY, serializeAssertions(accepted));
+      setAssertions(accepted);
+      if (replayNow) void runReplay(accepted);
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Invalid assertion collection");
+      return false;
+    }
+  };
+  const beginAuthoring = (text: string): string | undefined => {
+    try {
+      assertAssertionCapacity(assertions.length);
+      setAuthoringText(text);
+      return undefined;
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : "Assertion capacity reached";
+    }
   };
   const chooseTemplate = (template: AuthoringTemplate) => {
     if (authoringText === null) return;
@@ -533,9 +553,10 @@ export function App() {
   };
   const saveEdit = (draft: AssertionDraft) => {
     const next = assertions.map((item) => item.localId === draft.localId ? draft : item);
-    setEditing(null);
-    updateAssertions(next);
-    setToast(`Saved and replayed assertion v${draft.definition.version}`);
+    if (updateAssertions(next)) {
+      setEditing(null);
+      setToast(`Saved and replayed assertion v${draft.definition.version}`);
+    }
   };
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(window.location.href); setToast("Local link copied"); }
@@ -562,7 +583,7 @@ export function App() {
     <Sidebar section={section} replay={replay} onNavigate={(next) => navigate(next)}/>
     <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
-      {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={replay} selectedId={selected?.localId} search={search} onCreate={setAuthoringText} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)}/> : null}
+      {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={replay} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)}/> : null}
       {section === "activity" ? <ActivityPage replay={replay}/> : null}
       {section === "connections" ? <ConnectionsPage replay={replay}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} onRestore={restoreSamples} onClear={clearLocal}/> : null}

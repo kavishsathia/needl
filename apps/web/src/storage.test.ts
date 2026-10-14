@@ -92,7 +92,7 @@ describe("assertion storage", () => {
       },
     };
     expect(() => validateProductAssertionCollection([eventual])).toThrow(/eventually happen/i);
-    expect(() => validateProductAssertionCollection([{ ...eventual, status: "needs-review" }], { allowNeedsReview: false }))
+    expect(() => validateProductAssertionCollection([{ ...eventual, status: "needs-review", reviewReason: "Legacy liveness rule" }], { allowNeedsReview: false }))
       .toThrow(/eventually happen/i);
   });
 });

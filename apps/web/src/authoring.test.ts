@@ -13,20 +13,22 @@ describe("explicit template authoring", () => {
 
   it("validates manual formula edits through the existing compiler", () => {
     const draft = createDraftFromTemplate("Keep checkout quiet", authoringTemplates[0]!, []);
+    const recurrence = draft.definition.propositions.find((item) => item.name.startsWith("recurrence_"))!.name;
     const edited = updateDraft(draft, {
       expectation: "Never recur after deployment",
-      formula: "G !recurrence",
+      formula: `G !${recurrence}`,
       definitionJson: JSON.stringify(draft.definition),
     }, "2026-01-02T00:00:00.000Z");
-    expect(formulaText(edited)).toBe("G !recurrence");
+    expect(formulaText(edited)).toBe(`G !${recurrence}`);
     expect(edited.definition.version).toBe(2);
   });
 
   it("rejects liveness edits at the advanced-editor boundary", () => {
     const draft = createDraftFromTemplate("Keep checkout quiet", authoringTemplates[0]!, []);
+    const recurrence = draft.definition.propositions.find((item) => item.name.startsWith("recurrence_"))!.name;
     expect(() => updateDraft(draft, {
       expectation: "Every paid order should eventually be fulfilled",
-      formula: "G F recurrence",
+      formula: `G F ${recurrence}`,
       definitionJson: JSON.stringify(draft.definition),
     })).toThrow(/eventually happen/i);
   });

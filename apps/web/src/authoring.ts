@@ -2,6 +2,8 @@ import { compileAssertion } from "../../../src/ltl/assertion.js";
 import { formatFormula, parseFormula } from "../../../src/ltl/formula.js";
 import type { AssertionDraft, AuthoringTemplate } from "./domain.js";
 import { assertAssertionCapacity } from "./collection.js";
+import { assertProductSafety } from "./safety.js";
+import { buildTemplateDefinition, defaultMeaningValues, meaningOption } from "./meaning.js";
 
 function slug(value: string): string {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36);
@@ -22,13 +24,15 @@ export function createDraftFromTemplate(
     localId = `${base}-${suffix}`;
     suffix += 1;
   }
-  const definition = structuredClone(template.definition);
+  const values = defaultMeaningValues(template.id);
+  const definition = buildTemplateDefinition(template.id, values, { id: localId, name: expectation.trim(), version: 1 });
   return {
     localId,
     expectation: expectation.trim(),
-    definition: { ...definition, id: localId, name: expectation.trim(), version: 1 },
+    definition,
     status: "paused",
     templateId: template.id,
+    meaning: { templateId: template.id, values },
     createdAt: now,
     updatedAt: now,
   };
@@ -60,5 +64,25 @@ export function updateDraft(
     formula,
   };
   compileAssertion(definition);
-  return { ...draft, expectation, definition, updatedAt: now };
+  assertProductSafety(definition);
+  return { ...draft, expectation, definition, meaning: undefined, reviewReason: undefined, updatedAt: now };
+}
+
+export function updateMeaningChoice(
+  draft: AssertionDraft,
+  fieldId: string,
+  value: string,
+  now = new Date().toISOString(),
+): AssertionDraft {
+  if (draft.meaning === undefined) throw new Error("This assertion does not have editable meaning chips");
+  if (meaningOption(draft.meaning.templateId, fieldId, value) === undefined) throw new Error("That meaning choice is unavailable");
+  const values = { ...draft.meaning.values, [fieldId]: value };
+  const definition = buildTemplateDefinition(draft.meaning.templateId, values, {
+    id: draft.localId,
+    name: draft.definition.name,
+    version: draft.definition.version + 1,
+    tenantId: draft.definition.tenantId,
+  });
+  assertProductSafety(definition);
+  return { ...draft, definition, meaning: { templateId: draft.meaning.templateId, values }, reviewReason: undefined, updatedAt: now };
 }

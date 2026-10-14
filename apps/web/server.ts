@@ -4,6 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDemoBootstrap, runDemoScenario } from "./demo.js";
 import type { DemoReplayRequest } from "./src/domain.js";
+import { validateProductAssertionCollection } from "./src/collection.js";
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const distRoot = join(appRoot, "dist");
@@ -70,7 +71,9 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/demo/replay") {
-      json(response, 200, await runDemoScenario(await readJson(request) as DemoReplayRequest));
+      const body = await readJson(request) as DemoReplayRequest;
+      validateProductAssertionCollection(body.assertions, { allowNeedsReview: false });
+      json(response, 200, await runDemoScenario(body));
       return;
     }
     if (url.pathname.startsWith("/api/")) {

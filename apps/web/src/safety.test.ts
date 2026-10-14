@@ -12,16 +12,17 @@ describe("safety-only product policy", () => {
 
   it("rejects eventuality and deadline semantics with friendly explanations", () => {
     const base = structuredClone(authoringTemplates[0]!.definition);
+    const atom = base.propositions[0]!.name;
     const eventual = {
       ...base,
-      formula: { kind: "always", operand: { kind: "eventually", operand: { kind: "atom", name: "recurrence" } } } as const,
+      formula: { kind: "always", operand: { kind: "eventually", operand: { kind: "atom", name: atom } } } as const,
     };
     const deadline = {
       ...base,
       formula: {
         kind: "deadline",
-        trigger: { kind: "atom", name: "ready_deployment" },
-        response: { kind: "atom", name: "recurrence" },
+        trigger: { kind: "atom", name: atom },
+        response: { kind: "atom", name: atom },
         withinMs: 60_000,
       } as const,
     };
@@ -34,9 +35,10 @@ describe("safety-only product policy", () => {
 
   it("conservatively rejects unrecognized temporal shapes", () => {
     const base = structuredClone(authoringTemplates[0]!.definition);
+    const atom = base.propositions[0]!.name;
     const next = {
       ...base,
-      formula: { kind: "always", operand: { kind: "next", operand: { kind: "atom", name: "recurrence" } } } as const,
+      formula: { kind: "always", operand: { kind: "next", operand: { kind: "atom", name: atom } } } as const,
     };
     expect(productSafetyIssue(next)).toMatch(/supported safety shape/i);
   });

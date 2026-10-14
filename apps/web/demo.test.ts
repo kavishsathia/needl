@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssertionDraft } from "./src/domain.js";
-import { authoringTemplates, runDemoScenario } from "./demo.js";
+import { authoringTemplates, legacyProvisioningDefinition, runDemoScenario } from "./demo.js";
 import { createDraftFromTemplate, updateMeaningChoice } from "./src/authoring.js";
 
 function drafts(): AssertionDraft[] {
@@ -54,15 +54,14 @@ describe("deterministic demo replay", () => {
   });
 
   it("advances every instantiated timed assertion through the replay horizon", async () => {
-    const provisioning = authoringTemplates.find((template) => template.id === "provisioning")!;
     const timedDraft = (id: string, withinMs: number, status: AssertionDraft["status"] = "monitoring"): AssertionDraft => ({
       localId: id,
       expectation: `Probe ${id}`,
       definition: {
-        ...structuredClone(provisioning.definition),
+        ...structuredClone(legacyProvisioningDefinition),
         id,
         name: `Probe ${id}`,
-        formula: { ...provisioning.definition.formula, withinMs },
+        formula: { ...legacyProvisioningDefinition.formula, withinMs },
       },
       status,
       createdAt: "2026-02-18T10:39:00.000Z",
@@ -81,9 +80,10 @@ describe("deterministic demo replay", () => {
       "local-second-scope",
     ]);
     expect(violating.checkpoints.filter((item) => item.assertionId !== "local-paused-probe"))
-      .toHaveLength(3);
+      .toHaveLength(6);
+    expect(violating.checkpoints.filter((item) => item.assertionId === "local-probe")).toHaveLength(2);
     expect(violating.checkpoints.every((item) => item.lastLogicalTime === violating.replayedAt)).toBe(true);
-    expect(violating.checkpoints.find((item) => item.assertionId === "local-long-deadline")?.pendingObligations)
+    expect(violating.checkpoints.flatMap((item) => item.assertionId === "local-long-deadline" ? item.pendingObligations : []))
       .toHaveLength(1);
     expect(violating.checkpoints.some((item) => item.assertionId === "local-paused-probe")).toBe(false);
 

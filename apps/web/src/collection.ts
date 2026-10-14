@@ -1,8 +1,9 @@
 import { compileAssertion } from "../../../src/ltl/assertion.js";
 import type { AssertionDraft, TemplateId } from "./domain.js";
 import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
+import { productSafetyIssue } from "./safety.js";
 
-const templateIds = new Set<TemplateId>(["recurrence", "feature", "provisioning"]);
+const templateIds = new Set<string>(["recurrence", "feature", "order", "provisioning"]);
 
 function validateDraft(value: unknown, index: number): asserts value is AssertionDraft {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -15,7 +16,7 @@ function validateDraft(value: unknown, index: number): asserts value is Assertio
   if (typeof draft.expectation !== "string" || draft.expectation.trim().length === 0) {
     throw new Error(`Assertion ${draft.localId} needs an expectation`);
   }
-  if (draft.status !== "monitoring" && draft.status !== "paused") {
+  if (draft.status !== "monitoring" && draft.status !== "paused" && draft.status !== "needs-review") {
     throw new Error(`Assertion ${draft.localId} has an unknown status`);
   }
   if (draft.templateId !== undefined && !templateIds.has(draft.templateId)) {
@@ -32,6 +33,28 @@ function validateDraft(value: unknown, index: number): asserts value is Assertio
   if (definition.tenantId !== DEMO_TENANT_ID) {
     throw new Error(`Demo assertions must use tenant ${DEMO_TENANT_ID}`);
   }
+}
+
+export function validateProductAssertionCollection(
+  value: unknown,
+  options: { readonly allowNeedsReview?: boolean } = {},
+): AssertionDraft[] {
+  const assertions = validateAssertionCollection(value);
+  for (const draft of assertions) {
+    const issue = productSafetyIssue(draft.definition);
+    if (issue === undefined) {
+      if (draft.status === "needs-review" && (typeof draft.reviewReason !== "string" || draft.reviewReason.trim().length === 0)) {
+        throw new Error(`Assertion ${draft.localId} needs a review reason`);
+      }
+      continue;
+    }
+    if (options.allowNeedsReview !== false && draft.status === "needs-review") {
+      if (typeof draft.reviewReason !== "string" || draft.reviewReason.trim().length === 0) throw new Error(`Assertion ${draft.localId} needs a review reason`);
+      continue;
+    }
+    throw new Error(issue);
+  }
+  return assertions;
 }
 
 export function validateAssertionCollection(value: unknown): AssertionDraft[] {

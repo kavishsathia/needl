@@ -53,7 +53,10 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(detail.getByRole("button", { name: "Pause" })).toBeVisible();
 
   await page.getByRole("button", { name: /Counterexamples/ }).click();
-  await expect(page.getByText(/progressed LTL formula became false/)).toBeVisible();
+  const counterexample = detail.locator(".counterexample");
+  await expect(counterexample.getByRole("heading", { name: "The linked issue occurred again after a fix was deployed in Production." })).toBeVisible();
+  await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
+  await expect(counterexample.getByText(/formula false/i)).toBeHidden();
   await expect(page.locator(".trace-timeline li")).toHaveCount(3);
   await expect(page.getByText("sentry", { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: new URL("safety-desktop-evidence.png", screenshotDir).pathname, fullPage: true });
@@ -75,6 +78,63 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(page.getByText("Demo sources are not live connections")).toBeVisible();
   expect(consoleErrors).toEqual([]);
+});
+
+test("authored clones and wording edits keep canonical chips and meaning-first counterexamples for every template", async ({ page }) => {
+  const cases = [
+    {
+      expectation: "A renamed checkout repair never regresses",
+      template: /Fixed means fixed/,
+      editedName: "A renamed checkout repair stays repaired",
+      cardMeaning: "After a fix is deployed, the linked issue must not occur again in Production.",
+      violation: "The linked issue occurred again after a fix was deployed in Production.",
+      chip: "Trigger: a fix is deployed",
+    },
+    {
+      expectation: "A renamed disabled rollout stays quiet",
+      template: /Off means off/,
+      cardMeaning: "While checkout-v2 is disabled, errors from the feature must not occur.",
+      violation: "Errors from checkout-v2 occurred while the feature was disabled.",
+      chip: "Feature: checkout-v2",
+    },
+    {
+      expectation: "A renamed order cannot ship before payment",
+      template: /Payment before fulfillment/,
+      cardMeaning: "After an order is accepted, order ord_1042 must not be fulfilled before payment is observed.",
+      violation: "Order ord_1042 was fulfilled before its payment was observed.",
+      chip: "Observed lifecycle boundary: an order is accepted",
+    },
+  ] as const;
+
+  await page.goto("/#/assertions");
+  for (const item of cases) {
+    await page.getByLabel("What should never happen?").fill(item.expectation);
+    await page.getByLabel("Continue authoring").click();
+    await page.getByRole("dialog", { name: "Choose an interpretation template" }).getByRole("button", { name: item.template }).click();
+    const detail = page.getByRole("complementary", { name: `${item.expectation} detail` });
+    await detail.getByRole("button", { name: "Enable" }).click();
+    await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+
+    let currentName: string = item.expectation;
+    if ("editedName" in item) {
+      await detail.getByRole("button", { name: "Edit wording" }).click();
+      await page.getByLabel("Expectation", { exact: true }).fill(item.editedName);
+      await page.getByRole("button", { name: /Validate & save v2/ }).click();
+      currentName = item.editedName;
+    }
+
+    const currentDetail = page.getByRole("complementary", { name: `${currentName} detail` });
+    await currentDetail.getByRole("button", { name: /Counterexamples/ }).click();
+    const counterexample = currentDetail.locator(".counterexample");
+    await expect(counterexample.getByRole("heading", { name: item.violation })).toBeVisible();
+    await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
+    await expect(counterexample.getByText(/formula false/i)).toBeHidden();
+    await page.getByRole("button", { name: "Back to assertion board" }).click();
+
+    const card = page.getByTestId(`assertion-card-local-${item.expectation.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)}`);
+    await expect(card.locator(".meaning-sentence")).toHaveText(item.cardMeaning);
+    await expect(card.getByRole("button", { name: item.chip })).toBeVisible();
+  }
 });
 
 test("replay switches between violating and healthy engine paths", async ({ page }) => {

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+*.tsbuildinfo
 *.db
 *.db-shm
 *.db-wal
@@ -10,4 +11,3 @@ coverage/
 .env
 .env.*
 !.env.example
-

@@ -56,7 +56,6 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(page.getByText(/progressed LTL formula became false/)).toBeVisible();
   await expect(page.locator(".trace-timeline li")).toHaveCount(3);
   await expect(page.getByText("sentry", { exact: false }).first()).toBeVisible();
-  await page.locator(".counterexample").scrollIntoViewIfNeeded();
   await page.screenshot({ path: new URL("safety-desktop-evidence.png", screenshotDir).pathname, fullPage: true });
 
   await page.getByRole("button", { name: "Back to assertion board" }).click();
@@ -404,12 +403,12 @@ test("mobile layout has no horizontal overflow and supports detail navigation", 
   await page.goto("/#/assertions");
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: new URL("safety-mobile-board.png", screenshotDir).pathname, fullPage: true });
+  await page.screenshot({ path: new URL("safety-mobile-board.png", screenshotDir).pathname });
   await page.getByRole("button", { name: "Open Fixed means fixed" }).click();
   await expect(page.getByRole("complementary", { name: "Fixed means fixed detail" }).getByRole("heading", { name: "Fixed means fixed" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.waitForTimeout(350);
-  await page.screenshot({ path: new URL("safety-mobile-detail.png", screenshotDir).pathname, fullPage: true });
+  await page.screenshot({ path: new URL("safety-mobile-detail.png", screenshotDir).pathname });
   await page.getByRole("button", { name: "Back to assertion board" }).click();
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);

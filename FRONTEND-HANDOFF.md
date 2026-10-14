@@ -118,17 +118,17 @@ npm run check:all
   legacy tests             PASS — 10 files, 47 tests
   engine build             PASS
   package smoke            PASS — linear/Issue.create + LTL
-  frontend tests           PASS — 3 files, 15 tests
+  frontend tests           PASS — 4 files, 24 tests
   app + server typecheck   PASS
-  Vite production build   PASS — 38 modules
-  CSS                      27.56 kB (6.86 kB gzip)
-  JS                       266.48 kB (82.45 kB gzip)
+  Vite production build   PASS — 40 modules
+  CSS                      31.55 kB (7.68 kB gzip)
+  JS                       282.33 kB (86.71 kB gzip)
 
 npm run web:e2e
-  Playwright Chromium      PASS — 10 tests, fresh production build
+  Playwright Chromium      PASS — 13 tests, fresh production build
 ```
 
-The Playwright suite exercises create/template selection, edit/version, enable/pause state, filter/search, detail/back/focus, actual violating and healthy engine replay, counterexample timelines, persistence across reload, invalid restore rejection, capacity enforcement, stale-success and stale-failure response ordering, controlled API 400s, malformed hash fallback, Activity and Connections navigation, mobile overflow, browser console errors, reduced motion, and a missing-View-Transitions fallback.
+The Playwright suite exercises create/template selection, edit/version, enable/pause state, filter/search, detail/back/focus, actual violating and healthy engine replay, eventuality feedback and confirmed alternatives, canonical meaning-chip edits, keyboard/mouse phrase-to-trace linking, needs-review migration, counterexample timelines, persistence across reload, invalid restore rejection, capacity enforcement, stale-success and stale-failure response ordering, controlled API and safety-policy 400s, malformed hash fallback, Activity and Connections navigation, mobile overflow, browser console errors, reduced motion, and a missing-View-Transitions fallback.
 
 ## Reviewed screenshots
 

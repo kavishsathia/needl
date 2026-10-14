@@ -102,6 +102,43 @@ test("invalid restored data is rejected and replaced with safe defaults", async 
   await expect(page.getByText("bad", { exact: true })).toHaveCount(0);
 });
 
+test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page, request }) => {
+  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
+  const assertions = [...bootstrap.templates.map((template: { prompt: string; id: string; definition: object }) => ({
+    localId: (template.definition as { id: string }).id,
+    expectation: template.prompt,
+    definition: template.definition,
+    status: "monitoring",
+    templateId: template.id,
+    createdAt: "2026-02-18T10:39:00.000Z",
+    updatedAt: "2026-02-18T10:39:00.000Z",
+  }))];
+  const template = bootstrap.templates[0];
+  for (let index = assertions.length; index < 25; index += 1) {
+    const localId = `local-cap-${index}`;
+    assertions.push({
+      localId,
+      expectation: `Capacity rule ${index}`,
+      definition: { ...structuredClone(template.definition), id: localId, name: `Capacity rule ${index}` },
+      status: "paused",
+      templateId: template.id,
+      createdAt: "2026-02-18T10:39:00.000Z",
+      updatedAt: "2026-02-18T10:39:00.000Z",
+    });
+  }
+  await page.evaluate((saved) => {
+    localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions: saved }));
+  }, assertions);
+
+  await page.goto("/#/assertions");
+  await expect(page.locator(".assertion-card")).toHaveCount(25);
+  await page.getByLabel("Describe an expectation").fill("One assertion too many");
+  await page.getByLabel("Continue authoring").click();
+  await expect(page.getByRole("alert")).toContainText("at most 25 assertions");
+  await expect(page.getByRole("dialog", { name: "Choose an interpretation template" })).toHaveCount(0);
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.length)).toBe(25);
+});
+
 test("mobile layout has no horizontal overflow and supports detail navigation", async ({ page }) => {
   const consoleErrors = watchConsole(page);
   await page.setViewportSize({ width: 390, height: 844 });

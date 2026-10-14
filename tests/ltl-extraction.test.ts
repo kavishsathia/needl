@@ -139,5 +139,10 @@ describe("declarative proposition extraction", () => {
       propositions: [{ name: "disabled", predicate: { op: "matches", code: "process.exit()" } as never }],
       formula: { kind: "atom", name: "disabled" },
     })).toThrow(/predicate/i);
+    expect(() => compileAssertion({
+      ...definition,
+      propositions: [{ name: "disabled", predicate: { op: "true", eval: "process.exit()" } as never }],
+      formula: { kind: "atom", name: "disabled" },
+    })).toThrow(/unknown/i);
   });
 });

@@ -78,6 +78,12 @@ describe("LTL formula language", () => {
     expect(() => validateFormula({ kind: "atom", name: "p; process.exit()" }, { atoms: ["p"] })).toThrow(/atom/i);
     expect(() => validateFormula({ kind: "atom", name: "q" }, { atoms: ["p"] })).toThrow(/undeclared/i);
     expect(() => validateFormula({ kind: "atom", name: "p", eval: "evil" }, { atoms: ["p"] })).toThrow(/unknown/i);
+    expect(() => validateFormula({
+      kind: "deadline",
+      trigger: { kind: "atom", name: "p" },
+      response: { kind: "atom", name: "q" },
+      withinMs: 31_536_000_001,
+    }, { atoms: ["p", "q"] })).toThrow(/365 days/i);
     let tooDeep: unknown = { kind: "atom", name: "p" };
     for (let index = 0; index < 70; index += 1) tooDeep = { kind: "not", operand: tooDeep };
     expect(() => validateFormula(tooDeep, { atoms: ["p"], maxDepth: 64 })).toThrow(/depth/i);
@@ -118,4 +124,3 @@ describe("LTL formula language", () => {
     }
   });
 });
-

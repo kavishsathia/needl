@@ -28,6 +28,7 @@ import {
   fieldForEventKind,
   meaningOption,
   meaningTemplates,
+  meaningViolationText,
 } from "./meaning.js";
 import { EVENTUALITY_EXPLANATION, unsupportedAuthoringIntent } from "./safety.js";
 
@@ -380,13 +381,15 @@ function TraceTimeline({ trace, draft, activeField, onActiveField }: {
         <div><strong>{item.type === "observation" ? providerNames[item.source.provider] : item.type === "tick" ? "Clock tick" : "Finalization"}</strong><time dateTime={item.at}>{formatDateTime(item.at)} UTC</time></div>
         {item.type === "observation" ? <>
           <p>{item.source.subject.name ?? item.source.subject.id}</p>
-          <code>{item.source.kind}</code>
           <div className="trace-links">
             {eventField !== undefined ? <button type="button" onClick={() => onActiveField(eventField)}>Highlight {eventFieldLabel?.toLowerCase() ?? "its role"} in the rule</button> : null}
             {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">Synthetic source ↗</a> : null}
           </div>
-          <div className="valuation">{Object.entries(item.valuation).map(([name, value]) => <span className={value ? "is-true" : "is-false"} key={name}>{name}: {String(value)}</span>)}</div>
-          <details><summary>Predicate explanations</summary>{Object.entries(item.evaluations).map(([name, evaluation]) => <p key={name}><b>{name}</b> — {evaluation.explanation}</p>)}</details>
+          <details className="advanced-evidence"><summary>Advanced event details</summary>
+            <code>{item.source.kind}</code>
+            <div className="valuation">{Object.entries(item.valuation).map(([name, value]) => <span className={value ? "is-true" : "is-false"} key={name}>{name}: {String(value)}</span>)}</div>
+            <div className="predicate-explanations">{Object.entries(item.evaluations).map(([name, evaluation]) => <p key={name}><b>{name}</b> — {evaluation.explanation}</p>)}</div>
+          </details>
         </> : <p>Explicit demo clock input; silence alone never advances deadlines.</p>}
       </div>
     </li>})}
@@ -400,18 +403,16 @@ function CounterexampleView({ violation, draft, activeField, onActiveField }: {
   readonly onActiveField: (fieldId: string) => void;
 }) {
   return <article className="counterexample">
-    <header><div><span className="eyebrow">Counterexample · {violation.cause.replaceAll("_", " ")}</span><h3>{violation.explanation}</h3></div><Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
+    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{meaningViolationText(draft) ?? "The observed event sequence broke this rule."}</h3></div><Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
     <div className="binding-row">{Object.entries(violation.scope).map(([key, value]) => <span key={key}><small>{key}</small>{value}</span>)}</div>
     <TraceTimeline trace={violation.trace} draft={draft} activeField={activeField} onActiveField={onActiveField}/>
+    <details className="advanced-evidence counterexample-engine-details"><summary>Advanced engine details</summary><dl><div><dt>Technical cause</dt><dd><code>{violation.cause}</code></dd></div><div><dt>Engine explanation</dt><dd>{violation.explanation}</dd></div></dl></details>
     <p className="evidence-note">This is a sufficient engine trace, not a minimality claim. Source references are synthetic fixture evidence.</p>
   </article>;
 }
 
 function violationSummary(draft: AssertionDraft): string {
-  if (draft.meaning?.templateId === "feature") return "Checkout-v2 produced an error while disabled.";
-  if (draft.meaning?.templateId === "order") return `${meaningOption("order", "subject", draft.meaning.values.subject ?? "")?.label ?? "The order"} was fulfilled before its payment was observed.`;
-  if (draft.meaning?.templateId === "recurrence") return `The linked issue occurred again after its fix was deployed in ${meaningOption("recurrence", "environment", draft.meaning.values.environment ?? "")?.label ?? "the selected environment"}.`;
-  return "The observed event sequence broke this rule.";
+  return meaningViolationText(draft) ?? "The observed event sequence broke this rule.";
 }
 
 function AssertionDetail({ draft, templates, replay, onClose, onToggle, onEdit, onCopy, onMeaningChange }: {

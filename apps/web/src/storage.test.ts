@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseStoredAssertions, serializeAssertions } from "./storage.js";
 import { validateProductAssertionCollection } from "./collection.js";
 import type { AssertionDraft } from "./domain.js";
+import { authoringTemplates } from "../demo.js";
+import { createDraftFromTemplate } from "./authoring.js";
 
 const valid: AssertionDraft = {
   localId: "local-1",
@@ -23,6 +25,16 @@ const valid: AssertionDraft = {
 describe("assertion storage", () => {
   it("round-trips a validated assertion envelope", () => {
     expect(parseStoredAssertions(serializeAssertions([valid]))).toEqual([valid]);
+  });
+
+  it("restores canonical meaning for legacy authored clones without relying on a built-in ID", () => {
+    const authored = createDraftFromTemplate("A renamed recurrence rule", authoringTemplates[0]!, []);
+    const legacy = { ...authored, meaning: undefined };
+    const restored = parseStoredAssertions(JSON.stringify({ version: 1, assertions: [legacy] }));
+
+    expect(restored[0]!.localId).toMatch(/^local-/);
+    expect(restored[0]!.localId).not.toBe(authoringTemplates[0]!.definition.id);
+    expect(restored[0]!.meaning).toEqual(authored.meaning);
   });
 
   it.each(["not json", "{}", '{"version":2,"assertions":[]}', '{"version":1,"assertions":[{"localId":"x"}]}'])(

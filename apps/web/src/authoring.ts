@@ -3,7 +3,7 @@ import { formatFormula, parseFormula } from "../../../src/ltl/formula.js";
 import type { AssertionDraft, AuthoringTemplate } from "./domain.js";
 import { assertAssertionCapacity } from "./collection.js";
 import { assertProductSafety } from "./safety.js";
-import { buildTemplateDefinition, defaultMeaningValues, meaningOption } from "./meaning.js";
+import { assertMeaningMatchesMonitor, buildTemplateDefinition, defaultMeaningValues, meaningOption } from "./meaning.js";
 
 function slug(value: string): string {
   const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36);
@@ -65,7 +65,15 @@ export function updateDraft(
   };
   compileAssertion(definition);
   assertProductSafety(definition);
-  return { ...draft, expectation, definition, status: draft.status === "needs-review" ? "paused" : draft.status, meaning: undefined, reviewReason: undefined, updatedAt: now };
+  let meaning = draft.meaning;
+  if (meaning !== undefined) {
+    try {
+      assertMeaningMatchesMonitor({ ...draft, expectation, definition, meaning });
+    } catch {
+      meaning = undefined;
+    }
+  }
+  return { ...draft, expectation, definition, status: draft.status === "needs-review" ? "paused" : draft.status, meaning, reviewReason: undefined, updatedAt: now };
 }
 
 export function updateMeaningChoice(

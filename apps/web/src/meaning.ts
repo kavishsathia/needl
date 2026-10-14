@@ -22,6 +22,7 @@ export interface MeaningTemplate {
   readonly id: TemplateId;
   readonly fields: readonly MeaningField[];
   readonly sentence: readonly MeaningSegment[];
+  readonly violationSentence: readonly MeaningSegment[];
 }
 
 const eventIs = (provider: string, kind: string): Predicate => ({
@@ -45,6 +46,7 @@ export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
   recurrence: {
     id: "recurrence",
     sentence: ["After ", { field: "trigger" }, ", ", { field: "subject" }, " must not ", { field: "outcome" }, " in ", { field: "environment" }, "."],
+    violationSentence: ["The linked issue occurred again after a fix was deployed in ", { field: "environment" }, "."],
     fields: [
       { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "deployed-fix", label: "a fix is deployed", evidence: "matched" }], eventKinds: ["fix.deployed"] },
       { id: "subject", accessibleLabel: "Protected subject", options: [{ value: "linked-issue", label: "the linked issue", evidence: "matched" }], eventKinds: ["work.issue_done", "fix.deployed", "error.recurred"] },
@@ -58,6 +60,7 @@ export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
   feature: {
     id: "feature",
     sentence: ["While ", { field: "feature" }, " is ", { field: "state" }, ", ", { field: "outcome" }, " must not occur."],
+    violationSentence: ["Errors from ", { field: "feature" }, " occurred while the feature was ", { field: "state" }, "."],
     fields: [
       { id: "feature", accessibleLabel: "Feature", options: [
         { value: "checkout-v2", label: "checkout-v2", evidence: "matched" },
@@ -70,6 +73,7 @@ export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
   order: {
     id: "order",
     sentence: ["After ", { field: "boundary" }, ", ", { field: "subject" }, " must not be ", { field: "outcome" }, "."],
+    violationSentence: [{ field: "subject" }, " was fulfilled before its payment was observed."],
     fields: [
       { id: "boundary", accessibleLabel: "Observed lifecycle boundary", options: [{ value: "accepted", label: "an order is accepted", evidence: "matched" }], eventKinds: ["order.accepted"] },
       { id: "subject", accessibleLabel: "Order", options: [
@@ -87,6 +91,30 @@ export function defaultMeaningValues(templateId: TemplateId): Readonly<Record<st
 
 export function meaningOption(templateId: TemplateId, fieldId: string, value: string): MeaningOption | undefined {
   return meaningTemplates[templateId].fields.find((field) => field.id === fieldId)?.options.find((option) => option.value === value);
+}
+
+function renderMeaningSegments(
+  templateId: TemplateId,
+  values: Readonly<Record<string, string>>,
+  segments: readonly MeaningSegment[],
+): string {
+  const rendered = segments.map((segment) => {
+    if (typeof segment === "string") return segment;
+    return meaningOption(templateId, segment.field, values[segment.field] ?? "")?.label ?? "the selected value";
+  }).join("");
+  return rendered.length === 0 ? rendered : rendered[0]!.toUpperCase() + rendered.slice(1);
+}
+
+export function meaningRuleText(draft: AssertionDraft): string | undefined {
+  if (draft.meaning === undefined) return undefined;
+  const template = meaningTemplates[draft.meaning.templateId];
+  return renderMeaningSegments(template.id, draft.meaning.values, template.sentence);
+}
+
+export function meaningViolationText(draft: AssertionDraft): string | undefined {
+  if (draft.meaning === undefined) return undefined;
+  const template = meaningTemplates[draft.meaning.templateId];
+  return renderMeaningSegments(template.id, draft.meaning.values, template.violationSentence);
 }
 
 export function fieldForEventKind(templateId: TemplateId, eventKind: string): string | undefined {
@@ -125,6 +153,28 @@ export function assertMeaningMatchesMonitor(draft: AssertionDraft): void {
   if (canonicalJson(expected) !== canonicalJson(draft.definition)) {
     throw new Error(`Assertion ${draft.localId} meaning does not match its stored monitor`);
   }
+}
+
+function meaningValueCombinations(templateId: TemplateId): Readonly<Record<string, string>>[] {
+  return meaningTemplates[templateId].fields.reduce<Readonly<Record<string, string>>[]>(
+    (combinations, field) => combinations.flatMap((values) => field.options.map((option) => ({ ...values, [field.id]: option.value }))),
+    [{}],
+  );
+}
+
+export function restoreCanonicalMeaning(draft: AssertionDraft): AssertionDraft {
+  if (draft.meaning !== undefined || draft.templateId === undefined || !(draft.templateId in meaningTemplates)) return draft;
+  const templateId = draft.templateId as TemplateId;
+  for (const values of meaningValueCombinations(templateId)) {
+    const candidate = { ...draft, meaning: { templateId, values } };
+    try {
+      assertMeaningMatchesMonitor(candidate);
+      return candidate;
+    } catch {
+      // A template label or ID is not enough: restore meaning only for an exact canonical monitor match.
+    }
+  }
+  return draft;
 }
 
 export function buildTemplateDefinition(

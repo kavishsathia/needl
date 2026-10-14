@@ -216,16 +216,22 @@ h1, h2, h3, p { margin-top: 0; }
 .trace-main strong { font-size: 12px; }
 .trace-main time { color: #777369; font-size: 9px; }
 .trace-main > p { margin: 5px 0; color: #b4afa4; font-size: 11px; }
-.trace-main > code { color: #bca45b; font-size: 9px; }
 .trace-links { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 9px; }
 .trace-links button, .trace-links a { padding: 0; border: 0; color: #cfb75f; background: transparent; font-size: 9px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .valuation { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
 .valuation span { padding: 3px 5px; border-radius: 3px; font: 8px ui-monospace, monospace; }
 .valuation .is-true { color: #b7cb9c; background: #273021; }
 .valuation .is-false { color: #97938a; background: #292823; }
-.trace-main details { margin-top: 8px; color: #89857b; font-size: 9px; }
-.trace-main details summary { cursor: pointer; }
-.trace-main details p { margin: 5px 0; padding: 6px; color: #aaa69c; background: #ffffff05; font: 9px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
+.advanced-evidence { margin-top: 8px; color: #89857b; font-size: 9px; }
+.advanced-evidence summary { cursor: pointer; }
+.advanced-evidence code { display: inline-block; margin-top: 7px; color: #bca45b; font-size: 9px; }
+.predicate-explanations p { margin: 5px 0; padding: 6px; color: #aaa69c; background: #ffffff05; font: 9px/1.4 ui-monospace, monospace; overflow-wrap: anywhere; }
+.counterexample-engine-details { margin: 3px 0 12px; padding: 9px 0; border-top: 1px solid #29271f; }
+.counterexample-engine-details dl { margin: 9px 0 0; display: grid; gap: 7px; }
+.counterexample-engine-details dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
+.counterexample-engine-details dt { color: #777268; }
+.counterexample-engine-details dd { margin: 0; color: #aaa69c; overflow-wrap: anywhere; }
+.counterexample-engine-details code { margin: 0; }
 .evidence-note { margin: 2px 0 0; padding-top: 11px; border-top: 1px solid #29271f; color: #716d64; font-size: 9px; line-height: 1.5; }
 
 .page { max-width: 1240px; margin: 0 auto; }

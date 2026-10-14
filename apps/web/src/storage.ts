@@ -2,6 +2,7 @@ import type { AssertionDraft, StoredAssertionEnvelope } from "./domain.js";
 import { STORAGE_VERSION } from "./domain.js";
 import { validateAssertionCollection, validateProductAssertionCollection } from "./collection.js";
 import { productSafetyIssue } from "./safety.js";
+import { restoreCanonicalMeaning } from "./meaning.js";
 
 export function parseStoredAssertions(raw: string | null): AssertionDraft[] {
   if (raw === null) return [];
@@ -9,7 +10,8 @@ export function parseStoredAssertions(raw: string | null): AssertionDraft[] {
     const parsed = JSON.parse(raw) as Partial<StoredAssertionEnvelope>;
     if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.assertions)) return [];
     const validated = validateAssertionCollection(parsed.assertions);
-    const migrated = validated.map((draft): AssertionDraft => {
+    const migrated = validated.map((storedDraft): AssertionDraft => {
+      const draft = restoreCanonicalMeaning(storedDraft);
       const reviewReason = productSafetyIssue(draft.definition);
       return reviewReason === undefined ? draft : { ...draft, status: "needs-review", reviewReason };
     });

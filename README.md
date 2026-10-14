@@ -31,7 +31,7 @@ Important properties:
 - Stable IDs and deduplication include tenant and provider scope. One tenant's delivery ID cannot suppress another tenant's event.
 - `occurredAt` is distinct from receiver time. Missing provider timestamps remain missing.
 - Relationships carry an `evidencePath`; the adapters do not infer that a mention, status, or co-occurrence proves a fix.
-- Stored evidence is a bounded provider projection plus safe absolute links. Raw customer payloads and secrets are not logged by default.
+- Stored evidence defaults to a bounded provider projection, a raw-body SHA-256 digest, and safe absolute links. Exact authenticated JSON retention is an explicit `payloadRetention: "full"` option for callers with a controlled store; raw customer payloads and secrets are never logged by default.
 - Valid unknown or unsubscribed events are different from malformed and unauthenticated requests.
 
 See [provider coverage and setup](docs/providers.md) for exact event and security support.
@@ -170,4 +170,3 @@ The tests cover documented signature algorithms, raw-body tampering, missing/wro
 - `docs/providers.md` — setup, coverage, delivery, and source details
 - `tests` — unit, persistence, and HTTP end-to-end tests
 - `FINAL.md` — verified handoff and remaining limitations
-

@@ -5,6 +5,13 @@ export class InMemoryEventSink implements DeduplicatingEventSink {
   readonly #events = new Map<string, NormalizedEvent>();
 
   async store(event: NormalizedEvent, scope: DeduplicationScope): Promise<"stored" | "duplicate"> {
+    if (
+      scope.tenantId !== event.tenantId
+      || scope.provider !== event.provider
+      || scope.deliveryId !== (event.deliveryId ?? event.id)
+    ) {
+      throw new Error("Deduplication scope does not match event identity");
+    }
     const key = `${scope.tenantId}\u0000${scope.provider}\u0000${scope.deliveryId}`;
     if (this.#events.has(key)) return "duplicate";
     this.#events.set(key, event);
@@ -15,4 +22,3 @@ export class InMemoryEventSink implements DeduplicatingEventSink {
     return [...this.#events.values()];
   }
 }
-

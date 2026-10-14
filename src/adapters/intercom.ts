@@ -70,6 +70,8 @@ export class IntercomAdapter implements WebhookAdapter<IntercomAdapterConfig> {
     if (subjectId === undefined) return rejected(this.provider, "malformed", "Supported Intercom event is missing its subject identifier");
     const contact = objectValue(item.contact);
     const url = stringValue(item.url) ?? stringValue(item.link);
+    const occurredAt = unixSeconds(payload.created_at);
+    const subjectName = stringValue(item.title);
     const relationships = [
       ...relation("conversation", item.conversation_id, "/data/item/conversation_id"),
       ...relation("ticket", item.ticket_id, "/data/item/ticket_id"),
@@ -81,12 +83,12 @@ export class IntercomAdapter implements WebhookAdapter<IntercomAdapterConfig> {
         deliveryId: payload.id,
         providerEventType: payload.topic,
         source: { ...(request.sourceId === undefined ? {} : { id: request.sourceId }), scope: payload.app_id },
-        ...(unixSeconds(payload.created_at) === undefined ? {} : { occurredAt: unixSeconds(payload.created_at) as string }),
+        ...(occurredAt === undefined ? {} : { occurredAt }),
         kind: configuredKind(config, payload.topic, descriptor.kind),
         subject: {
           type: descriptor.subject,
           id: subjectId,
-          ...(stringValue(item.title) === undefined ? {} : { name: stringValue(item.title) as string }),
+          ...(subjectName === undefined ? {} : { name: subjectName }),
           ...(url === undefined ? {} : { url }),
         },
         relationships,
@@ -101,8 +103,7 @@ export class IntercomAdapter implements WebhookAdapter<IntercomAdapterConfig> {
           links: absoluteLinks([{ rel: "subject", url }]),
           authenticity: "hmac-sha1-raw-body",
         },
-      }),
+      }, config),
     };
   }
 }
-

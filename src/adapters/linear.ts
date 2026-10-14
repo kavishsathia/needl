@@ -114,7 +114,7 @@ export class LinearAdapter implements WebhookAdapter<LinearAdapterConfig> {
           links: absoluteLinks([{ rel: "subject", url }]),
           authenticity: "hmac-sha256-raw-body",
         },
-      }),
+      }, config),
     };
   }
 }

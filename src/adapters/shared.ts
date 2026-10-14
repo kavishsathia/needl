@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { stableId } from "../core/crypto.js";
 import { rawText, receivedAt } from "../core/helpers.js";
 import type {
@@ -19,13 +20,14 @@ export interface EventParts {
   readonly kind: string;
   readonly subject: EntityReference;
   readonly relationships?: readonly RelationshipEvidence[];
-  readonly evidence: EventEvidence;
+  readonly evidence: Omit<EventEvidence, "bodySha256" | "originalPayload">;
 }
 
 export function normalizedEvent(
   provider: Provider,
   request: WebhookRequest,
   parts: EventParts,
+  config: AdapterConfig,
 ): NormalizedEvent {
   const source = parts.source ?? {
     ...(request.sourceId === undefined ? {} : { id: request.sourceId }),
@@ -43,7 +45,11 @@ export function normalizedEvent(
     kind: parts.kind,
     subject: parts.subject,
     relationships: parts.relationships ?? [],
-    evidence: parts.evidence,
+    evidence: {
+      ...parts.evidence,
+      bodySha256: createHash("sha256").update(request.rawBody).digest("hex"),
+      ...(config.payloadRetention === "full" ? { originalPayload: rawText(request.rawBody) } : {}),
+    },
   };
 }
 
@@ -54,4 +60,3 @@ export function configuredKind(
 ): string {
   return config.kindMappings?.[eventType] ?? fallback;
 }
-

@@ -78,8 +78,14 @@ export function createExampleServer(options: ExampleServerOptions): Server {
         reply(response, 404, { outcome: "not_found" });
         return;
       }
-      const tenantId = decodeURIComponent(match[1] as string);
-      const providerValue = decodeURIComponent(match[2] as string);
+      const tenantCapture = match[1];
+      const providerCapture = match[2];
+      if (tenantCapture === undefined || providerCapture === undefined) {
+        reply(response, 404, { outcome: "not_found" });
+        return;
+      }
+      const tenantId = decodeURIComponent(tenantCapture);
+      const providerValue = decodeURIComponent(providerCapture);
       if (!isProvider(providerValue)) {
         reply(response, 404, { outcome: "not_found" });
         return;

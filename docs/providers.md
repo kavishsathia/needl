@@ -9,13 +9,14 @@ Every adapter accepts:
 - `secrets`: non-empty array ordered current first, followed by previous keys accepted during a rotation window.
 - `enabledEvents`: optional exact normalized provider event names. Omit to accept every event this adapter supports.
 - `kindMappings`: optional map from exact provider event name to a caller-owned normalized kind.
+- `payloadRetention`: `"projection"` by default, or explicit `"full"` to attach the exact authenticated UTF-8 JSON for a controlled evidence store.
 - `clock`: injectable clock for deterministic verification.
 
 Unknown authenticated events return `ignored/unknown_event`; configured-out events return `ignored/not_subscribed`. Neither is classified as malformed.
 
 ### Evidence policy
 
-The normalized event keeps identifiers, statuses/actions needed to interpret the observation, explicit relationship values with source paths, and safe evidence URLs. It intentionally does not retain an unrestricted raw payload. If a backend needs full payload retention, implement an encrypted, access-controlled raw archive outside this package and key it by normalized event ID.
+The normalized event always keeps identifiers, statuses/actions needed to interpret the observation, explicit relationship values with source paths, safe evidence URLs, and a SHA-256 digest of the authenticated raw body. Exact JSON retention is opt-in with `payloadRetention: "full"` because provider bodies can contain personal or sensitive customer data. Use that mode only with encryption, retention limits, access control, and redaction appropriate to the tenant; the package never logs it.
 
 ## Coverage summary
 
@@ -166,4 +167,3 @@ Stripe supports secret rolling in Workbench; retain old and new values during it
 - SQLite is appropriate for the local example and single-process evaluation. Use a transactional shared store implementing `DeduplicatingEventSink` for horizontally scaled production receivers.
 - Provider delivery order is not a causal order. Consumers should use explicit identifiers and `occurredAt`, and tolerate late observations.
 - Replay emits stored observations to a caller callback. It never invokes provider APIs or agent actions.
-

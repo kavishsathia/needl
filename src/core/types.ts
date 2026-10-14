@@ -26,6 +26,8 @@ export interface AdapterConfig {
   readonly secrets: readonly [string, ...string[]];
   readonly enabledEvents?: readonly string[];
   readonly kindMappings?: Readonly<Record<string, string>>;
+  /** Full authenticated raw JSON is opt-in because it may contain customer data. */
+  readonly payloadRetention?: "projection" | "full";
   readonly clock?: () => Date;
 }
 
@@ -56,6 +58,9 @@ export interface EventEvidence {
   readonly providerPayload: Readonly<Record<string, unknown>>;
   readonly links: readonly EvidenceLink[];
   readonly authenticity: string;
+  readonly bodySha256: string;
+  /** Exact authenticated UTF-8 JSON bytes, available only with payloadRetention: "full". */
+  readonly originalPayload?: string;
 }
 
 export interface NormalizedEvent {
@@ -98,4 +103,3 @@ export interface WebhookAdapter<Config extends AdapterConfig = AdapterConfig> {
   readonly provider: Provider;
   ingest(request: WebhookRequest, config: Config): Promise<AdapterResult>;
 }
-

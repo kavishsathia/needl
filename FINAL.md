@@ -15,15 +15,18 @@
 
 ## Verification
 
-The final verification commands and results are recorded after the last clean run below:
+Final local verification on Node `v22.23.1` and npm `10.9.8`:
 
 ```text
-npm run typecheck  # pending final run
-npm test           # pending final run
-npm run build      # pending final run
-npm audit          # pending final run
-package import     # pending final run
+npm run typecheck   PASS
+npm test            PASS — 5 files, 26 tests
+npm run build       PASS
+npm run smoke       PASS — built package import + signed Linear ingestion
+npm audit           PASS — 0 vulnerabilities
+npm pack --dry-run  PASS — 87 files, 34.9 kB tarball / 167.7 kB unpacked
 ```
+
+`npm run check` runs typecheck, tests, build, and the package smoke test in that order. The HTTP end-to-end test sends a signed request to the real example server and verifies a SQLite commit plus duplicate acknowledgment. The persistence suite closes/reopens SQLite and replays the stored event.
 
 ## Exact remaining limitations
 
@@ -31,7 +34,7 @@ package import     # pending final run
 - Stripe support is for snapshot v1 Event objects, not thin v2 notifications.
 - PostHog requires the documented Needl destination template because PostHog bodies are user-configurable. Standard Webhooks is preferred; configured shared-header mode cannot provide body integrity.
 - The package normalizes one observation per delivery. A LaunchDarkly audit entry with multiple `accesses` retains every resource/action as evidence but remains one observation.
-- Full unrestricted payloads are not persisted. The event stores a bounded evidence projection; an encrypted raw archive is a caller responsibility if policy requires it.
+- Full unrestricted payload retention is off by default. `payloadRetention: "full"` preserves exact authenticated JSON, but encryption, access control, retention, and redaction remain caller responsibilities; the default stores only a bounded projection and body digest.
 - No reference hydration/API clients are included. Missing relationships and timestamps remain missing.
 - Sentry examples do not consistently supply a delivery ID; `Request-ID` is used when present and a stable content identity otherwise.
 - Providers without a signed timestamp in their documented scheme rely on scoped durable deduplication rather than a pre-parse replay window.
@@ -40,4 +43,3 @@ package import     # pending final run
 - The example binds locally and provides HTTP only. Production requires an HTTPS reverse proxy/server, operational secret management, monitoring, and provider registration—all deliberately outside this assignment.
 
 These limitations are intentional boundaries, not claims of provider coverage.
-

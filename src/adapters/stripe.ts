@@ -46,7 +46,7 @@ const stripeEvents: Record<string, { kind: string; subject: string }> = {
 };
 
 function parseSignature(value: string): { timestamp?: string; signatures: string[] } {
-  const fields = value.split(",");
+  const fields = value.split(",").map((field) => field.trim());
   const timestamp = fields.find((field) => field.startsWith("t="))?.slice(2);
   const signatures = fields.filter((field) => field.startsWith("v1=")).map((field) => field.slice(3));
   return { ...(timestamp === undefined ? {} : { timestamp }), signatures };
@@ -105,6 +105,8 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
     ];
     const url = stringValue(entity.hosted_invoice_url) ?? stringValue(entity.receipt_url);
     const sourceScope = payload.context ?? payload.account;
+    const occurredAt = unixSeconds(payload.created);
+    const subjectName = stringValue(entity.description);
     return {
       status: "accepted",
       event: normalizedEvent(this.provider, request, {
@@ -114,12 +116,12 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
           ...(request.sourceId === undefined ? {} : { id: request.sourceId }),
           ...(sourceScope === undefined ? {} : { scope: sourceScope }),
         },
-        ...(unixSeconds(payload.created) === undefined ? {} : { occurredAt: unixSeconds(payload.created) as string }),
+        ...(occurredAt === undefined ? {} : { occurredAt }),
         kind: configuredKind(config, payload.type, descriptor.kind),
         subject: {
           type: descriptor.subject,
           id: subjectId,
-          ...(stringValue(entity.description) === undefined ? {} : { name: stringValue(entity.description) as string }),
+          ...(subjectName === undefined ? {} : { name: subjectName }),
           ...(url === undefined ? {} : { url }),
         },
         relationships,
@@ -136,8 +138,7 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
           links: absoluteLinks([{ rel: "subject", url }]),
           authenticity: "stripe-v1-hmac-sha256",
         },
-      }),
+      }, config),
     };
   }
 }
-

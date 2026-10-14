@@ -198,7 +198,7 @@ export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
           ]),
           authenticity: config.authMode === "signing-token" ? "standard-webhooks-hmac-sha256" : "shared-secret-header",
         },
-      }),
+      }, config),
     };
   }
 }

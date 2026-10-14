@@ -43,6 +43,13 @@ export class SqliteEventStore implements DeduplicatingEventSink {
   }
 
   async store(event: NormalizedEvent, scope: DeduplicationScope): Promise<"stored" | "duplicate"> {
+    if (
+      scope.tenantId !== event.tenantId
+      || scope.provider !== event.provider
+      || scope.deliveryId !== (event.deliveryId ?? event.id)
+    ) {
+      throw new Error("Deduplication scope does not match event identity");
+    }
     const statement = this.#database.prepare(`
       INSERT OR IGNORE INTO webhook_events
         (tenant_id, provider, delivery_id, event_id, occurred_at, received_at, kind, event_json)
@@ -95,4 +102,3 @@ export class SqliteEventStore implements DeduplicatingEventSink {
     this.#database.close();
   }
 }
-

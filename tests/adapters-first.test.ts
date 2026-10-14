@@ -70,12 +70,14 @@ describe("LinearAdapter", () => {
     const result = await new LinearAdapter().ingest(request(rawBody, {
       "Linear-Signature": signature,
       "Linear-Delivery": "linear-delivery-1",
-    }), { secrets: [secret] });
+    }), { secrets: [secret], payloadRetention: "full" });
     expect(result.status).toBe("accepted");
     if (result.status !== "accepted") return;
     expect(result.event.providerEventType).toBe("Issue.update");
     expect(result.event.relationships).toContainEqual(expect.objectContaining({ type: "issue-key", id: "NDL-42" }));
     expect(result.event.evidence.providerPayload.updatedFrom).toEqual({ stateId: "state-progress" });
+    expect(result.event.evidence.originalPayload).toBe(rawBody.toString());
+    expect(result.event.evidence.bodySha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it("rejects stale signed input", async () => {
@@ -99,6 +101,7 @@ describe("LaunchDarklyAdapter", () => {
     if (result.status !== "accepted") return;
     expect(result.event.providerEventType).toBe("flag.updateOn");
     expect(result.event.evidence.providerPayload).not.toHaveProperty("enabled");
+    expect(result.event.evidence).not.toHaveProperty("originalPayload");
     expect(result.event.relationships).toContainEqual(expect.objectContaining({
       id: "proj/needl:env/production:flag/checkout-v2",
       evidencePath: "/accesses/0/resource",

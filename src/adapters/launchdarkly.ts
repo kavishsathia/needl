@@ -107,7 +107,7 @@ export class LaunchDarklyAdapter implements WebhookAdapter<LaunchDarklyAdapterCo
           links,
           authenticity: "hmac-sha256-raw-body",
         },
-      }),
+      }, config),
     };
   }
 }

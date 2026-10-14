@@ -110,6 +110,7 @@ export class PostHogAdapter implements WebhookAdapter<PostHogAdapterConfig> {
     }));
     const currentUrl = stringValue(payload.properties?.$current_url);
     const projectScope = payload.project_id === undefined ? undefined : String(payload.project_id);
+    const occurredAt = isoDate(payload.timestamp);
     return {
       status: "accepted",
       event: normalizedEvent(this.provider, request, {
@@ -119,7 +120,7 @@ export class PostHogAdapter implements WebhookAdapter<PostHogAdapterConfig> {
           ...(request.sourceId === undefined ? {} : { id: request.sourceId }),
           ...(projectScope === undefined ? {} : { scope: projectScope }),
         },
-        ...(isoDate(payload.timestamp) === undefined ? {} : { occurredAt: isoDate(payload.timestamp) as string }),
+        ...(occurredAt === undefined ? {} : { occurredAt }),
         kind: configuredKind(config, payload.event, "product.event"),
         subject: {
           type: "product_event",
@@ -139,8 +140,7 @@ export class PostHogAdapter implements WebhookAdapter<PostHogAdapterConfig> {
             ? "standard-webhooks-hmac-sha256"
             : "configured-shared-header",
         },
-      }),
+      }, config),
     };
   }
 }
-

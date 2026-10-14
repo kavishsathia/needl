@@ -77,6 +77,7 @@ export class SentryAdapter implements WebhookAdapter<SentryAdapterConfig> {
       ...relationship("alert-rule", alertRule?.id, `/data/${descriptor.dataKey}/alert_rule/id`),
     ];
     const sourceId = request.sourceId ?? payload.installation?.uuid;
+    const subjectName = stringValue(entity.title);
     return {
       status: "accepted",
       event: normalizedEvent(this.provider, request, {
@@ -91,7 +92,7 @@ export class SentryAdapter implements WebhookAdapter<SentryAdapterConfig> {
         subject: {
           type: descriptor.subject,
           id: subjectId,
-          ...(stringValue(entity.title) === undefined ? {} : { name: stringValue(entity.title) as string }),
+          ...(subjectName === undefined ? {} : { name: subjectName }),
           ...(url === undefined ? {} : { url }),
         },
         relationships,
@@ -106,7 +107,7 @@ export class SentryAdapter implements WebhookAdapter<SentryAdapterConfig> {
           links: absoluteLinks([{ rel: "subject", url }]),
           authenticity: "hmac-sha256-raw-body",
         },
-      }),
+      }, config),
     };
   }
 }

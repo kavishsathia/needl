@@ -1,0 +1,21 @@
+{
+  "action": "update",
+  "type": "Issue",
+  "createdAt": "2026-10-14T09:00:00.000Z",
+  "webhookTimestamp": 1791968400000,
+  "webhookId": "lin-hook-1",
+  "organizationId": "org-linear-1",
+  "url": "https://linear.app/needl/issue/NDL-42/fix-ingestion",
+  "data": {
+    "id": "issue-42",
+    "identifier": "NDL-42",
+    "title": "Fix ingestion",
+    "teamId": "team-1",
+    "stateId": "state-done",
+    "url": "https://linear.app/needl/issue/NDL-42/fix-ingestion"
+  },
+  "updatedFrom": {
+    "stateId": "state-progress"
+  }
+}
+

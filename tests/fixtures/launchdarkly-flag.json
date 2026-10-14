@@ -1,0 +1,24 @@
+{
+  "_id": "ld-audit-1",
+  "_accountId": "ld-account-1",
+  "date": 1791968400000,
+  "kind": "flag",
+  "name": "checkout-v2",
+  "titleVerb": "turned off the flag",
+  "accesses": [
+    {
+      "action": "updateOn",
+      "resource": "proj/needl:env/production:flag/checkout-v2"
+    }
+  ],
+  "relatedFlag": {
+    "key": "checkout-v2"
+  },
+  "_links": {
+    "site": {
+      "href": "/projects/needl/flags/checkout-v2",
+      "type": "text/html"
+    }
+  }
+}
+

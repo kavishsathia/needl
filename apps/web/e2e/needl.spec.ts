@@ -198,6 +198,41 @@ test("a malformed encoded assertion route falls back safely and preserves local 
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.some((draft: { localId: string }) => draft.localId === "local-preserved-route-probe"))).toBe(true);
 });
 
+test("replay API returns controlled 400 responses for malformed inactive drafts", async ({ request }) => {
+  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
+  const template = bootstrap.templates[0];
+  const base = {
+    localId: template.definition.id,
+    expectation: template.prompt,
+    definition: template.definition,
+    status: "paused",
+    templateId: template.id,
+    createdAt: "2026-02-18T10:39:00.000Z",
+    updatedAt: "2026-02-18T10:39:00.000Z",
+  };
+
+  const unknownStatus = await request.post("/api/demo/replay", {
+    data: { scenario: "violating", assertions: [{ ...base, status: "sleeping" }] },
+  });
+  expect(unknownStatus.status()).toBe(400);
+  expect((await unknownStatus.json()).error).toMatch(/status/i);
+
+  const malformedPaused = await request.post("/api/demo/replay", {
+    data: {
+      scenario: "violating",
+      assertions: [{
+        ...base,
+        definition: {
+          ...structuredClone(base.definition),
+          formula: { kind: "always", operand: { kind: "atom", name: "undeclared_atom" } },
+        },
+      }],
+    },
+  });
+  expect(malformedPaused.status()).toBe(400);
+  expect((await malformedPaused.json()).error).toContain("undeclared_atom");
+});
+
 test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
   const assertions = [...bootstrap.templates.map((template: { prompt: string; id: string; definition: object }) => ({

@@ -89,6 +89,79 @@ test("replay switches between violating and healthy engine paths", async ({ page
   expect(consoleErrors).toEqual([]);
 });
 
+test("a delayed pause replay cannot overwrite the newer enabled result", async ({ page }) => {
+  await page.goto("/#/assertions");
+  await page.getByRole("button", { name: "Open Fixed means fixed" }).click();
+  const detail = page.getByRole("complementary", { name: "Fixed means fixed detail" });
+  let releasePause!: () => void;
+  let sawPause!: () => void;
+  const pauseStarted = new Promise<void>((resolve) => { sawPause = resolve; });
+  const pauseReleased = new Promise<void>((resolve) => { releasePause = resolve; });
+  let held = false;
+  await page.route("**/api/demo/replay", async (route) => {
+    const body = route.request().postDataJSON();
+    const recurrence = body.assertions.find((draft: { localId: string }) => draft.localId === "linked-issue-recurrence");
+    if (!held && recurrence?.status === "paused") {
+      held = true;
+      sawPause();
+      await pauseReleased;
+    }
+    await route.continue();
+  });
+
+  await detail.getByRole("button", { name: "Pause" }).click();
+  await pauseStarted;
+  await detail.getByRole("button", { name: "Enable" }).click();
+  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("3 inputs");
+  const staleResponse = page.waitForResponse((response) => {
+    if (!response.url().endsWith("/api/demo/replay")) return false;
+    const body = response.request().postDataJSON();
+    return body.assertions.some((draft: { localId: string; status: string }) => draft.localId === "linked-issue-recurrence" && draft.status === "paused");
+  });
+  releasePause();
+  await staleResponse;
+  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("3 inputs");
+});
+
+test("a late failed replay cannot replace a newer successful replay with an error", async ({ page }) => {
+  await page.goto("/#/assertions");
+  await page.getByRole("button", { name: "Open Fixed means fixed" }).click();
+  const detail = page.getByRole("complementary", { name: "Fixed means fixed detail" });
+  let releasePause!: () => void;
+  let sawPause!: () => void;
+  const pauseStarted = new Promise<void>((resolve) => { sawPause = resolve; });
+  const pauseReleased = new Promise<void>((resolve) => { releasePause = resolve; });
+  let held = false;
+  await page.route("**/api/demo/replay", async (route) => {
+    const body = route.request().postDataJSON();
+    const recurrence = body.assertions.find((draft: { localId: string }) => draft.localId === "linked-issue-recurrence");
+    if (!held && recurrence?.status === "paused") {
+      held = true;
+      sawPause();
+      await pauseReleased;
+      await route.abort("failed");
+      return;
+    }
+    await route.continue();
+  });
+
+  await detail.getByRole("button", { name: "Pause" }).click();
+  await pauseStarted;
+  await detail.getByRole("button", { name: "Enable" }).click();
+  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  const staleFailure = page.waitForEvent("requestfailed", {
+    predicate: (request) => request.url().endsWith("/api/demo/replay")
+      && request.postDataJSON().assertions.some((draft: { localId: string; status: string }) => draft.localId === "linked-issue-recurrence" && draft.status === "paused"),
+  });
+  releasePause();
+  await staleFailure;
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("3 inputs");
+});
+
 test("invalid restored data is rejected and replaced with safe defaults", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("needl.assertions.v1", JSON.stringify({
@@ -100,6 +173,29 @@ test("invalid restored data is rejected and replaced with safe defaults", async 
   await expect(page.locator(".assertion-card")).toHaveCount(3);
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.length)).toBe(3);
   await expect(page.getByText("bad", { exact: true })).toHaveCount(0);
+});
+
+test("a malformed encoded assertion route falls back safely and preserves local data", async ({ page, request }) => {
+  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
+  const template = bootstrap.templates[0];
+  const localId = "local-preserved-route-probe";
+  const saved = [{
+    localId,
+    expectation: "Preserve me across a malformed route",
+    definition: { ...structuredClone(template.definition), id: localId, name: "Preserve me across a malformed route" },
+    status: "paused",
+    templateId: template.id,
+    createdAt: "2026-02-18T10:39:00.000Z",
+    updatedAt: "2026-02-18T10:39:00.000Z",
+  }];
+  await page.evaluate((assertions) => {
+    localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions }));
+  }, saved);
+
+  await page.goto("/#/assertions/%E0%A4%A");
+  await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Preserve me across a malformed route" })).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.some((draft: { localId: string }) => draft.localId === "local-preserved-route-probe"))).toBe(true);
 });
 
 test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page, request }) => {

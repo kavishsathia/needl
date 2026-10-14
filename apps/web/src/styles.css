@@ -137,7 +137,7 @@ h1, h2, h3, p { margin-top: 0; }
 .detail-back { align-self: start; margin-left: -9px; }
 .detail-title h2 { margin: 0 0 8px; font-size: clamp(28px, 3vw, 40px); line-height: 1; font-weight: 520; letter-spacing: -.05em; }
 .detail-title p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
-.detail-header > .pill { margin-top: 23px; }
+.detail-header > .pill { align-self: start; height: fit-content; margin-top: 23px; }
 .detail-actions { grid-column: 2 / -1; display: flex; gap: 8px; }
 .detail-actions button, .detail-footer button, .settings-panel button { min-height: 34px; padding: 0 11px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #3a3832; border-radius: 4px; background: #191916; cursor: pointer; }
 .detail-actions svg, .detail-footer svg { width: 15px; }

@@ -205,18 +205,19 @@ function Topbar({ search, onSearch, onConnections, onSettings }: {
   </header>;
 }
 
-function AssertionCard({ draft, templates, replay, compact, onOpen }: {
+function AssertionCard({ draft, templates, replay, compact, selected, onOpen }: {
   readonly draft: AssertionDraft;
   readonly templates: readonly AuthoringTemplate[];
   readonly replay: DemoReplay | null;
   readonly compact: boolean;
+  readonly selected?: boolean;
   readonly onOpen: () => void;
 }) {
   const tone = assertionTone(draft, replay);
   const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
   const cardStyle = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}` } as CSSProperties;
   const template = templates.find((item) => item.id === draft.templateId);
-  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""}`} style={cardStyle} data-testid={`assertion-card-${draft.localId}`}>
+  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""}`} style={selected ? undefined : cardStyle} data-testid={`assertion-card-${draft.localId}`}>
     <button className="card-hit" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}>
       <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><Icon name="arrow"/></span>
       <h3>{draft.definition.name}</h3>
@@ -271,7 +272,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
     </div>
     <form className="composer" onSubmit={submit}>
       <label htmlFor="assertion-input">Describe an expectation</label>
-      <div><input id="assertion-input" value={input} onChange={(event) => setInput(event.target.value)} placeholder="When a fix is deployed, the linked issue should not recur"/><button type="submit" disabled={input.trim().length === 0}><Icon name="arrow"/><span className="sr-only">Continue authoring</span></button></div>
+      <div><input id="assertion-input" value={input} onChange={(event) => setInput(event.target.value)} placeholder="When a fix is deployed, the linked issue should not recur"/><button type="submit" disabled={input.trim().length === 0} aria-label="Continue authoring"><Icon name="arrow"/></button></div>
       <span>Template-guided local authoring · arbitrary rules use the structured editor</span>
     </form>
     <div className="board-tools">
@@ -283,7 +284,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
         <button className="icon-button" onClick={() => setCompact(!compact)} aria-pressed={compact} title={compact ? "Comfortable cards" : "Compact cards"}><Icon name="menu"/></button>
       </div>
     </div>
-    {list.length > 0 ? <div className={`card-grid ${compact ? "is-compact" : ""}`}>{list.map((draft) => <AssertionCard key={draft.localId} draft={draft} templates={templates} replay={replay} compact={compact} onOpen={() => onOpen(draft.localId)}/>)}</div> : <EmptyState title="Nothing in this view">Try another filter or clear the search.</EmptyState>}
+    {list.length > 0 ? <div className={`card-grid ${compact ? "is-compact" : ""}`}>{list.map((draft) => <AssertionCard key={draft.localId} draft={draft} templates={templates} replay={replay} compact={compact} selected={selectedId === draft.localId} onOpen={() => onOpen(draft.localId)}/>)}</div> : <EmptyState title="Nothing in this view">Try another filter or clear the search.</EmptyState>}
   </main>;
 }
 
@@ -440,9 +441,9 @@ function EditDialog({ draft, onClose, onSave }: {
   };
   return <div className="modal-layer"><form className="modal edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title" onSubmit={submit}>
     <header><div><span className="eyebrow">Structured editor</span><h2 id="edit-title">Edit assertion v{draft.definition.version}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close editor"><Icon name="close"/></button></header>
-    <label>Expectation<textarea rows={2} value={expectation} onChange={(event) => setExpectation(event.target.value)}/></label>
-    <label>Formula <span>ordinary LTL text, or JSON for a deadline</span><textarea className="code-input" rows={3} value={formula} onChange={(event) => setFormula(event.target.value)} spellCheck={false}/></label>
-    <label>Structured assertion JSON <span>predicates use the engine’s closed JSON language; executable JavaScript is rejected</span><textarea className="code-input json-input" rows={12} value={definitionJson} onChange={(event) => setDefinitionJson(event.target.value)} spellCheck={false}/></label>
+    <label>Expectation<textarea aria-label="Expectation" rows={2} value={expectation} onChange={(event) => setExpectation(event.target.value)}/></label>
+    <label>Formula <span>ordinary LTL text, or JSON for a deadline</span><textarea aria-label="Formula" className="code-input" rows={3} value={formula} onChange={(event) => setFormula(event.target.value)} spellCheck={false}/></label>
+    <label>Structured assertion JSON <span>predicates use the engine’s closed JSON language; executable JavaScript is rejected</span><textarea aria-label="Structured assertion JSON" className="code-input json-input" rows={12} value={definitionJson} onChange={(event) => setDefinitionJson(event.target.value)} spellCheck={false}/></label>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
     <footer><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Validate & save v{draft.definition.version + 1}</button></footer>
   </form></div>;
@@ -511,6 +512,7 @@ export function App() {
     else navigate("assertions", undefined, true);
   };
   const updateAssertions = (next: AssertionDraft[], replayNow = true) => {
+    localStorage.setItem(STORAGE_KEY, serializeAssertions(next));
     setAssertions(next);
     if (replayNow) void runReplay(next);
   };

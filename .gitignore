@@ -2,6 +2,8 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+apps/web/artifacts/playwright/
+apps/web/artifacts/report/
 *.db
 *.db-shm
 *.db-wal

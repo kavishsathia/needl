@@ -106,7 +106,7 @@ describe("declarative proposition extraction", () => {
     expect(state).toEqual({ enabled: false });
     const result = evaluatePropositions(assertion, event(), state);
     expect(result.valuation).toEqual({ disabled: true, feature_error: true });
-    expect(result.evaluations.feature_error.explanation).toMatch(/provider|kind/);
+    expect(result.evaluations.feature_error!.explanation).toMatch(/provider|kind/);
 
     const enabled = applyStateUpdates(assertion, event({ provider: "launchdarkly", kind: "feature.enabled" }), state);
     expect(evaluatePropositions(assertion, event(), enabled).valuation.disabled).toBe(false);
@@ -141,4 +141,3 @@ describe("declarative proposition extraction", () => {
     })).toThrow(/predicate/i);
   });
 });
-

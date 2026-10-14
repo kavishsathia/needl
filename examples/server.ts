@@ -11,12 +11,12 @@ import {
 } from "../src/adapters/index.js";
 import { providers, type Provider, type WebhookHeaders } from "../src/core/index.js";
 import {
-  SqliteEventStore,
   StaticRouteResolver,
   WebhookReceiver,
   type DeduplicatingEventSink,
   type RouteResolver,
 } from "../src/receiver/index.js";
+import { SqliteEventStore } from "../src/sqlite.js";
 
 export interface ExampleServerOptions {
   readonly routes: RouteResolver;

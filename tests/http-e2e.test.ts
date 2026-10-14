@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createExampleServer } from "../examples/server.js";
 import { LinearAdapter } from "../src/adapters/index.js";
-import { SqliteEventStore, StaticRouteResolver } from "../src/receiver/index.js";
+import { StaticRouteResolver } from "../src/receiver/index.js";
+import { SqliteEventStore } from "../src/sqlite.js";
 
 let temporaryDirectory: string;
 

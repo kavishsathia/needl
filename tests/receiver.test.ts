@@ -7,10 +7,10 @@ import { LinearAdapter } from "../src/adapters/index.js";
 import type { DeduplicatingEventSink, DeduplicationScope } from "../src/receiver/index.js";
 import {
   InMemoryEventSink,
-  SqliteEventStore,
   StaticRouteResolver,
   WebhookReceiver,
 } from "../src/receiver/index.js";
+import { SqliteEventStore } from "../src/sqlite.js";
 import type { NormalizedEvent } from "../src/core/index.js";
 
 const receivedAt = new Date("2026-10-14T09:00:00.000Z");

@@ -38,6 +38,24 @@ describe("SentryAdapter", () => {
     }), { secrets: ["right"] });
     expect(result).toMatchObject({ status: "rejected", reason: "unauthenticated" });
   });
+
+  it("rejects a missing signature without parsing", async () => {
+    const rawBody = await fixture("sentry-issue.json");
+    const result = await new SentryAdapter().ingest(request(rawBody, {
+      "Sentry-Hook-Resource": "issue",
+    }), { secrets: ["sentry-client-secret"] });
+    expect(result).toMatchObject({ status: "rejected", reason: "unauthenticated" });
+  });
+
+  it("classifies signed invalid schema as malformed", async () => {
+    const rawBody = Buffer.from("{}");
+    const secret = "sentry-client-secret";
+    const result = await new SentryAdapter().ingest(request(rawBody, {
+      "Sentry-Hook-Signature": createHmac("sha256", secret).update(rawBody).digest("hex"),
+      "Sentry-Hook-Resource": "issue",
+    }), { secrets: [secret] });
+    expect(result).toMatchObject({ status: "rejected", reason: "malformed" });
+  });
 });
 
 describe("PostHogAdapter", () => {

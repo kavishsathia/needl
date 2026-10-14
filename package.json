@@ -23,6 +23,10 @@
     "./receiver": {
       "types": "./dist/receiver/index.d.ts",
       "import": "./dist/receiver/index.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
     }
   },
   "scripts": {
@@ -30,7 +34,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm test && npm run build",
+    "smoke": "node tests/package-smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run build && npm run smoke",
     "example": "tsx examples/server.ts"
   },
   "keywords": [

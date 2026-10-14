@@ -123,7 +123,6 @@ export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
       ?? header(request.headers, "idempotency-key")
       ?? header(request.headers, "x-gitlab-event-uuid");
     if (descriptor === undefined) return ignored(this.provider, request, "unknown_event", hook, deliveryId);
-    if (!isEnabled(config, descriptor.type)) return ignored(this.provider, request, "not_subscribed", descriptor.type, deliveryId);
 
     const payload = payloadResult.data;
     const attributes = payload.object_attributes ?? {};
@@ -140,17 +139,24 @@ export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
         : attributeId;
     const id = typeof rawSubjectId === "number" ? String(rawSubjectId) : stringValue(rawSubjectId);
     if (id === undefined) return rejected(this.provider, "malformed", "Supported GitLab event is missing its subject identifier");
-    const subjectUrl = stringValue(attributes.url) ?? stringValue(attributes.web_url) ?? projectUrl;
-    const action = stringValue(attributes.action) ?? payload.status;
+    const subjectUrl = stringValue(attributes.url)
+      ?? stringValue(attributes.web_url)
+      ?? stringValue(payload.deployable_url)
+      ?? projectUrl;
+    const action = stringValue(attributes.action) ?? stringValue(attributes.status) ?? payload.status;
     const providerEventType = action === undefined ? descriptor.type : `${descriptor.type}.${action}`;
+    if (!isEnabled(config, providerEventType)) {
+      return ignored(this.provider, request, "not_subscribed", providerEventType, deliveryId);
+    }
     const occurredAt = isoDate(attributes.updated_at)
       ?? isoDate(attributes.created_at)
+      ?? isoDate(payload.status_changed_at)
       ?? isoDate(payload.created_at)
       ?? isoDate(objectValue(payload.commit)?.timestamp);
     const relationships = [
       ...relation("project", projectId, "/project/id", projectPath, projectUrl),
       ...relation("repository", projectPath, "/project/path_with_namespace", projectPath, projectUrl),
-      ...relation("commit", payload.checkout_sha ?? payload.after, "/checkout_sha"),
+      ...relation("commit", payload.checkout_sha ?? payload.after ?? objectValue(payload.commit)?.id, "/checkout_sha"),
       ...relation("ref", payload.ref, "/ref"),
       ...relation("environment", payload.environment ?? attributes.environment, "/environment"),
     ];

@@ -35,7 +35,7 @@ describe("GitLabAdapter", () => {
 
     expect(result.status).toBe("accepted");
     if (result.status !== "accepted") return;
-    expect(result.event.providerEventType).toBe("pipeline");
+    expect(result.event.providerEventType).toBe("pipeline.success");
     expect(result.event.subject).toMatchObject({ type: "pipeline", id: "9001" });
     expect(result.event.relationships).toContainEqual(expect.objectContaining({ type: "project", id: "101" }));
   });

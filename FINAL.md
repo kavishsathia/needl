@@ -23,7 +23,7 @@ npm test            PASS — 5 files, 26 tests
 npm run build       PASS
 npm run smoke       PASS — built package import + signed Linear ingestion
 npm audit           PASS — 0 vulnerabilities
-npm pack --dry-run  PASS — 87 files, 34.9 kB tarball / 167.7 kB unpacked
+npm pack --dry-run  PASS — 87 files, 35.0 kB tarball / 167.9 kB unpacked
 ```
 
 `npm run check` runs typecheck, tests, build, and the package smoke test in that order. The HTTP end-to-end test sends a signed request to the real example server and verifies a SQLite commit plus duplicate acknowledgment. The persistence suite closes/reopens SQLite and replays the stored event.

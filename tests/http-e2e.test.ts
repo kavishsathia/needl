@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createExampleServer } from "../examples/server.js";
-import { LinearAdapter } from "../src/adapters/index.js";
+import { IntercomAdapter, LinearAdapter } from "../src/adapters/index.js";
 import { StaticRouteResolver } from "../src/receiver/index.js";
 import { SqliteEventStore } from "../src/sqlite.js";
 
@@ -24,7 +24,9 @@ describe("runnable HTTP example", () => {
     const secret = "http-linear-secret";
     const rawBody = await readFile(new URL("./fixtures/linear-issue.json", import.meta.url));
     const store = new SqliteEventStore(join(temporaryDirectory, "http.sqlite"));
-    const routes = new StaticRouteResolver().register("demo", "linear", new LinearAdapter(), { secrets: [secret] });
+    const routes = new StaticRouteResolver()
+      .register("demo", "linear", new LinearAdapter(), { secrets: [secret] })
+      .register("demo", "intercom", new IntercomAdapter(), { secrets: ["intercom-test-secret"] });
     const server = createExampleServer({
       routes,
       sink: store,
@@ -32,6 +34,10 @@ describe("runnable HTTP example", () => {
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const port = (server.address() as AddressInfo).port;
+    const intercomValidation = await fetch(`http://127.0.0.1:${port}/webhooks/demo/intercom`, { method: "HEAD" });
+    expect(intercomValidation.status).toBe(200);
+    const unsignedLinearHead = await fetch(`http://127.0.0.1:${port}/webhooks/demo/linear`, { method: "HEAD" });
+    expect(unsignedLinearHead.status).toBe(404);
     const signature = createHmac("sha256", secret).update(rawBody).digest("hex");
     const send = () => fetch(`http://127.0.0.1:${port}/webhooks/demo/linear`, {
       method: "POST",

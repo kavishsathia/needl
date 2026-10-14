@@ -74,7 +74,7 @@ export function createExampleServer(options: ExampleServerOptions): Server {
         return;
       }
       const match = /^\/webhooks\/([^/]+)\/([^/?]+)$/.exec(request.url ?? "");
-      if (request.method !== "POST" || match === null) {
+      if (match === null) {
         reply(response, 404, { outcome: "not_found" });
         return;
       }
@@ -87,6 +87,18 @@ export function createExampleServer(options: ExampleServerOptions): Server {
       const tenantId = decodeURIComponent(tenantCapture);
       const providerValue = decodeURIComponent(providerCapture);
       if (!isProvider(providerValue)) {
+        reply(response, 404, { outcome: "not_found" });
+        return;
+      }
+      if (request.method === "HEAD") {
+        const route = providerValue === "intercom"
+          ? await options.routes.resolve(tenantId, providerValue)
+          : undefined;
+        response.writeHead(route === undefined ? 404 : 200, { "cache-control": "no-store" });
+        response.end();
+        return;
+      }
+      if (request.method !== "POST") {
         reply(response, 404, { outcome: "not_found" });
         return;
       }

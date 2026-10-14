@@ -137,7 +137,7 @@ export LINEAR_WEBHOOK_SECRET='...'
 npm run example
 ```
 
-Routes are `POST /webhooks/:tenant/:provider`, for example `POST /webhooks/local-demo/stripe`. `GET /healthz` is available for local checks. The server binds to `127.0.0.1`; this assignment does not deploy it or register webhooks.
+Routes are `POST /webhooks/:tenant/:provider`, for example `POST /webhooks/local-demo/stripe`. Configured Intercom routes also answer the unsigned `HEAD` validation request required during Intercom setup; other provider routes do not. `GET /healthz` is available for local checks. The server binds to `127.0.0.1`; this assignment does not deploy it or register webhooks.
 
 The example registers all seven providers and persists to `NEEDL_DB_PATH` (default `./needl-events.sqlite`). It never logs bodies, signature headers, or secrets.
 

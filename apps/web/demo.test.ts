@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AssertionDraft } from "./src/domain.js";
 import { authoringTemplates, runDemoScenario } from "./demo.js";
+import { createDraftFromTemplate, updateMeaningChoice } from "./src/authoring.js";
 
 function drafts(): AssertionDraft[] {
   return authoringTemplates.map((template) => ({
@@ -21,10 +22,22 @@ describe("deterministic demo replay", () => {
     expect(output.violations.map((violation) => violation.assertionId).sort()).toEqual([
       "disabled-feature-error",
       "linked-issue-recurrence",
-      "provisioning-support",
+      "order-before-payment",
     ]);
     expect(output.violations.every((violation) => violation.trace.length > 1)).toBe(true);
     expect(output.outbox.every((item) => item.status === "pending")).toBe(true);
+  });
+
+  it("changes discriminating engine output when a meaning chip changes", async () => {
+    const recurrence = authoringTemplates.find((template) => template.id === "recurrence")!;
+    const draft = { ...createDraftFromTemplate(recurrence.prompt, recurrence, []), status: "monitoring" as const };
+    const production = await runDemoScenario({ scenario: "violating", assertions: [draft] });
+    const stagingDraft = updateMeaningChoice(draft, "environment", "staging");
+    const staging = await runDemoScenario({ scenario: "violating", assertions: [{ ...stagingDraft, status: "monitoring" }] });
+
+    expect(production.violations).toHaveLength(1);
+    expect(staging.violations).toHaveLength(0);
+    expect(staging.unavailableAssertionIds).toContain(draft.localId);
   });
 
   it("keeps all three monitors non-violating for the healthy fixture", async () => {

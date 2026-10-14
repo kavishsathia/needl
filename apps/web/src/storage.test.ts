@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseStoredAssertions, serializeAssertions } from "./storage.js";
+import { validateProductAssertionCollection } from "./collection.js";
 import type { AssertionDraft } from "./domain.js";
 
 const valid: AssertionDraft = {
@@ -60,5 +61,38 @@ describe("assertion storage", () => {
       localId: `local-${index}`,
       definition: { ...structuredClone(valid.definition), id: `local-${index}` },
     })))).toThrow(/at most 25/i);
+  });
+
+  it("retains unsupported saved rules and user text as disabled needs-review records", () => {
+    const unsupported = {
+      ...structuredClone(valid),
+      expectation: "Every paid order should eventually be fulfilled",
+      definition: {
+        ...structuredClone(valid.definition),
+        name: "Every paid order should eventually be fulfilled",
+        formula: { kind: "eventually", operand: { kind: "atom", name: "error" } } as const,
+      },
+    };
+    const restored = parseStoredAssertions(JSON.stringify({ version: 1, assertions: [unsupported] }));
+
+    expect(restored).toHaveLength(1);
+    expect(restored[0]!.expectation).toBe(unsupported.expectation);
+    expect(restored[0]!.definition).toEqual(unsupported.definition);
+    expect(restored[0]!.status).toBe("needs-review");
+    expect(restored[0]!.reviewReason).toMatch(/eventually happen/i);
+  });
+
+  it("does not let paused or needs-review records bypass enablement policy", () => {
+    const eventual = {
+      ...structuredClone(valid),
+      status: "paused" as const,
+      definition: {
+        ...structuredClone(valid.definition),
+        formula: { kind: "eventually", operand: { kind: "atom", name: "error" } } as const,
+      },
+    };
+    expect(() => validateProductAssertionCollection([eventual])).toThrow(/eventually happen/i);
+    expect(() => validateProductAssertionCollection([{ ...eventual, status: "needs-review" }], { allowNeedsReview: false }))
+      .toThrow(/eventually happen/i);
   });
 });

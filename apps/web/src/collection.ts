@@ -1,7 +1,8 @@
 import { compileAssertion } from "../../../src/ltl/assertion.js";
-import type { AssertionDraft, TemplateId } from "./domain.js";
+import type { AssertionDraft } from "./domain.js";
 import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
 import { productSafetyIssue } from "./safety.js";
+import { assertMeaningMatchesMonitor } from "./meaning.js";
 
 const templateIds = new Set<string>(["recurrence", "feature", "order", "provisioning"]);
 
@@ -32,6 +33,12 @@ function validateDraft(value: unknown, index: number): asserts value is Assertio
   if (definition.id !== draft.localId) throw new Error("Assertion localId must match definition id");
   if (definition.tenantId !== DEMO_TENANT_ID) {
     throw new Error(`Demo assertions must use tenant ${DEMO_TENANT_ID}`);
+  }
+  if (draft.meaning !== undefined) {
+    if (typeof draft.meaning !== "object" || draft.meaning === null || !["recurrence", "feature", "order"].includes(String(draft.meaning.templateId)) || typeof draft.meaning.values !== "object" || draft.meaning.values === null) {
+      throw new Error(`Assertion ${draft.localId} has invalid meaning metadata`);
+    }
+    assertMeaningMatchesMonitor(draft as AssertionDraft);
   }
 }
 

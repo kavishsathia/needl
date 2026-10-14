@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { authoringTemplates } from "../demo.js";
 import { createDraftFromTemplate, formulaText, updateDraft, updateMeaningChoice } from "./authoring.js";
+import { validateProductAssertionCollection } from "./collection.js";
 
 describe("explicit template authoring", () => {
   it("creates a paused, uniquely identified draft without claiming general translation", () => {
@@ -42,5 +43,14 @@ describe("explicit template authoring", () => {
     expect(edited.definition.formula).not.toEqual(draft.definition.formula);
     expect(edited.definition.propositions).not.toEqual(draft.definition.propositions);
     expect(edited.definition.scope).not.toEqual(draft.definition.scope);
+  });
+
+  it("rejects cosmetic meaning metadata that does not match the stored monitor", () => {
+    const draft = createDraftFromTemplate("Keep checkout quiet", authoringTemplates[0]!, []);
+    const tampered = {
+      ...draft,
+      meaning: { ...draft.meaning!, values: { ...draft.meaning!.values, environment: "staging" } },
+    };
+    expect(() => validateProductAssertionCollection([tampered])).toThrow(/meaning.*monitor/i);
   });
 });

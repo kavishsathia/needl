@@ -72,6 +72,7 @@ describe("assertion storage", () => {
         name: "Every paid order should eventually be fulfilled",
         formula: { kind: "eventually", operand: { kind: "atom", name: "error" } } as const,
       },
+      history: [{ at: "2025-12-01T00:00:00.000Z", note: "User-owned historical evidence" }],
     };
     const restored = parseStoredAssertions(JSON.stringify({ version: 1, assertions: [unsupported] }));
 
@@ -80,6 +81,7 @@ describe("assertion storage", () => {
     expect(restored[0]!.definition).toEqual(unsupported.definition);
     expect(restored[0]!.status).toBe("needs-review");
     expect(restored[0]!.reviewReason).toMatch(/eventually happen/i);
+    expect((restored[0] as AssertionDraft & { history: unknown }).history).toEqual(unsupported.history);
   });
 
   it("does not let paused or needs-review records bypass enablement policy", () => {

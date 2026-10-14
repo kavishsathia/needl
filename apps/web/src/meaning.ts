@@ -105,6 +105,28 @@ export function meaningHasFixtureEvidence(draft: AssertionDraft): boolean {
   });
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object" && value !== null) {
+    return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function assertMeaningMatchesMonitor(draft: AssertionDraft): void {
+  if (draft.meaning === undefined) return;
+  if (draft.templateId !== draft.meaning.templateId) throw new Error(`Assertion ${draft.localId} meaning template does not match its monitor template`);
+  const expected = buildTemplateDefinition(draft.meaning.templateId, draft.meaning.values, {
+    id: draft.definition.id,
+    name: draft.definition.name,
+    version: draft.definition.version,
+    tenantId: draft.definition.tenantId,
+  });
+  if (canonicalJson(expected) !== canonicalJson(draft.definition)) {
+    throw new Error(`Assertion ${draft.localId} meaning does not match its stored monitor`);
+  }
+}
+
 export function buildTemplateDefinition(
   templateId: TemplateId,
   values: Readonly<Record<string, string>>,

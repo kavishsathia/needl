@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { NormalizedEvent } from "../src/core/index.js";
 import { RuntimeMonitor, parseFormula, type AssertionDefinition } from "../src/ltl/index.js";
 import { SqliteMonitorStore } from "../src/ltl/sqlite.js";
+import { SqliteEventStore } from "../src/sqlite.js";
 
 let temporaryDirectory: string;
 
@@ -78,5 +79,25 @@ describe("SqliteMonitorStore", () => {
     ]);
     restartedStore.close();
   });
-});
 
+  it("rebuilds a fresh monitor store by replaying the durable normalized event log", async () => {
+    const eventPath = join(temporaryDirectory, "replay-events.sqlite");
+    const monitorPath = join(temporaryDirectory, "replay-monitor.sqlite");
+    const events = new SqliteEventStore(eventPath);
+    const deploy = event("replay-deploy", "fix.deployed", "2026-01-02T00:00:00Z");
+    const recurrence = event("replay-recurrence", "error.recurred", "2026-01-02T00:00:01Z");
+    await events.store(deploy, { tenantId: "acme", provider: "gitlab", deliveryId: deploy.id });
+    await events.store(recurrence, { tenantId: "acme", provider: "sentry", deliveryId: recurrence.id });
+
+    const monitorStore = new SqliteMonitorStore(monitorPath);
+    const runtime = new RuntimeMonitor({ store: monitorStore, assertions: [assertion] });
+    expect(await events.replay({ tenantId: "acme" }, async ({ event: stored }) => {
+      await runtime.process(stored);
+    })).toBe(2);
+    expect(await monitorStore.listViolations()).toEqual([
+      expect.objectContaining({ cause: "formula_false", assertionId: "sqlite-recurrence" }),
+    ]);
+    events.close();
+    monitorStore.close();
+  });
+});

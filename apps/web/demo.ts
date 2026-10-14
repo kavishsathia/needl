@@ -17,6 +17,7 @@ import type {
 
 export const TENANT_ID = "synthetic-demo";
 export const DEMO_ANCHOR = "2026-02-18T10:40:00.000Z";
+export const DEMO_REPLAY_HORIZON = "2026-02-18T12:11:00.000Z";
 
 const definitions = {
   recurrence: linkedIssueRecurrenceAssertion(TENANT_ID),
@@ -142,22 +143,26 @@ export async function runDemoScenario(request: DemoReplayRequest): Promise<DemoR
   const events = eventsFor(request.scenario);
   const results = [];
   for (const item of events) results.push(...await runtime.process(item));
-  const provisioning = active.find((draft) => draft.definition.id === definitions.provisioning.id);
-  if (provisioning !== undefined) {
+  const timedDefinitions = new Map(active
+    .filter((draft) => draft.definition.formula.kind === "deadline")
+    .map((draft) => [`${draft.definition.id}@${draft.definition.version}`, draft.definition]));
+  const instantiatedTimedPartitions = (await store.listCheckpoints()).filter((checkpoint) =>
+    timedDefinitions.has(`${checkpoint.assertionId}@${checkpoint.assertionVersion}`));
+  for (const [index, checkpoint] of instantiatedTimedPartitions.entries()) {
     results.push(await runtime.advanceTime({
-      id: `deadline-tick-${request.scenario}`,
-      tenantId: TENANT_ID,
-      assertionId: provisioning.definition.id,
-      assertionVersion: provisioning.definition.version,
-      scope: { customer: "cus_acme", order: "ord_1042" },
-      at: "2026-02-18T12:11:00.000Z",
+      id: `deadline-tick-${request.scenario}-${index}`,
+      tenantId: checkpoint.tenantId,
+      assertionId: checkpoint.assertionId,
+      assertionVersion: checkpoint.assertionVersion,
+      scope: checkpoint.scope,
+      at: DEMO_REPLAY_HORIZON,
     }));
   }
   const checkpoints = await store.listCheckpoints();
   const checkpointIds = new Set(checkpoints.map((checkpoint) => checkpoint.assertionId));
   return {
     mode: "deterministic-local-demo",
-    replayedAt: "2026-02-18T12:11:00.000Z",
+    replayedAt: DEMO_REPLAY_HORIZON,
     scenario: request.scenario,
     events,
     results,

@@ -80,7 +80,12 @@ function routeFromLocation(): { section: Section; selectedId?: string } {
   const section = (["assertions", "activity", "connections", "settings"] as const).includes(parts[0] as Section)
     ? parts[0] as Section
     : "assertions";
-  return { section, ...(section === "assertions" && parts[1] !== undefined ? { selectedId: decodeURIComponent(parts[1]) } : {}) };
+  if (section !== "assertions" || parts[1] === undefined) return { section };
+  try {
+    return { section, selectedId: decodeURIComponent(parts[1]) };
+  } catch {
+    return { section };
+  }
 }
 
 function useRoute() {
@@ -466,13 +471,20 @@ export function App() {
   const [editing, setEditing] = useState<AssertionDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const boardScroll = useRef(0);
+  const replayGeneration = useRef(0);
 
   const runReplay = async (nextAssertions: readonly AssertionDraft[], scenario: DemoReplayRequest["scenario"] = replay?.scenario ?? "violating") => {
+    const generation = ++replayGeneration.current;
     setReplaying(true);
     setError(null);
-    try { setReplay(await replayDemo({ assertions: nextAssertions, scenario })); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Demo replay failed"); }
-    finally { setReplaying(false); }
+    try {
+      const nextReplay = await replayDemo({ assertions: nextAssertions, scenario });
+      if (generation === replayGeneration.current) setReplay(nextReplay);
+    } catch (cause) {
+      if (generation === replayGeneration.current) setError(cause instanceof Error ? cause.message : "Demo replay failed");
+    } finally {
+      if (generation === replayGeneration.current) setReplaying(false);
+    }
   };
 
   useEffect(() => {
@@ -482,11 +494,17 @@ export function App() {
       const initial = mergeRestored(defaultDrafts(bootstrap.templates), parseStoredAssertions(localStorage.getItem(STORAGE_KEY)));
       setTemplates(bootstrap.templates);
       setAssertions(initial);
-      try { setReplay(await replayDemo({ assertions: initial, scenario: "violating" })); }
-      catch (cause) { if (active) setError(cause instanceof Error ? cause.message : "Demo replay failed"); }
+      const generation = ++replayGeneration.current;
+      try {
+        const initialReplay = await replayDemo({ assertions: initial, scenario: "violating" });
+        if (active && generation === replayGeneration.current) setReplay(initialReplay);
+      }
+      catch (cause) {
+        if (active && generation === replayGeneration.current) setError(cause instanceof Error ? cause.message : "Demo replay failed");
+      }
       finally { if (active) setLoading(false); }
     }).catch((cause) => { if (active) { setError(cause instanceof Error ? cause.message : "Unable to load demo"); setLoading(false); } });
-    return () => { active = false; };
+    return () => { active = false; replayGeneration.current += 1; };
   }, []);
 
   useEffect(() => {

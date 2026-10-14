@@ -79,4 +79,19 @@ describe("deterministic demo replay", () => {
     expect(healthy.checkpoints.every((item) => item.pendingObligations.length === 0)).toBe(true);
     expect(healthy.checkpoints.every((item) => item.lastLogicalTime === healthy.replayedAt)).toBe(true);
   });
+
+  it("rejects unknown statuses and compiles paused definitions before filtering", async () => {
+    const unknownStatus = { ...drafts()[0]!, status: "sleeping" } as unknown as AssertionDraft;
+    await expect(runDemoScenario({ scenario: "violating", assertions: [unknownStatus] }))
+      .rejects.toThrow(/status/i);
+
+    const pausedMalformed = structuredClone(drafts()[0]!);
+    pausedMalformed.status = "paused";
+    pausedMalformed.definition.formula = {
+      kind: "always",
+      operand: { kind: "atom", name: "undeclared_atom" },
+    };
+    await expect(runDemoScenario({ scenario: "violating", assertions: [pausedMalformed] }))
+      .rejects.toThrow(/undeclared_atom/i);
+  });
 });

@@ -34,4 +34,29 @@ describe("assertion storage", () => {
     tampered.assertions[0].definition.propositions[0].predicate = { op: "eval", source: "alert(1)" };
     expect(parseStoredAssertions(JSON.stringify(tampered))).toEqual([]);
   });
+
+  it("rejects invalid collections instead of validating drafts in isolation", () => {
+    const duplicate = { version: 1, assertions: [valid, structuredClone(valid)] };
+    expect(parseStoredAssertions(JSON.stringify(duplicate))).toEqual([]);
+
+    const wrongTenant = structuredClone(valid);
+    wrongTenant.definition.tenantId = "another-tenant";
+    expect(parseStoredAssertions(JSON.stringify({ version: 1, assertions: [wrongTenant] }))).toEqual([]);
+
+    const oversized = Array.from({ length: 26 }, (_, index) => ({
+      ...structuredClone(valid),
+      localId: `local-${index}`,
+      definition: { ...structuredClone(valid.definition), id: `local-${index}` },
+    }));
+    expect(parseStoredAssertions(JSON.stringify({ version: 1, assertions: oversized }))).toEqual([]);
+  });
+
+  it("refuses to serialize invalid changes so accepted storage can be preserved", () => {
+    expect(() => serializeAssertions([valid, structuredClone(valid)])).toThrow(/duplicate/i);
+    expect(() => serializeAssertions(Array.from({ length: 26 }, (_, index) => ({
+      ...structuredClone(valid),
+      localId: `local-${index}`,
+      definition: { ...structuredClone(valid.definition), id: `local-${index}` },
+    })))).toThrow(/at most 25/i);
+  });
 });

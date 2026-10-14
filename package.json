@@ -1,7 +1,7 @@
 {
   "name": "@needl/integrations",
   "version": "0.1.0",
-  "description": "Framework-independent, authenticated webhook adapters for Needl",
+  "description": "Needl webhook integrations and durable LTL runtime monitoring",
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -27,6 +27,14 @@
     "./sqlite": {
       "types": "./dist/sqlite.d.ts",
       "import": "./dist/sqlite.js"
+    },
+    "./ltl": {
+      "types": "./dist/ltl/index.d.ts",
+      "import": "./dist/ltl/index.js"
+    },
+    "./ltl/sqlite": {
+      "types": "./dist/ltl/sqlite.d.ts",
+      "import": "./dist/ltl/sqlite.js"
     }
   },
   "scripts": {
@@ -36,7 +44,8 @@
     "test:watch": "vitest",
     "smoke": "node tests/package-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run smoke",
-    "example": "tsx examples/server.ts"
+    "example": "tsx examples/server.ts",
+    "demo:ltl": "tsx examples/ltl-demo.ts"
   },
   "keywords": [
     "webhook",
@@ -46,7 +55,9 @@
     "sentry",
     "posthog",
     "intercom",
-    "stripe"
+    "stripe",
+    "ltl",
+    "runtime-verification"
   ],
   "license": "UNLICENSED",
   "dependencies": {

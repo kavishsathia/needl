@@ -45,7 +45,13 @@
     "smoke": "node tests/package-smoke.mjs",
     "check": "npm run typecheck && npm test && npm run build && npm run smoke",
     "example": "tsx examples/server.ts",
-    "demo:ltl": "tsx examples/ltl-demo.ts"
+    "demo:ltl": "tsx examples/ltl-demo.ts",
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "web:test": "npm --prefix apps/web run test",
+    "web:serve": "npm --prefix apps/web run serve",
+    "web:e2e": "npm --prefix apps/web run e2e",
+    "check:all": "npm run check && npm run web:test && npm run web:build"
   },
   "keywords": [
     "webhook",

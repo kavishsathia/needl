@@ -37,7 +37,7 @@ Neon remains unchanged: the configured OAuth connection still requires interacti
 - Added a Render free-plan Blueprint for the intended `https://needl-monitoring-preview.onrender.com` URL, required secret prompts, production migration/start commands, and authenticated hosting documentation.
 - Ran one authorized live OpenAI request: `gpt-4o-mini` returned the reviewed `recurrence` template through strict Responses API Structured Outputs.
 - Ran the full browser suite: 16/16 Chromium journeys pass, including signup/signin/signout, recovery, safety authoring, stale replay behavior, mobile layout, and reduced-motion fallback.
-- Rebuilt after hardening: web tests 9 files / 41 tests pass and the production build passes.
+- Rebuilt after hardening: web tests 9 files / 42 tests pass and the production build passes.
 - Scanned compiled assets for the real OpenAI key and server-only secret variable names; no matches.
 - Parsed `render.yaml` successfully and ran the core package check: 10 files / 47 tests, build, and package smoke all pass.
 

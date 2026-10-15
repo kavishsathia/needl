@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { betterAuth } from "better-auth";
 import type { WebhookHeaders } from "../../src/core/types.js";
@@ -90,7 +90,7 @@ function requestHeaders(request: IncomingMessage): Headers {
 }
 
 async function standardRequest(request: IncomingMessage): Promise<Request> {
-  const origin = `http://${request.headers.host ?? `127.0.0.1:${port}`}`;
+  const origin = process.env.BETTER_AUTH_URL ?? `http://127.0.0.1:${port}`;
   const body = request.method === "GET" || request.method === "HEAD" ? undefined : await readBody(request);
   return new Request(new URL(request.url ?? "/", origin), { method: request.method, headers: requestHeaders(request), body, duplex: body === undefined ? undefined : "half" } as RequestInit);
 }
@@ -121,8 +121,9 @@ async function requireWorkspace(request: IncomingMessage) {
 function serveStatic(request: IncomingMessage, response: ServerResponse): void {
   if (!existsSync(distRoot)) { response.writeHead(503, { "content-type": "text/plain; charset=utf-8" }); response.end("Needl frontend is not built. Run npm run web:build first.\n"); return; }
   const rawPath = new URL(request.url ?? "/", "http://localhost").pathname;
-  const candidate = normalize(join(distRoot, rawPath));
-  const safe = candidate.startsWith(distRoot) && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(distRoot, "index.html");
+  const candidate = resolve(distRoot, rawPath.replace(/^\/+/, ""));
+  const insideDist = candidate === distRoot || candidate.startsWith(`${distRoot}${sep}`);
+  const safe = insideDist && existsSync(candidate) && statSync(candidate).isFile() ? candidate : join(distRoot, "index.html");
   response.writeHead(200, { "content-type": mime[extname(safe)] ?? "application/octet-stream", ...securityHeaders(), "cache-control": safe.endsWith("index.html") ? "no-store" : "public, max-age=31536000, immutable" });
   createReadStream(safe).pipe(response);
 }

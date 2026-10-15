@@ -111,6 +111,17 @@ describe("NeedlRepository", () => {
     await expect(repository.consumeTranslationQuota(tenant, now)).rejects.toBeInstanceOf(QuotaExceededError);
   });
 
+  it("keeps translation proposals tenant-scoped through confirmation", async () => {
+    const { repository } = await setup();
+    const tenantA = await repository.tenantForUser("translation-user-a");
+    const tenantB = await repository.tenantForUser("translation-user-b");
+    const proposalId = await repository.createTranslationProposal(tenantA, "A fixed issue must not recur", { supported: true, templateId: "recurrence" }, "fixture-model");
+    await expect(repository.getTranslationProposal(tenantB, proposalId)).rejects.toThrow(/not found in this workspace/i);
+    await expect(repository.confirmTranslationProposal(tenantB, proposalId)).rejects.toThrow(/belongs to another workspace/i);
+    await expect(repository.getTranslationProposal(tenantA, proposalId)).resolves.toMatchObject({ status: "pending" });
+    await expect(repository.confirmTranslationProposal(tenantA, proposalId)).resolves.toBeUndefined();
+  });
+
   it("atomically caps concurrent translation requests and stale writes", async () => {
     const { repository } = await setup();
     const tenant = await repository.tenantForUser("concurrent-user");

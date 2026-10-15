@@ -1,7 +1,23 @@
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
+import { getAuthTables } from "better-auth/db";
 import { getMigrations } from "better-auth/db/migration";
 import type { DatabaseRuntime } from "./database.js";
+
+const snakeCase = (name: string): string => name.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+
+/**
+ * Auth tables use snake_case names. Better Auth gets a Kysely instance without the app's CamelCasePlugin plus an
+ * explicit name mapping, so its migration introspection sees the same names its queries use. (Through the plugin,
+ * queries wrote `created_at` while introspection was compared against `createdAt`, so every restart after the first
+ * signup failed with UnsafeMigrationError.)
+ */
+function snakeCaseAuthSchema(options: Parameters<typeof getAuthTables>[0]) {
+  return Object.fromEntries(Object.entries(getAuthTables(options)).map(([model, table]) => [model, {
+    ...(snakeCase(table.modelName) === table.modelName ? {} : { modelName: snakeCase(table.modelName) }),
+    fields: Object.fromEntries(Object.keys(table.fields).filter((field) => snakeCase(field) !== field).map((field) => [field, snakeCase(field)])),
+  }])) as Record<"user" | "session" | "account" | "verification" | "rateLimit", { modelName?: string; fields: Record<string, string> }>;
+}
 
 export function signupEnabled(environment: NodeJS.ProcessEnv = process.env): boolean {
   return environment.NODE_ENV !== "production" || signupAllowlist(environment).size > 0;
@@ -18,16 +34,23 @@ export function createAuthOptions(runtime: DatabaseRuntime, environment: NodeJS.
   const trustedOrigins = (environment.NEEDL_TRUSTED_ORIGINS ?? `${baseURL},http://127.0.0.1:5173`)
     .split(",").map((value) => value.trim()).filter(Boolean);
   const allowedEmails = signupAllowlist(environment);
+  const database = { db: runtime.db.withoutPlugins(), type: runtime.type };
+  const rateLimitStorage = { storage: "database" as const };
+  const schema = snakeCaseAuthSchema({ database, rateLimit: { enabled: true, ...rateLimitStorage } });
   return {
     appName: "Needl",
     baseURL,
     secret,
-    database: { db: runtime.db, type: runtime.type, casing: "snake" as const },
+    database,
+    user: schema.user,
+    account: schema.account,
+    verification: schema.verification,
     emailAndPassword: { enabled: true, disableSignUp: !signupEnabled(environment), minPasswordLength: 12, maxPasswordLength: 128 },
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
+    session: { ...schema.session, expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     trustedOrigins,
     rateLimit: {
-      enabled: true, window: 60, max: 20, storage: "database" as const,
+      ...schema.rateLimit,
+      enabled: true, window: 60, max: 20, ...rateLimitStorage,
       customRules: {
         "/sign-up/email": { window: 60, max: environment.NODE_ENV === "production" ? 3 : 100 },
         "/sign-in/email": { window: 10, max: environment.NODE_ENV === "production" ? 3 : 100 },

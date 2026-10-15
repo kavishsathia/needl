@@ -51,7 +51,11 @@
     "web:test": "npm --prefix apps/web run test",
     "web:serve": "npm --prefix apps/web run serve",
     "web:e2e": "npm --prefix apps/web run e2e",
-    "check:all": "npm run check && npm run web:test && npm run web:build"
+    "check:all": "npm run check && npm run web:test && npm run web:build",
+    "sim": "tsx apps/simulator/server.ts",
+    "sim:setup": "tsx apps/simulator/setup.ts",
+    "sim:register": "tsx apps/simulator/register.ts",
+    "sim:web": "tsx apps/simulator/web.ts"
   },
   "keywords": [
     "webhook",

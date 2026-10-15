@@ -13,3 +13,4 @@ apps/web/artifacts/report/
 .env
 .env.*
 !.env.example
+.simulator/

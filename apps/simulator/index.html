@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Needl Simulator</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d9;
+    --accent: #2f5bd3; --bad: #c2362b; --bad-bg: #fbeae8; --good: #23804a; --good-bg: #e6f4ec;
+    --warn: #8a6100; --warn-bg: #fbf1d9;
+    --gitlab: #e2432a; --sentry: #6c5fc7; --stripe: #635bff;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe6; --muted: #9b9a93; --line: #34332f;
+      --accent: #7b9cff; --bad: #ff7a6e; --bad-bg: #3a1f1c; --good: #6fd29a; --good-bg: #183324;
+      --warn: #f2c35b; --warn-bg: #3a2f14;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { padding: 20px 24px 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; }
+  .target { color: var(--muted); font-size: 13px; }
+  .target code { font-family: var(--mono); color: var(--ink); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 20px; padding: 8px 24px 32px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 8px 16px 24px; } header { padding: 16px; } }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 18px 0 8px; }
+  h2:first-child { margin-top: 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+  .story-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .story-head strong { font-size: 16px; }
+  .story-head span { color: var(--muted); font-size: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  button { font: inherit; font-size: 13px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: 0.5; cursor: progress; }
+  button.violation { border-color: var(--bad); color: var(--bad); }
+  button.healthy { border-color: var(--good); color: var(--good); }
+  button.send { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; color: #fff; }
+  .badge.gitlab { background: var(--gitlab); } .badge.sentry { background: var(--sentry); } .badge.stripe { background: var(--stripe); }
+  details.event summary { cursor: pointer; list-style: none; display: flex; gap: 10px; align-items: center; }
+  details.event summary::-webkit-details-marker { display: none; }
+  details.event summary .desc { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; align-items: end; }
+  label { font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+  input { font: inherit; font-size: 13px; font-family: var(--mono); padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+  .log-head { display: flex; justify-content: space-between; align-items: center; }
+  #log { display: grid; gap: 8px; }
+  .entry { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .entry-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .entry-top .time { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .outcome { margin-left: auto; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+  .outcome.stored { color: var(--good); background: var(--good-bg); }
+  .outcome.duplicate, .outcome.ignored { color: var(--warn); background: var(--warn-bg); }
+  .outcome.failed { color: var(--bad); background: var(--bad-bg); }
+  .storyline { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .entry details { margin-top: 6px; }
+  .entry summary { font-size: 12px; color: var(--accent); cursor: pointer; }
+  pre { font-family: var(--mono); font-size: 11.5px; background: var(--bg); border-radius: 6px; padding: 8px; overflow-x: auto; margin: 6px 0 0; max-height: 280px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 16px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+  .error { color: var(--bad); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Needl Simulator</h1>
+  <div class="target" id="target">Loading…</div>
+</header>
+<main>
+  <section>
+    <h2>Stories</h2>
+    <div id="stories"></div>
+    <h2>Single events</h2>
+    <div id="events"></div>
+  </section>
+  <section>
+    <div class="log-head"><h2>Deliveries</h2><button id="clear" type="button">Clear</button></div>
+    <div id="log"><div class="empty">Play a story or send an event. Each delivery is signed exactly as the provider would sign it.</div></div>
+  </section>
+</main>
+<script>
+const $ = (selector) => document.querySelector(selector);
+const el = (tag, attributes = {}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attributes)) {
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  return node;
+};
+
+function outcomeOf(result) {
+  if (result.response.status === 0) return { text: `not delivered: ${result.response.error}`, tone: "failed" };
+  const body = result.response.body;
+  const outcome = body && typeof body === "object" ? (body.outcome ?? body.error ?? "") : String(body);
+  const detail = body && typeof body === "object" && body.code ? ` (${body.code})` : "";
+  const tone = outcome === "stored" ? "stored" : outcome === "duplicate" || outcome === "ignored" ? outcome : "failed";
+  return { text: `${result.response.status} ${outcome}${detail}`, tone };
+}
+
+function logResults(results, storyLabel) {
+  const log = $("#log");
+  log.querySelector(".empty")?.remove();
+  for (const result of [...results].reverse()) {
+    const outcome = outcomeOf(result);
+    log.prepend(el("div", { class: "entry" },
+      el("div", { class: "entry-top" },
+        el("span", { class: `badge ${result.provider}` }, result.provider),
+        el("strong", {}, result.label),
+        el("span", { class: "time" }, new Date(result.sentAt).toLocaleTimeString()),
+        el("span", { class: `outcome ${outcome.tone}` }, outcome.text)),
+      storyLabel ? el("div", { class: "storyline" }, storyLabel) : "",
+      el("details", {},
+        el("summary", {}, "Payload and response"),
+        el("pre", {}, `POST ${result.url}\n${Object.entries(result.request.headers).map(([k, v]) => `${k}: ${v}`).join("\n")}\n\n${JSON.stringify(result.request.body, null, 2)}`),
+        el("pre", {}, JSON.stringify(result.response, null, 2)))));
+  }
+}
+
+async function post(path, body, button) {
+  button.disabled = true;
+  try {
+    const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? `Simulator returned ${response.status}`);
+    return data.results;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function showError(container, error) {
+  container.querySelector(".error")?.remove();
+  container.append(el("div", { class: "error" }, error.message));
+}
+
+async function boot() {
+  const catalog = await (await fetch("/api/catalog")).json();
+  $("#target").replaceChildren("Sending to ", el("code", {}, catalog.needlUrl), " · tenant ", el("code", {}, catalog.tenantId));
+
+  const templates = [...new Set(catalog.stories.map((story) => story.template))];
+  for (const template of templates) {
+    const card = el("div", { class: "card" }, el("div", { class: "story-head" }, el("strong", {}, template)));
+    const row = el("div", { class: "row" });
+    for (const story of catalog.stories.filter((item) => item.template === template)) {
+      const button = el("button", { class: story.variant, type: "button", title: story.label }, story.variant === "violation" ? `Break it: ${story.label}` : `Keep it: ${story.label}`);
+      button.addEventListener("click", async () => {
+        try { logResults(await post("/api/story", { story: story.id }, button), `${template} · ${story.variant}`); }
+        catch (error) { showError(card, error); }
+      });
+      row.append(button);
+    }
+    card.append(row);
+    $("#stories").append(card);
+  }
+
+  for (const event of catalog.events) {
+    const form = el("form", {});
+    for (const field of event.fields) {
+      form.append(el("label", {}, field.label, el("input", { name: field.id, value: field.placeholder, autocomplete: "off", spellcheck: "false" })));
+    }
+    const send = el("button", { class: "send", type: "submit" }, "Send");
+    form.append(send);
+    const card = el("details", { class: "card event" },
+      el("summary", {}, el("span", { class: `badge ${event.provider}` }, event.provider), el("strong", {}, event.label), el("span", { class: "desc" }, event.description)),
+      form);
+    form.addEventListener("submit", async (submit) => {
+      submit.preventDefault();
+      const fields = Object.fromEntries(new FormData(form).entries());
+      try { logResults(await post("/api/send", { event: event.id, fields }, send)); }
+      catch (error) { showError(card, error); }
+    });
+    $("#events").append(card);
+  }
+}
+
+$("#clear").addEventListener("click", () => {
+  $("#log").replaceChildren(el("div", { class: "empty" }, "Cleared."));
+});
+boot().catch((error) => { $("#target").textContent = `Could not load the simulator catalog: ${error.message}`; });
+</script>
+</body>
+</html>

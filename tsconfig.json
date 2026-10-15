@@ -19,6 +19,6 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "examples/**/*.ts", "tests/**/*.ts", "apps/simulator/**/*.ts", "vitest.config.ts"]
 }
 

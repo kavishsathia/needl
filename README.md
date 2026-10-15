@@ -86,6 +86,21 @@ The production-build server defaults to `127.0.0.1:4173`; set `HOST` and `PORT` 
 
 The runtime package has one portable dependency, Zod. SQLite is an optional subpath backed by Node's `node:sqlite`; importing the core or receiver does not load it.
 
+## Demo with the webhook simulator
+
+`apps/simulator` is a local control panel that sends provider-shaped, correctly signed GitLab, Sentry, and Stripe webhooks to Needl's `/api/hooks/<integration-id>` route, so the reviewed templates fire through the real ingestion path. Secrets and routing are generated into `.simulator/` (git-ignored).
+
+```bash
+npm run sim:setup                  # generate signing secrets
+npm run sim:web                    # start Needl holding those secrets
+# sign up, then read your tenantId from GET /api/workspace
+npm run sim:setup -- <tenantId>    # optional: --needl http://127.0.0.1:4174
+npm run sim:register               # add the three integrations to Needl's database
+npm run sim                        # http://127.0.0.1:4180
+```
+
+Each story ("break it" / "keep it") uses fresh identifiers, so every play is a new monitor instance. Single events can be sent with edited fields.
+
 ## Use an adapter directly
 
 ```ts

@@ -838,18 +838,38 @@ export function App() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to refresh investigation"); }
   };
 
+  // Live webhook results (e.g. from the simulator) are recorded under the workspace tenant; sample replay data is not.
+  const evidence = useMemo<DemoReplay | null>(() => {
+    if (replay === null || durableMonitor === null || workspace === null) return replay;
+    const tenantId = workspace.tenantId;
+    const liveViolations = durableMonitor.counterexamples.filter((item) => item.tenantId === tenantId);
+    return {
+      ...replay,
+      events: [...replay.events, ...durableMonitor.events.filter((item) => item.tenantId === tenantId)],
+      checkpoints: [...durableMonitor.checkpoints.filter((item) => item.tenantId === tenantId), ...replay.checkpoints],
+      violations: [...replay.violations, ...liveViolations].sort((a, b) => a.detectedAt.localeCompare(b.detectedAt)),
+      outbox: [...replay.outbox, ...durableMonitor.outbox.filter((item) => item.tenantId === tenantId)],
+    };
+  }, [replay, durableMonitor, workspace]);
+
+  useEffect(() => {
+    if (loading || workspace === null) return;
+    const interval = window.setInterval(() => { void fetchMonitor().then(setDurableMonitor).catch(() => undefined); }, 2500);
+    return () => window.clearInterval(interval);
+  }, [loading, workspace]);
+
   if (loading) return <AppSkeleton/>;
   if (workspace === null) return <AuthScreen signupEnabled={signupAllowed} onAuthenticated={() => { setLoading(true); setError(null); setAuthGeneration((value) => value + 1); }}/>;
   return <div className={`app-shell ${selected !== undefined ? "detail-open" : ""}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
-    <Sidebar section={section} replay={replay} onNavigate={(next) => navigate(next)}/>
+    <Sidebar section={section} replay={evidence} onNavigate={(next) => navigate(next)}/>
     <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
-      {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={replay} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}
-      {section === "activity" ? <ActivityPage replay={replay}/> : null}
-      {section === "connections" ? <ConnectionsPage replay={replay} integrations={workspace.integrations}/> : null}
+      {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}
+      {section === "activity" ? <ActivityPage replay={evidence}/> : null}
+      {section === "connections" ? <ConnectionsPage replay={evidence} integrations={workspace.integrations}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
-      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={replay} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
+      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
     </div>
     {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Translating into a reviewed safety shape…" : "Replaying through engine…"}</div> : null}
     {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}

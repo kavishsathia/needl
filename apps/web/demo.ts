@@ -21,9 +21,9 @@ export const DEMO_ANCHOR = "2026-02-18T10:40:00.000Z";
 export const DEMO_REPLAY_HORIZON = "2026-02-18T12:11:00.000Z";
 
 const definitions = {
-  recurrence: buildTemplateDefinition("recurrence", defaultMeaningValues("recurrence"), { id: "linked-issue-recurrence", name: "Fixed means fixed", version: 1, tenantId: TENANT_ID }),
-  feature: buildTemplateDefinition("feature", defaultMeaningValues("feature"), { id: "disabled-feature-error", name: "Off means off", version: 1, tenantId: TENANT_ID }),
-  order: buildTemplateDefinition("order", defaultMeaningValues("order"), { id: "order-before-payment", name: "Payment before fulfillment", version: 1, tenantId: TENANT_ID }),
+  ghost: buildTemplateDefinition("ghost", defaultMeaningValues("ghost"), { id: "no-ghosts", name: "No ghosts", version: 1, tenantId: TENANT_ID }),
+  boomerang: buildTemplateDefinition("boomerang", defaultMeaningValues("boomerang"), { id: "boomerang", name: "Boomerang", version: 1, tenantId: TENANT_ID }),
+  cleanBreak: buildTemplateDefinition("clean-break", defaultMeaningValues("clean-break"), { id: "clean-break", name: "Clean break", version: 1, tenantId: TENANT_ID }),
   provisioning: provisioningSupportDeadlineAssertion(TENANT_ID, 600_000),
 } as const;
 
@@ -32,28 +32,28 @@ export const legacyProvisioningDefinition = definitions.provisioning;
 
 export const authoringTemplates: readonly AuthoringTemplate[] = [
   {
-    id: "recurrence",
-    prompt: "When a fix is deployed, the linked issue should not recur",
-    shortLabel: "Fixed means fixed",
-    description: "Correlates Linear completion, a linked GitLab deployment, and Sentry recurrence by issue and environment.",
-    providers: ["linear", "gitlab", "sentry"],
-    definition: { ...definitions.recurrence, name: "Fixed means fixed" },
+    id: "ghost",
+    prompt: "Once a fix for an issue ships to production, errors tagged with that issue must not come back",
+    shortLabel: "No ghosts",
+    description: "Binds the issue key from the deployed GitLab branch, then watches Sentry errors tagged linear_issue with that key.",
+    providers: ["gitlab", "sentry"],
+    definition: definitions.ghost,
   },
   {
-    id: "feature",
-    prompt: "While a feature is disabled, attributed errors should not occur",
-    shortLabel: "Off means off",
-    description: "Persists LaunchDarkly flag state, then checks explicitly attributed Sentry feature errors.",
-    providers: ["launchdarkly", "sentry"],
-    definition: definitions.feature,
+    id: "boomerang",
+    prompt: "Once a Sentry issue is resolved, it must never come back",
+    shortLabel: "Boomerang",
+    description: "Binds the Sentry issue at resolution and flags that same issue being unresolved later.",
+    providers: ["sentry"],
+    definition: definitions.boomerang,
   },
   {
-    id: "order",
-    prompt: "An order must not be fulfilled before payment is observed",
-    shortLabel: "Payment before fulfillment",
-    description: "Starts at an observed order-accepted boundary, then uses correlated Stripe payment and PostHog fulfillment evidence.",
-    providers: ["stripe", "posthog"],
-    definition: definitions.order,
+    id: "clean-break",
+    prompt: "Once a customer cancels their subscription, they must never be charged again",
+    shortLabel: "Clean break",
+    description: "Binds the Stripe customer at cancellation and flags any later paid invoice or successful charge for them.",
+    providers: ["stripe"],
+    definition: definitions.cleanBreak,
   },
 ];
 
@@ -72,6 +72,7 @@ function relationship(type: string, id: string, index: number): RelationshipEvid
 function event(
   id: string,
   provider: Provider,
+  providerEventType: string,
   kind: string,
   at: string,
   relationships: readonly [string, string][],
@@ -80,7 +81,7 @@ function event(
   return {
     id,
     provider,
-    providerEventType: kind,
+    providerEventType,
     tenantId: TENANT_ID,
     source: { id: `demo-${provider}` },
     occurredAt: at,
@@ -98,33 +99,37 @@ function event(
 }
 
 function eventsFor(scenario: DemoReplayRequest["scenario"]): readonly NormalizedEvent[] {
-  const issue: readonly [string, string][] = [["issue", "LIN-42"], ["environment", "production"]];
-  const feature: readonly [string, string][] = [["feature_flag", "checkout-v2"], ["environment", "production"]];
-  const order: readonly [string, string][] = [["customer", "cus_acme"], ["order", "ord_1042"]];
+  const violating = scenario === "violating";
   const legacyProvisioning: readonly [string, string][] = [["customer", "cus_legacy"], ["order", "ord_legacy"]];
   const base: NormalizedEvent[] = [
-    event("linear-done", "linear", "work.issue_done", "2026-02-18T10:40:00.000Z", issue, { type: "issue", id: "LIN-42", name: "Checkout retry loop" }),
-    event("gitlab-deploy", "gitlab", "fix.deployed", "2026-02-18T10:42:00.000Z", issue, { type: "deployment", id: "deploy-241", name: "Production deploy 241" }),
+    event("gitlab-deploy", "gitlab", "deployment.success", "deployment", "2026-02-18T10:40:00.000Z",
+      [["project", "7"], ["repository", "acme/shop"], ["ref", "eng-42-fix-retry-loop"], ["environment", "production"]],
+      { type: "deployment", id: "241", name: "Production deploy 241" }),
+    violating
+      ? event("sentry-ghost", "sentry", "event_alert.triggered", "error.event_alert", "2026-02-18T10:47:00.000Z",
+        [["project", "shop"], ["environment", "production"], ["tag.linear_issue", "ENG-42"]],
+        { type: "error_event", id: "evt-ghost-42", name: "Checkout retry loop is back" })
+      : event("sentry-unrelated", "sentry", "event_alert.triggered", "error.event_alert", "2026-02-18T10:47:00.000Z",
+        [["project", "shop"], ["environment", "production"], ["tag.linear_issue", "ENG-7"]],
+        { type: "error_event", id: "evt-unrelated-7", name: "Avatar upload timeout" }),
+    event("sentry-resolved", "sentry", "issue.resolved", "error.issue", "2026-02-18T11:00:00.000Z",
+      [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" }),
+    violating
+      ? event("sentry-boomerang", "sentry", "issue.unresolved", "error.issue", "2026-02-18T11:05:00.000Z",
+        [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" })
+      : event("sentry-other-unresolved", "sentry", "issue.unresolved", "error.issue", "2026-02-18T11:05:00.000Z",
+        [["project", "shop"]], { type: "issue", id: "1623", name: "SearchError: index unavailable" }),
+    event("legacy-stripe-payment", "stripe", "payment.succeeded", "payment.succeeded", "2026-02-18T11:58:00.000Z", legacyProvisioning, { type: "payment", id: "pi_legacy", name: "Legacy deadline fixture payment" }),
+    event("legacy-provisioning-failed", "posthog", "provisioning.failed", "provisioning.failed", "2026-02-18T11:59:00.000Z", legacyProvisioning, { type: "product_event", id: "evt_legacy", name: "Legacy deadline fixture failure" }),
+    event("stripe-canceled", "stripe", "customer.subscription.deleted", "subscription.deleted", "2026-02-18T12:00:00.000Z",
+      [["customer", "cus_acme"]], { type: "subscription", id: "sub_acme", name: "Acme Pro plan" }),
+    violating
+      ? event("stripe-charged-again", "stripe", "invoice.paid", "invoice.paid", "2026-02-18T12:03:00.000Z",
+        [["customer", "cus_acme"], ["subscription", "sub_acme"]], { type: "invoice", id: "in_acme_after_cancel", name: "Invoice after cancellation" })
+      : event("stripe-other-customer", "stripe", "invoice.paid", "invoice.paid", "2026-02-18T12:03:00.000Z",
+        [["customer", "cus_globex"], ["subscription", "sub_globex"]], { type: "invoice", id: "in_globex", name: "Globex renewal" }),
   ];
-  if (scenario === "violating") {
-    base.push(event("sentry-recurrence", "sentry", "error.recurred", "2026-02-18T10:47:00.000Z", issue, { type: "issue", id: "SENTRY-42", name: "Checkout retry loop recurred" }));
-  }
-  base.push(
-    event("flag-disabled", "launchdarkly", "feature.disabled", "2026-02-18T11:00:00.000Z", feature, { type: "feature_flag", id: "checkout-v2", name: "Checkout v2" }),
-  );
-  if (scenario === "healthy") {
-    base.push(event("flag-enabled", "launchdarkly", "feature.enabled", "2026-02-18T11:04:00.000Z", feature, { type: "feature_flag", id: "checkout-v2", name: "Checkout v2" }));
-  }
-  base.push(
-    event("feature-error", "sentry", "feature.error", "2026-02-18T11:05:00.000Z", feature, { type: "issue", id: "SENTRY-77", name: "Checkout v2 error" }),
-    event("legacy-stripe-payment", "stripe", "payment.succeeded", "2026-02-18T11:58:00.000Z", legacyProvisioning, { type: "payment", id: "pi_legacy", name: "Legacy deadline fixture payment" }),
-    event("legacy-provisioning-failed", "posthog", "provisioning.failed", "2026-02-18T11:59:00.000Z", legacyProvisioning, { type: "product_event", id: "evt_legacy", name: "Legacy deadline fixture failure" }),
-    event("order-accepted", "posthog", "order.accepted", "2026-02-18T12:00:00.000Z", order, { type: "order", id: "ord_1042", name: "Order 1042 accepted" }),
-  );
-  if (scenario === "healthy") base.push(event("stripe-payment", "stripe", "payment.succeeded", "2026-02-18T12:01:00.000Z", order, { type: "payment", id: "pi_demo_1042", name: "Payment for order 1042" }));
-  base.push(event("order-fulfilled", "posthog", "order.fulfilled", "2026-02-18T12:02:00.000Z", order, { type: "order", id: "ord_1042", name: "Order 1042 fulfilled" }));
-  if (scenario === "violating") base.push(event("stripe-payment-late", "stripe", "payment.succeeded", "2026-02-18T12:03:00.000Z", order, { type: "payment", id: "pi_demo_1042", name: "Late payment for order 1042" }));
-  else base.push(event("legacy-support-ticket", "intercom", "support.ticket_created", "2026-02-18T12:08:00.000Z", legacyProvisioning, { type: "ticket", id: "ticket-legacy", name: "Legacy deadline fixture support" }));
+  if (!violating) base.push(event("legacy-support-ticket", "intercom", "support.ticket_created", "support.ticket_created", "2026-02-18T12:08:00.000Z", legacyProvisioning, { type: "ticket", id: "ticket-legacy", name: "Legacy deadline fixture support" }));
   return base;
 }
 

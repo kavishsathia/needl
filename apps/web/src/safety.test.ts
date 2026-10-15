@@ -3,7 +3,7 @@ import { authoringTemplates } from "../demo.js";
 import { assertProductSafety, productSafetyIssue } from "./safety.js";
 
 describe("safety-only product policy", () => {
-  it("accepts the reviewed invariant and recurrence safety shapes", () => {
+  it("accepts the reviewed invariant and bound never-again safety shapes", () => {
     for (const template of authoringTemplates) {
       expect(productSafetyIssue(template.definition)).toBeUndefined();
       expect(() => assertProductSafety(template.definition)).not.toThrow();

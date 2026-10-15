@@ -76,14 +76,14 @@ describe("NeedlRepository", () => {
     await first.repository.saveAssertion(tenantA, assertion);
     await first.repository.saveAssertion(tenantB, assertion);
     const replay = await runDemoScenario({ assertions: [assertion], scenario: "violating" });
-    const recurrenceEvents = replay.events.slice(0, 3);
-    for (const event of recurrenceEvents) {
+    const ghostEvents = replay.events.slice(0, 3);
+    for (const event of ghostEvents) {
       const scoped = { ...event, tenantId: tenantA };
       await expect(first.repository.store(scoped, { tenantId: tenantA, provider: scoped.provider, deliveryId: scoped.id })).resolves.toBe("stored");
     }
-    const duplicate = { ...recurrenceEvents[2]!, tenantId: tenantA };
+    const duplicate = { ...ghostEvents[2]!, tenantId: tenantA };
     await expect(first.repository.store(duplicate, { tenantId: tenantA, provider: duplicate.provider, deliveryId: duplicate.id })).resolves.toBe("duplicate");
-    for (const event of recurrenceEvents.slice(0, 2)) {
+    for (const event of ghostEvents.slice(0, 1)) {
       const scoped = { ...event, tenantId: tenantB };
       await first.repository.store(scoped, { tenantId: tenantB, provider: scoped.provider, deliveryId: scoped.id });
     }
@@ -98,7 +98,7 @@ describe("NeedlRepository", () => {
     expect(afterA.events).toHaveLength(3);
     expect(afterA.counterexamples).toHaveLength(1);
     expect(afterA.checkpoints).toHaveLength(1);
-    expect(afterB.events).toHaveLength(2);
+    expect(afterB.events).toHaveLength(1);
     expect(afterB.counterexamples).toHaveLength(0);
   });
 
@@ -115,7 +115,7 @@ describe("NeedlRepository", () => {
     const { repository } = await setup();
     const tenantA = await repository.tenantForUser("translation-user-a");
     const tenantB = await repository.tenantForUser("translation-user-b");
-    const proposalId = await repository.createTranslationProposal(tenantA, "A fixed issue must not recur", { supported: true, templateId: "recurrence" }, "fixture-model");
+    const proposalId = await repository.createTranslationProposal(tenantA, "A fixed issue must not recur", { supported: true, templateId: "ghost" }, "fixture-model");
     await expect(repository.getTranslationProposal(tenantB, proposalId)).rejects.toThrow(/not found in this workspace/i);
     await expect(repository.confirmTranslationProposal(tenantB, proposalId)).rejects.toThrow(/belongs to another workspace/i);
     await expect(repository.getTranslationProposal(tenantA, proposalId)).resolves.toMatchObject({ status: "pending" });

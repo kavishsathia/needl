@@ -9,9 +9,10 @@ The product validator compiles the complete assertion first, including declared 
 ```text
 G φ
 G (φ -> G ψ)
+G (φ -> bind(x) … G ψ)
 ```
 
-`φ` and `ψ` must be propositional formulas made from declared atoms, constants, negation, conjunction, disjunction, and implication. The first shape is a global invariant: a finite observation can break it immediately. The second is the reviewed “after this trigger, never again” recurrence shape.
+`φ` and `ψ` must be propositional formulas made from declared atoms, constants, negation, conjunction, disjunction, and implication. The first shape is a global invariant: a finite observation can break it immediately. The second is the reviewed “after this trigger, never again” shape. The third is the same shape with one or more `bind` operators between the trigger and the `G`: each trigger freezes values (an issue key, a customer) that `ψ` compares against, so “never again” applies to that value only. Binds are transparent to safety: they do not add eventualities.
 
 This is deliberately a limited, sound subset. The validator does not claim to decide whether every possible LTL formula is a safety property. Formulas containing `F` (eventually), `U` (until), `X` (next), a top-level formula without `G`, unrecognized temporal nesting, or the timed `deadline` extension are rejected at product authoring, advanced editing, enablement, and replay API boundaries.
 
@@ -27,6 +28,14 @@ An older saved rule outside the supported subset is retained with its original w
 
 Reviewed templates store a template ID and selected meaning values alongside the canonical assertion definition. Collection validation deterministically rebuilds the expected formula, predicates, state updates, and scope from those selections and rejects a mismatch. A chip therefore cannot be cosmetic.
 
-Options identify whether the deterministic fixture has matching evidence. For example, changing the recurrence environment from Production to Staging creates a new assertion version, changes the formula atoms, event predicates, and scope, then produces **No matching evidence** instead of a quiet “safe” result.
+Options identify whether the deterministic fixture has matching evidence. For example, changing the No ghosts environment from production to staging creates a new assertion version, changes the event predicates and scope, then produces **No matching evidence** instead of a quiet “safe” result.
 
-The order scenario starts only after the explicit `order.accepted` observation for a correlated customer/order. A later `order.fulfilled` observation is a violation when `payment.succeeded` has not yet been observed in that lifecycle. Absence before the boundary is never treated as proof of nonpayment.
+The reviewed templates read only fields the provider adapters actually emit:
+
+| Template | Formula | Binds | Reads |
+| --- | --- | --- | --- |
+| No ghosts | `G (shipped -> bind(issue) G !haunted)` | issue key from the GitLab deployment `ref` (`issue-key` pattern) | GitLab `deployment.success` + environment; Sentry events tagged `linear_issue` + environment tag |
+| Boomerang | `G (resolved -> bind(issue) G !returned)` | Sentry issue id | Sentry `issue.resolved` / `issue.unresolved` |
+| Clean break | `G (canceled -> bind(customer) G !charged)` | Stripe `customer` | `customer.subscription.deleted`; `invoice.paid`, `charge.succeeded`, `payment_intent.succeeded` |
+
+Each template also partitions by the same entity, so one violation does not end monitoring for every other issue or customer.

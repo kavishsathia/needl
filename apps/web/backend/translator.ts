@@ -27,7 +27,7 @@ const outputSchema = {
   type: "object",
   properties: {
     supported: { type: "boolean", description: "True only when the statement maps without changing intent to one reviewed safety template." },
-    template_id: { type: "string", enum: ["recurrence", "feature", "order", "none"] },
+    template_id: { type: "string", enum: ["ghost", "boomerang", "clean-break", "none"] },
     explanation: { type: "string", description: "A short plain-language explanation of the proposed interpretation." },
     rejection_reason: { type: "string", description: "Empty when supported; otherwise explain why this is not finite-evidence safety intent." },
   },
@@ -49,7 +49,7 @@ export class OpenAITranslationModel implements TranslationModel {
       model: this.model,
       max_output_tokens: 300,
       input: [
-        { role: "system", content: "You translate business safety expectations into exactly one reviewed Needl template. recurrence means a linked issue must not recur after a deployed fix. feature means errors must not occur while a named feature is disabled. order means an accepted order must not be fulfilled before payment is observed. Reject deadlines, eventual promises, requests for actions, and intent that would require inventing facts. Do not silently rewrite intent." },
+        { role: "system", content: "You translate business safety expectations into exactly one reviewed Needl template. ghost means once a fix for an issue ships to an environment, errors tagged with that issue must not appear there again. boomerang means once a Sentry issue is resolved, that same issue must never come back. clean-break means once a customer cancels their subscription, that customer must never be charged again. Reject deadlines, eventual promises, requests for actions, and intent that would require inventing facts. Do not silently rewrite intent." },
         { role: "user", content: input },
       ],
       text: { format: { type: "json_schema", name: "needl_translation", strict: true, schema: outputSchema } },

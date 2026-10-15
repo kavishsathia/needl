@@ -382,7 +382,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
       <label htmlFor="assertion-input">What should never happen?</label>
       <div><input id="assertion-input" value={input} onChange={(event) => { setInput(event.target.value); setAuthoringError(null); }} placeholder="What should never happen?"/><button type="submit" disabled={input.trim().length === 0} aria-label="Continue authoring"><Icon name="arrow"/></button></div>
       <div className="composer-suggestions" aria-label="Safety rule suggestions">
-        {["A fixed issue must not recur after deployment", "Errors from a disabled feature must not occur", "An order must not be fulfilled before payment"].map((suggestion) => <button type="button" key={suggestion} onClick={() => setInput(suggestion)}>{suggestion}</button>)}
+        {["A shipped fix must not come back as the same error", "A resolved issue must never come back", "A canceled customer must never be charged again"].map((suggestion) => <button type="button" key={suggestion} onClick={() => setInput(suggestion)}>{suggestion}</button>)}
       </div>
       <span>Template-assisted interpretation · safety conditions only</span>
       {authoringError ? <p className="form-error" role="alert">{authoringError}</p> : null}
@@ -594,7 +594,7 @@ function UnsupportedIntentDialog({ expectation, onClose, onAcceptAlternative }: 
     <section className="modal unsupported-modal" role="dialog" aria-modal="true" aria-labelledby="unsupported-title">
       <header><div><span className="eyebrow">Not supported as written</span><h2 id="unsupported-title">Need a breakable condition</h2></div><button className="icon-button" onClick={onClose} aria-label="Close unsupported feedback"><Icon name="close"/></button></header>
       <div className="unsupported-copy"><blockquote>{expectation}</blockquote><h3>{EVENTUALITY_EXPLANATION}</h3><p>Needl will not silently rewrite this intent. You can explicitly choose a safety alternative, or go back and describe an event that must never occur.</p></div>
-      <div className="alternative-card"><span>Suggested safety alternative</span><strong>Orders must not be fulfilled before payment is observed.</strong><p>This can be broken by one observed, correlated fulfillment event after the order lifecycle begins.</p></div>
+      <div className="alternative-card"><span>Suggested safety alternative</span><strong>Once a customer cancels, they must never be charged again.</strong><p>This can be broken by one observed charge for that customer after their cancellation.</p></div>
       <footer><button type="button" onClick={onClose}>Go back</button><button type="button" className="primary-button" onClick={onAcceptAlternative}>Use this alternative</button></footer>
     </section>
   </div>;
@@ -855,7 +855,7 @@ export function App() {
     {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}
     {toast ? <div className="toast" role="status">{toast}</div> : null}
     {authoringText !== null ? <AuthoringDialog expectation={authoringText} templates={templates} translation={translation} onClose={() => { setAuthoringText(null); setTranslation(null); }} onChoose={(template) => void chooseTemplate(template)}/> : null}
-    {unsupportedText !== null ? <UnsupportedIntentDialog expectation={unsupportedText} onClose={() => setUnsupportedText(null)} onAcceptAlternative={() => { setUnsupportedText(null); setAuthoringText("Orders must not be fulfilled before payment is observed"); }}/> : null}
+    {unsupportedText !== null ? <UnsupportedIntentDialog expectation={unsupportedText} onClose={() => setUnsupportedText(null)} onAcceptAlternative={() => { setUnsupportedText(null); setAuthoringText("Once a customer cancels, they must never be charged again"); }}/> : null}
     {editing !== null ? <EditDialog draft={editing} onClose={() => setEditing(null)} onSave={saveEdit}/> : null}
   </div>;
 }

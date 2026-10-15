@@ -8,7 +8,7 @@ import type {
 import type { NormalizedEvent, Provider } from "../../../src/core/types.js";
 
 export type AssertionStatus = "monitoring" | "paused" | "needs-review";
-export type TemplateId = "recurrence" | "feature" | "order";
+export type TemplateId = "ghost" | "boomerang" | "clean-break";
 export type LegacyTemplateId = "provisioning";
 export const DEMO_TENANT_ID = "synthetic-demo";
 export const MAX_ASSERTIONS = 25;

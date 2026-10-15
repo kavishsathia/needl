@@ -28,7 +28,7 @@ describe("assertion storage", () => {
   });
 
   it("restores canonical meaning for legacy authored clones without relying on a built-in ID", () => {
-    const authored = createDraftFromTemplate("A renamed recurrence rule", authoringTemplates[0]!, []);
+    const authored = createDraftFromTemplate("A renamed ghost rule", authoringTemplates[0]!, []);
     const legacy = { ...authored, meaning: undefined };
     const restored = parseStoredAssertions(JSON.stringify({ version: 1, assertions: [legacy] }));
 

@@ -20,17 +20,17 @@ describe("deterministic demo replay", () => {
     const output = await runDemoScenario({ scenario: "violating", assertions: drafts() });
     expect(output.violations).toHaveLength(3);
     expect(output.violations.map((violation) => violation.assertionId).sort()).toEqual([
-      "disabled-feature-error",
-      "linked-issue-recurrence",
-      "order-before-payment",
+      "boomerang",
+      "clean-break",
+      "no-ghosts",
     ]);
     expect(output.violations.every((violation) => violation.trace.length > 1)).toBe(true);
     expect(output.outbox.every((item) => item.status === "pending")).toBe(true);
   });
 
   it("changes discriminating engine output when a meaning chip changes", async () => {
-    const recurrence = authoringTemplates.find((template) => template.id === "recurrence")!;
-    const draft = { ...createDraftFromTemplate(recurrence.prompt, recurrence, []), status: "monitoring" as const };
+    const ghost = authoringTemplates.find((template) => template.id === "ghost")!;
+    const draft = { ...createDraftFromTemplate(ghost.prompt, ghost, []), status: "monitoring" as const };
     const production = await runDemoScenario({ scenario: "violating", assertions: [draft] });
     const stagingDraft = updateMeaningChoice(draft, "environment", "staging");
     const staging = await runDemoScenario({ scenario: "violating", assertions: [{ ...stagingDraft, status: "monitoring" }] });
@@ -80,8 +80,8 @@ describe("deterministic demo replay", () => {
       "local-second-scope",
     ]);
     expect(violating.checkpoints.filter((item) => item.assertionId !== "local-paused-probe"))
-      .toHaveLength(6);
-    expect(violating.checkpoints.filter((item) => item.assertionId === "local-probe")).toHaveLength(2);
+      .toHaveLength(3);
+    expect(violating.checkpoints.filter((item) => item.assertionId === "local-probe")).toHaveLength(1);
     expect(violating.checkpoints.every((item) => item.lastLogicalTime === violating.replayedAt)).toBe(true);
     expect(violating.checkpoints.flatMap((item) => item.assertionId === "local-long-deadline" ? item.pendingObligations : []))
       .toHaveLength(1);

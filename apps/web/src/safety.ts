@@ -18,10 +18,17 @@ function isPropositional(formula: LtlFormula): boolean {
   }
 }
 
+/** `G q`, optionally behind binds that freeze values from the triggering observation: `bind(x) G q`. */
+function isNeverAgain(formula: LtlFormula): boolean {
+  if (formula.kind === "bind") return isNeverAgain(formula.operand);
+  return formula.kind === "always" && isPropositional(formula.operand);
+}
+
 function containsKind(formula: LtlFormula, kinds: ReadonlySet<LtlFormula["kind"]>): boolean {
   if (kinds.has(formula.kind)) return true;
   switch (formula.kind) {
     case "not":
+    case "bind":
     case "next":
     case "always":
     case "eventually": return containsKind(formula.operand, kinds);
@@ -47,8 +54,7 @@ export function productSafetyIssue(definition: AssertionDefinition): string | un
   if (
     formula.operand.kind === "implies"
     && isPropositional(formula.operand.left)
-    && formula.operand.right.kind === "always"
-    && isPropositional(formula.operand.right.operand)
+    && isNeverAgain(formula.operand.right)
   ) return undefined;
   return UNSUPPORTED_SAFETY_EXPLANATION;
 }

@@ -25,62 +25,48 @@ export interface MeaningTemplate {
   readonly violationSentence: readonly MeaningSegment[];
 }
 
-const eventIs = (provider: string, kind: string): Predicate => ({
-  op: "and",
-  operands: [
-    { op: "equal", path: { root: "event", segments: ["provider"] }, value: provider },
-    { op: "equal", path: { root: "event", segments: ["kind"] }, value: kind },
-  ],
-});
-
-const relationshipIs = (index: number, value: string): Predicate => ({
-  op: "equal",
-  path: { root: "event", segments: ["relationships", String(index), "id"] },
-  value,
-});
+const providerIs = (provider: string): Predicate => ({ op: "equal", path: { root: "event", segments: ["provider"] }, value: provider });
+const eventTypeIn = (...types: string[]): Predicate => types.length === 1
+  ? { op: "equal", path: { root: "event", segments: ["providerEventType"] }, value: types[0]! }
+  : { op: "in", path: { root: "event", segments: ["providerEventType"] }, values: types };
+const relationshipIs = (type: string, value: string): Predicate => ({ op: "equal", source: { from: "relationship", type }, value });
 
 const all = (...operands: Predicate[]): Predicate => operands.length === 1 ? operands[0]! : { op: "and", operands };
-const atomSuffix = (value: string): string => value.replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "").toLowerCase();
+
+/** Sentry event tag that carries the tracker key of the work item an error belongs to. */
+export const GHOST_ISSUE_TAG = "linear_issue";
+export const CHARGE_EVENT_TYPES = ["invoice.paid", "charge.succeeded", "payment_intent.succeeded"] as const;
 
 export const meaningTemplates: Readonly<Record<TemplateId, MeaningTemplate>> = {
-  recurrence: {
-    id: "recurrence",
-    sentence: ["After ", { field: "trigger" }, ", ", { field: "subject" }, " must not ", { field: "outcome" }, " in ", { field: "environment" }, "."],
-    violationSentence: ["The linked issue occurred again after a fix was deployed in ", { field: "environment" }, "."],
+  ghost: {
+    id: "ghost",
+    sentence: ["Once ", { field: "trigger" }, " to ", { field: "environment" }, ", ", { field: "outcome" }, " must not appear there again."],
+    violationSentence: ["An error tagged with a shipped issue key came back in ", { field: "environment" }, "."],
     fields: [
-      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "deployed-fix", label: "a fix is deployed", evidence: "matched" }], eventKinds: ["fix.deployed"] },
-      { id: "subject", accessibleLabel: "Protected subject", options: [{ value: "linked-issue", label: "the linked issue", evidence: "matched" }], eventKinds: ["work.issue_done", "fix.deployed", "error.recurred"] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "recur", label: "occur again", evidence: "matched" }], eventKinds: ["error.recurred"] },
+      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "fix-branch-deployed", label: "a branch for an issue deploys", evidence: "matched" }], eventKinds: ["deployment"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "tagged-errors", label: "errors tagged with that issue", evidence: "matched" }], eventKinds: ["error.event_alert"] },
       { id: "environment", accessibleLabel: "Environment", options: [
-        { value: "production", label: "Production", evidence: "matched" },
-        { value: "staging", label: "Staging", evidence: "none" },
-      ], eventKinds: ["work.issue_done", "fix.deployed", "error.recurred"] },
+        { value: "production", label: "production", evidence: "matched" },
+        { value: "staging", label: "staging", evidence: "none" },
+      ], eventKinds: ["deployment", "error.event_alert"] },
     ],
   },
-  feature: {
-    id: "feature",
-    sentence: ["While ", { field: "feature" }, " is ", { field: "state" }, ", ", { field: "outcome" }, " must not occur."],
-    violationSentence: ["Errors from ", { field: "feature" }, " occurred while the feature was ", { field: "state" }, "."],
+  boomerang: {
+    id: "boomerang",
+    sentence: ["Once ", { field: "trigger" }, ", it must never ", { field: "outcome" }, "."],
+    violationSentence: ["A resolved Sentry issue came back."],
     fields: [
-      { id: "feature", accessibleLabel: "Feature", options: [
-        { value: "checkout-v2", label: "checkout-v2", evidence: "matched" },
-        { value: "recommendations-v1", label: "recommendations-v1", evidence: "none" },
-      ], eventKinds: ["feature.disabled", "feature.enabled", "feature.error"] },
-      { id: "state", accessibleLabel: "Flag state", options: [{ value: "disabled", label: "disabled", evidence: "matched" }], eventKinds: ["feature.disabled", "feature.enabled"] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "feature-errors", label: "errors from the feature", evidence: "matched" }], eventKinds: ["feature.error"] },
+      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "issue-resolved", label: "a Sentry issue is resolved", evidence: "matched" }], eventKinds: ["error.issue"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "never-unresolved", label: "come back", evidence: "matched" }], eventKinds: ["error.issue"] },
     ],
   },
-  order: {
-    id: "order",
-    sentence: ["After ", { field: "boundary" }, ", ", { field: "subject" }, " must not be ", { field: "outcome" }, "."],
-    violationSentence: [{ field: "subject" }, " was fulfilled before its payment was observed."],
+  "clean-break": {
+    id: "clean-break",
+    sentence: ["Once ", { field: "trigger" }, " their subscription, they must never ", { field: "outcome" }, "."],
+    violationSentence: ["A customer was charged after their subscription was canceled."],
     fields: [
-      { id: "boundary", accessibleLabel: "Observed lifecycle boundary", options: [{ value: "accepted", label: "an order is accepted", evidence: "matched" }], eventKinds: ["order.accepted"] },
-      { id: "subject", accessibleLabel: "Order", options: [
-        { value: "ord_1042", label: "order ord_1042", evidence: "matched" },
-        { value: "ord_2048", label: "order ord_2048", evidence: "none" },
-      ], eventKinds: ["order.accepted", "payment.succeeded", "order.fulfilled"] },
-      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "fulfilled-before-payment", label: "fulfilled before payment is observed", evidence: "matched" }], eventKinds: ["payment.succeeded", "order.fulfilled"] },
+      { id: "trigger", accessibleLabel: "Trigger", options: [{ value: "subscription-canceled", label: "a customer cancels", evidence: "matched" }], eventKinds: ["subscription.deleted"] },
+      { id: "outcome", accessibleLabel: "Forbidden outcome", options: [{ value: "never-charged", label: "be charged again", evidence: "matched" }], eventKinds: ["invoice.paid", "charge.succeeded", "payment.succeeded"] },
     ],
   },
 };
@@ -186,76 +172,67 @@ export function buildTemplateDefinition(
     if (meaningOption(templateId, field.id, values[field.id] ?? "") === undefined) throw new Error(`Unsupported ${field.accessibleLabel.toLowerCase()} choice`);
   }
   const common = { id: identity.id, name: identity.name, version: identity.version, tenantId: identity.tenantId ?? DEMO_TENANT_ID };
-  if (templateId === "recurrence") {
+  if (templateId === "ghost") {
     const environment = values.environment!;
-    const suffix = atomSuffix(environment);
-    const ready = `ready_deployment_${suffix}`;
-    const recurrence = `recurrence_${suffix}`;
-    const environmentPredicate = relationshipIs(1, environment);
     return {
       ...common,
-      formula: parseFormula(`G (${ready} -> G !${recurrence})`),
+      formula: parseFormula("G (shipped -> bind(issue) G !haunted)"),
+      // Each issue key is its own monitor instance, so one ghost does not end monitoring for every other issue.
       scope: { keys: [
-        { name: "issue", extractors: [{ from: "relationship", type: "issue" }] },
+        { name: "issue", extractors: [
+          { provider: "gitlab", from: "relationship", type: "ref", pattern: "issue-key" },
+          { provider: "sentry", from: "relationship", type: `tag.${GHOST_ISSUE_TAG}`, pattern: "issue-key" },
+        ] },
         { name: "environment", extractors: [{ from: "literal", value: environment }] },
       ] },
+      bindings: [{ name: "issue", extractors: [{ provider: "gitlab", from: "relationship", type: "ref", pattern: "issue-key" }] }],
       propositions: [
-        { name: ready, predicate: all(eventIs("gitlab", "fix.deployed"), environmentPredicate, { op: "equal", path: { root: "state", segments: ["linearDone"] }, value: true }) },
-        { name: recurrence, predicate: all(eventIs("sentry", "error.recurred"), environmentPredicate) },
-      ],
-      stateUpdates: [
-        { when: all(eventIs("linear", "work.issue_done"), environmentPredicate), set: { linearDone: { from: "literal", value: true } } },
-        { when: all(eventIs("linear", "work.issue_reopened"), environmentPredicate), set: { linearDone: { from: "literal", value: false } } },
+        { name: "shipped", predicate: all(providerIs("gitlab"), eventTypeIn("deployment.success"), relationshipIs("environment", environment)) },
+        {
+          name: "haunted",
+          predicate: all(
+            providerIs("sentry"),
+            relationshipIs("environment", environment),
+            { op: "equal", source: { from: "relationship", type: `tag.${GHOST_ISSUE_TAG}`, pattern: "issue-key" }, variable: "issue" },
+          ),
+        },
       ],
     };
   }
-  if (templateId === "feature") {
-    const feature = values.feature!;
-    const suffix = atomSuffix(feature);
-    const disabled = `disabled_${suffix}`;
-    const featureError = `feature_error_${suffix}`;
-    const featurePredicate = relationshipIs(0, feature);
+  if (templateId === "boomerang") {
     return {
       ...common,
-      formula: parseFormula(`G !(${disabled} & ${featureError})`),
-      scope: { keys: [
-        { name: "feature", extractors: [{ from: "literal", value: feature }] },
-        { name: "environment", extractors: [{ from: "relationship", type: "environment" }] },
-      ] },
+      formula: parseFormula("G (resolved -> bind(issue) G !returned)"),
+      scope: { keys: [{ name: "issue", extractors: [{ provider: "sentry", from: "subject", type: "issue" }] }] },
+      bindings: [{ name: "issue", extractors: [{ provider: "sentry", from: "subject", type: "issue" }] }],
       propositions: [
-        { name: disabled, predicate: { op: "equal", path: { root: "state", segments: ["enabled"] }, value: false } },
-        { name: featureError, predicate: all(eventIs("sentry", "feature.error"), featurePredicate) },
-      ],
-      stateUpdates: [
-        { when: all(eventIs("launchdarkly", "feature.disabled"), featurePredicate), set: { enabled: { from: "literal", value: false } } },
-        { when: all(eventIs("launchdarkly", "feature.enabled"), featurePredicate), set: { enabled: { from: "literal", value: true } } },
+        { name: "resolved", predicate: all(providerIs("sentry"), eventTypeIn("issue.resolved")) },
+        {
+          name: "returned",
+          predicate: all(
+            providerIs("sentry"),
+            eventTypeIn("issue.unresolved"),
+            { op: "equal", source: { from: "subject", type: "issue" }, variable: "issue" },
+          ),
+        },
       ],
     };
   }
-  const order = values.subject!;
-  const suffix = atomSuffix(order);
-  const forbidden = `fulfilled_before_payment_${suffix}`;
-  const orderPredicate = relationshipIs(1, order);
   return {
     ...common,
-    formula: parseFormula(`G !${forbidden}`),
-    scope: { keys: [
-      { name: "customer", extractors: [{ from: "relationship", type: "customer" }] },
-      { name: "order", extractors: [{ from: "literal", value: order }] },
-    ] },
-    propositions: [{
-      name: forbidden,
-      predicate: all(
-        eventIs("posthog", "order.fulfilled"),
-        orderPredicate,
-        { op: "equal", path: { root: "state", segments: ["lifecycleStarted"] }, value: true },
-        { op: "notEqual", path: { root: "state", segments: ["paymentObserved"] }, value: true },
-      ),
-    }],
-    stateUpdates: [
-      { when: all(eventIs("posthog", "order.accepted"), orderPredicate), set: { lifecycleStarted: { from: "literal", value: true }, paymentObserved: { from: "literal", value: false } } },
-      { when: all(eventIs("stripe", "payment.succeeded"), orderPredicate), set: { paymentObserved: { from: "literal", value: true } } },
-      { when: all(eventIs("stripe", "payment.failed"), orderPredicate), set: { paymentObserved: { from: "literal", value: false } } },
+    formula: parseFormula("G (canceled -> bind(customer) G !charged)"),
+    scope: { keys: [{ name: "customer", extractors: [{ provider: "stripe", from: "relationship", type: "customer" }] }] },
+    bindings: [{ name: "customer", extractors: [{ provider: "stripe", from: "relationship", type: "customer" }] }],
+    propositions: [
+      { name: "canceled", predicate: all(providerIs("stripe"), eventTypeIn("customer.subscription.deleted")) },
+      {
+        name: "charged",
+        predicate: all(
+          providerIs("stripe"),
+          eventTypeIn(...CHARGE_EVENT_TYPES),
+          { op: "equal", source: { from: "relationship", type: "customer" }, variable: "customer" },
+        ),
+      },
     ],
   };
 }

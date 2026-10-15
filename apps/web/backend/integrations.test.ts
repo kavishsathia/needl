@@ -22,7 +22,7 @@ async function setup() {
   return { runtime, repository: new NeedlRepository(runtime, 2) };
 }
 
-function recurrenceDraft(): AssertionDraft {
+function ghostDraft(): AssertionDraft {
   const template = getDemoBootstrap().templates[0]!;
   return {
     localId: template.definition.id,
@@ -37,7 +37,7 @@ function recurrenceDraft(): AssertionDraft {
 }
 
 async function createViolation(repository: NeedlRepository, tenantId: string): Promise<string> {
-  const assertion = recurrenceDraft();
+  const assertion = ghostDraft();
   await repository.saveAssertion(tenantId, assertion);
   const replay = await runDemoScenario({ assertions: [assertion], scenario: "violating" });
   for (const event of replay.events.slice(0, 3)) {

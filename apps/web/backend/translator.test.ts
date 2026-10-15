@@ -19,11 +19,11 @@ describe("translateSafetyAssertion", () => {
   });
 
   it("turns a reviewed selection into canonical editable values", async () => {
-    await expect(translateSafetyAssertion("A fixed issue must not recur after deployment", model({ supported: true, template_id: "recurrence", explanation: "Matches recurrence.", rejection_reason: "" }))).resolves.toEqual({
+    await expect(translateSafetyAssertion("A canceled customer must never be charged again", model({ supported: true, template_id: "clean-break", explanation: "Matches clean break.", rejection_reason: "" }))).resolves.toEqual({
       supported: true,
-      templateId: "recurrence",
-      values: { trigger: "deployed-fix", subject: "linked-issue", outcome: "recur", environment: "production" },
-      explanation: "Matches recurrence.",
+      templateId: "clean-break",
+      values: { trigger: "subscription-canceled", outcome: "never-charged" },
+      explanation: "Matches clean break.",
     });
   });
 });

@@ -15,13 +15,12 @@ describe("explicit template authoring", () => {
 
   it("validates manual formula edits through the existing compiler", () => {
     const draft = createDraftFromTemplate("Keep checkout quiet", authoringTemplates[0]!, []);
-    const recurrence = draft.definition.propositions.find((item) => item.name.startsWith("recurrence_"))!.name;
     const edited = updateDraft(draft, {
-      expectation: "Never recur after deployment",
-      formula: `G !${recurrence}`,
+      expectation: "Never ship anything",
+      formula: "G !shipped",
       definitionJson: JSON.stringify(draft.definition),
     }, "2026-01-02T00:00:00.000Z");
-    expect(formulaText(edited)).toBe(`G !${recurrence}`);
+    expect(formulaText(edited)).toBe("G !shipped");
     expect(edited.definition.version).toBe(2);
     expect(edited.meaning).toBeUndefined();
   });
@@ -36,8 +35,8 @@ describe("explicit template authoring", () => {
 
     expect(edited.localId).toBe(draft.localId);
     expect(edited.meaning).toEqual(draft.meaning);
-    expect(meaningRuleText(edited)).toBe("After a fix is deployed, the linked issue must not occur again in Production.");
-    expect(meaningViolationText(edited)).toBe("The linked issue occurred again after a fix was deployed in Production.");
+    expect(meaningRuleText(edited)).toBe("Once a branch for an issue deploys to production, errors tagged with that issue must not appear there again.");
+    expect(meaningViolationText(edited)).toBe("An error tagged with a shipped issue key came back in production.");
   });
 
   it("derives business explanations from canonical meaning for every cloned template ID", () => {
@@ -47,18 +46,17 @@ describe("explicit template authoring", () => {
     });
 
     expect(explanations).toEqual([
-      "The linked issue occurred again after a fix was deployed in Production.",
-      "Errors from checkout-v2 occurred while the feature was disabled.",
-      "Order ord_1042 was fulfilled before its payment was observed.",
+      "An error tagged with a shipped issue key came back in production.",
+      "A resolved Sentry issue came back.",
+      "A customer was charged after their subscription was canceled.",
     ]);
   });
 
   it("rejects liveness edits at the advanced-editor boundary", () => {
     const draft = createDraftFromTemplate("Keep checkout quiet", authoringTemplates[0]!, []);
-    const recurrence = draft.definition.propositions.find((item) => item.name.startsWith("recurrence_"))!.name;
     expect(() => updateDraft(draft, {
-      expectation: "Every paid order should eventually be fulfilled",
-      formula: `G F ${recurrence}`,
+      expectation: "Every fix should eventually ship",
+      formula: "G F shipped",
       definitionJson: JSON.stringify(draft.definition),
     })).toThrow(/eventually happen/i);
   });
@@ -69,7 +67,7 @@ describe("explicit template authoring", () => {
 
     expect(edited.definition.version).toBe(2);
     expect(edited.meaning?.values.environment).toBe("staging");
-    expect(edited.definition.formula).not.toEqual(draft.definition.formula);
+    expect(edited.definition.formula).toEqual(draft.definition.formula);
     expect(edited.definition.propositions).not.toEqual(draft.definition.propositions);
     expect(edited.definition.scope).not.toEqual(draft.definition.scope);
   });

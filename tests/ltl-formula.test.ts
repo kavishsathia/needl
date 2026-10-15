@@ -20,6 +20,7 @@ function reference(
     case "false": return false;
     case "atom": return trace[position]?.[formula.name] ?? false;
     case "not": return !reference(formula.operand, trace, position);
+    case "bind": throw new Error("The propositional reference model does not cover bind");
     case "and": return formula.operands.every((operand) => reference(operand, trace, position));
     case "or": return formula.operands.some((operand) => reference(operand, trace, position));
     case "implies": return !reference(formula.left, trace, position) || reference(formula.right, trace, position);

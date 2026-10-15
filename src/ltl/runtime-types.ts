@@ -31,6 +31,8 @@ export interface ObservationTraceItem {
   readonly source: SourceEventReference;
   readonly valuation: PropositionValuation;
   readonly evaluations: Readonly<Record<string, PredicateEvaluation>>;
+  /** Values captured by `bind` operators at this observation; `null` when the source had no value. */
+  readonly captured?: Readonly<Record<string, string | null>>;
   readonly state: StateSnapshot;
 }
 

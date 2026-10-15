@@ -1,4 +1,5 @@
 import type {
+  BindingEnvironment,
   FormulaValidationOptions,
   LtlFormula,
   MonitorFormula,
@@ -42,14 +43,29 @@ export function validateFormula(input: unknown, options: FormulaValidationOption
         exactKeys(value, ["kind"], path);
         return { kind: value.kind };
       case "atom": {
-        exactKeys(value, ["kind", "name"], path);
+        exactKeys(value, ["kind", "name", "env"], path);
         if (typeof value.name !== "string" || !atomPattern.test(value.name)) {
           throw new FormulaValidationError("invalid atom name", `${path}.name`);
         }
         if (atoms !== undefined && !atoms.has(value.name)) {
           throw new FormulaValidationError(`undeclared atom ${JSON.stringify(value.name)}`, `${path}.name`);
         }
-        return { kind: "atom", name: value.name };
+        if (value.env === undefined) return { kind: "atom", name: value.name };
+        const env = object(value.env, `${path}.env`);
+        for (const [variable, bound] of Object.entries(env)) {
+          if (!atomPattern.test(variable)) throw new FormulaValidationError("invalid bound variable name", `${path}.env`);
+          if (bound !== null && typeof bound !== "string") throw new FormulaValidationError("bound values must be strings or null", `${path}.env.${variable}`);
+        }
+        return { kind: "atom", name: value.name, env: env as BindingEnvironment };
+      }
+      case "bind": {
+        exactKeys(value, ["kind", "variable", "operand"], path);
+        if (typeof value.variable !== "string" || !atomPattern.test(value.variable)) {
+          throw new FormulaValidationError("invalid bind variable", `${path}.variable`);
+        }
+        const operand = visit(value.operand, `${path}.operand`, depth + 1, false);
+        if (operand.kind === "deadline") throw new FormulaValidationError("deadline cannot be nested", `${path}.operand`);
+        return { kind: "bind", variable: value.variable, operand };
       }
       case "not":
       case "next":
@@ -100,6 +116,9 @@ export function validateFormula(input: unknown, options: FormulaValidationOption
         if (containsTemporal(trigger) || containsTemporal(response)) {
           throw new FormulaValidationError("deadline trigger and response must be propositional", path);
         }
+        if (containsBind(trigger) || containsBind(response)) {
+          throw new FormulaValidationError("deadline trigger and response cannot bind variables", path);
+        }
         return { kind: "deadline", trigger, response, withinMs: value.withinMs as number };
       }
       default:
@@ -113,11 +132,54 @@ export function validateFormula(input: unknown, options: FormulaValidationOption
 export function containsTemporal(formula: LtlFormula): boolean {
   if (temporalKinds.has(formula.kind)) return true;
   switch (formula.kind) {
-    case "not": return containsTemporal(formula.operand);
+    case "not":
+    case "bind": return containsTemporal(formula.operand);
     case "and":
     case "or": return formula.operands.some(containsTemporal);
     case "implies": return containsTemporal(formula.left) || containsTemporal(formula.right);
     default: return false;
+  }
+}
+
+export function containsBind(formula: LtlFormula): boolean {
+  switch (formula.kind) {
+    case "bind": return true;
+    case "not":
+    case "next":
+    case "always":
+    case "eventually": return containsBind(formula.operand);
+    case "and":
+    case "or": return formula.operands.some(containsBind);
+    case "implies":
+    case "until": return containsBind(formula.left) || containsBind(formula.right);
+    default: return false;
+  }
+}
+
+/** Freezes `variable` to `value` in every atom of `formula` that is not under a rebinding of the same variable. */
+export function substituteBinding(formula: LtlFormula, variable: string, value: string | null): LtlFormula {
+  switch (formula.kind) {
+    case "true":
+    case "false": return formula;
+    case "atom": {
+      const env = { ...formula.env, [variable]: value };
+      return { kind: "atom", name: formula.name, env: Object.fromEntries(Object.keys(env).sort().map((key) => [key, env[key]!])) };
+    }
+    case "bind": return formula.variable === variable
+      ? formula
+      : { kind: "bind", variable: formula.variable, operand: substituteBinding(formula.operand, variable, value) };
+    case "not":
+    case "next":
+    case "always":
+    case "eventually": return { kind: formula.kind, operand: substituteBinding(formula.operand, variable, value) };
+    case "and":
+    case "or": return { kind: formula.kind, operands: formula.operands.map((operand) => substituteBinding(operand, variable, value)) };
+    case "implies":
+    case "until": return {
+      kind: formula.kind,
+      left: substituteBinding(formula.left, variable, value),
+      right: substituteBinding(formula.right, variable, value),
+    };
   }
 }
 
@@ -151,30 +213,61 @@ function boolean(kind: "and" | "or", inputs: readonly LtlFormula[]): LtlFormula 
   return { kind, operands: flattened };
 }
 
-export function progressFormula(formula: LtlFormula, valuation: PropositionValuation): LtlFormula {
-  switch (formula.kind) {
-    case "true":
-    case "false": return formula;
-    case "atom": return { kind: valuation[formula.name] === true ? "true" : "false" };
-    case "not": return negate(progressFormula(formula.operand, valuation));
-    case "and":
-    case "or": return boolean(formula.kind, formula.operands.map((operand) => progressFormula(operand, valuation)));
-    case "implies": return boolean("or", [
-      negate(progressFormula(formula.left, valuation)),
-      progressFormula(formula.right, valuation),
-    ]);
-    case "next": return formula.operand;
-    case "always": return formula.operand.kind === "true"
-      ? { kind: "true" }
-      : boolean("and", [progressFormula(formula.operand, valuation), formula]);
-    case "eventually": return formula.operand.kind === "false"
-      ? { kind: "false" }
-      : boolean("or", [progressFormula(formula.operand, valuation), formula]);
-    case "until": return boolean("or", [
-      progressFormula(formula.right, valuation),
-      boolean("and", [progressFormula(formula.left, valuation), formula]),
-    ]);
-  }
+/** Observation-specific inputs for progression: atom truth under frozen bindings, and values captured at bind points. */
+export interface ProgressionContext {
+  atom(name: string, env: BindingEnvironment): boolean;
+  bind(variable: string): string | undefined;
+}
+
+function valuationContext(valuation: PropositionValuation): ProgressionContext {
+  return {
+    atom: (name) => valuation[name] === true,
+    bind: (variable) => { throw new Error(`Formula binds ${variable}; progress it with an observation-aware context`); },
+  };
+}
+
+export function progressFormula(formula: LtlFormula, input: PropositionValuation | ProgressionContext): LtlFormula {
+  const context = typeof input.atom === "function" && typeof input.bind === "function"
+    ? input as ProgressionContext
+    : valuationContext(input as PropositionValuation);
+  const progress = (node: LtlFormula): LtlFormula => {
+    switch (node.kind) {
+      case "true":
+      case "false": return node;
+      case "atom": return { kind: context.atom(node.name, node.env ?? {}) ? "true" : "false" };
+      case "bind": return progress(substituteBinding(node.operand, node.variable, context.bind(node.variable) ?? null));
+      case "not": return negate(progress(node.operand));
+      case "and":
+      case "or": {
+        // Short-circuit so binds in operands that cannot change the result capture nothing.
+        const absorbing = node.kind === "and" ? "false" : "true";
+        const progressed: LtlFormula[] = [];
+        for (const operand of node.operands) {
+          const next = progress(operand);
+          if (next.kind === absorbing) return next;
+          progressed.push(next);
+        }
+        return boolean(node.kind, progressed);
+      }
+      case "implies": {
+        const left = progress(node.left);
+        if (left.kind === "false") return { kind: "true" };
+        return boolean("or", [negate(left), progress(node.right)]);
+      }
+      case "next": return node.operand;
+      case "always": return node.operand.kind === "true"
+        ? { kind: "true" }
+        : boolean("and", [progress(node.operand), node]);
+      case "eventually": return node.operand.kind === "false"
+        ? { kind: "false" }
+        : boolean("or", [progress(node.operand), node]);
+      case "until": return boolean("or", [
+        progress(node.right),
+        boolean("and", [progress(node.left), node]),
+      ]);
+    }
+  };
+  return progress(formula);
 }
 
 export function prefixVerdict(residual: LtlFormula): PrefixVerdict {
@@ -191,7 +284,14 @@ export function evaluateCompleteTrace(
   switch (formula.kind) {
     case "true": return true;
     case "false": return false;
-    case "atom": return trace[position]?.[formula.name] ?? false;
+    case "atom":
+      if (formula.env !== undefined && position < trace.length) {
+        throw new Error("Atoms with frozen bindings need observation-aware evaluation");
+      }
+      return trace[position]?.[formula.name] ?? false;
+    case "bind":
+      if (position < trace.length) throw new Error("Bind operators need observation-aware evaluation");
+      return evaluateCompleteTrace(formula.operand, trace, position);
     case "not": return !evaluateCompleteTrace(formula.operand, trace, position);
     case "and": return formula.operands.every((operand) => evaluateCompleteTrace(operand, trace, position));
     case "or": return formula.operands.some((operand) => evaluateCompleteTrace(operand, trace, position));
@@ -226,6 +326,8 @@ export function evaluateCompleteTrace(
 }
 
 interface Token { readonly value: string; readonly offset: number }
+
+const reserved = new Set(["X", "G", "F", "U", "bind"]);
 
 function tokenize(text: string): Token[] {
   const tokens: Token[] = [];
@@ -273,12 +375,23 @@ export function parseFormula(text: string): LtlFormula {
       return nested;
     }
     if (token.value === "true" || token.value === "false") return { kind: token.value };
-    if (!atomPattern.test(token.value) || ["X", "G", "F", "U"].includes(token.value)) {
+    if (!atomPattern.test(token.value) || reserved.has(token.value)) {
       throw new FormulaValidationError(`unexpected token ${JSON.stringify(token.value)}`, `text[${token.offset}]`);
     }
     return { kind: "atom", name: token.value };
   };
   const parseUnary = (): LtlFormula => {
+    if (peek() === "bind" && tokens[position + 1]?.value === "(") {
+      take();
+      take();
+      const variable = take();
+      if (!atomPattern.test(variable.value) || reserved.has(variable.value)) {
+        throw new FormulaValidationError(`invalid bind variable ${JSON.stringify(variable.value)}`, `text[${variable.offset}]`);
+      }
+      const close = take();
+      if (close.value !== ")") throw new FormulaValidationError("expected closing parenthesis after bind variable", `text[${close.offset}]`);
+      return { kind: "bind", variable: variable.value, operand: parseUnary() };
+    }
     const operator = peek();
     if (operator === "!" || operator === "X" || operator === "G" || operator === "F") {
       take();
@@ -319,7 +432,7 @@ export function parseFormula(text: string): LtlFormula {
 
 const precedence: Record<LtlFormula["kind"], number> = {
   implies: 1, or: 2, and: 3, until: 4,
-  not: 5, next: 5, always: 5, eventually: 5,
+  not: 5, next: 5, always: 5, eventually: 5, bind: 5,
   atom: 6, true: 6, false: 6,
 };
 
@@ -330,7 +443,11 @@ export function formatFormula(formula: LtlFormula): string {
     switch (node.kind) {
       case "true":
       case "false": text = node.kind; break;
-      case "atom": text = node.name; break;
+      case "atom": text = node.env === undefined
+        ? node.name
+        : `${node.name}{${Object.entries(node.env).map(([key, value]) => `${key}=${value === null ? "<missing>" : JSON.stringify(value)}`).join(", ")}}`;
+        break;
+      case "bind": text = `bind(${node.variable}) ${render(node.operand, current)}`; break;
       case "not": text = `!${render(node.operand, current)}`; break;
       case "next": text = `X ${render(node.operand, current)}`; break;
       case "always": text = `G ${render(node.operand, current)}`; break;

@@ -34,6 +34,31 @@ than `withinMs`. Temporal operators are rejected inside its trigger and
 response. Each trigger creates its own durable obligation. Durations must be
 positive integral milliseconds and cannot exceed 365 days.
 
+### Variable binding
+
+`bind(x) φ` is a freeze operator. At the observation where it is reached, it captures the value of the declared binding `x` from that observation, then evaluates `φ` from that same observation with `x` fixed. Propositions compare against bound values with `variable` in place of `value`:
+
+```json
+{ "op": "equal", "source": { "from": "relationship", "type": "issue-key" }, "variable": "issue" }
+```
+
+`G (deploy -> bind(issue) G !reopened)` therefore means: every deploy freezes its own issue key, and from then on that issue (and only that issue) must never be reopened. Each trigger adds one frozen obligation to the residual; repeated triggers with the same value collapse into one. The residual is not capped or expired.
+
+Bindings are declared on the assertion:
+
+```json
+"bindings": [{ "name": "issue", "extractors": [
+  { "provider": "gitlab", "from": "relationship", "type": "ref", "pattern": "issue-key" },
+  { "provider": "linear", "from": "relationship", "type": "issue-key" }
+] }]
+```
+
+Extractors are tried in order; the first one that applies to the observation's provider and yields a value wins. Sources are `subject`/`relationship` (with `field: "id" | "name"`), `event` paths, `payload` paths into the authenticated body (present only when the integration sets `payloadRetention: "full"`), and `literal`. `pattern` reduces the value through a closed set of named recognizers; `issue-key` finds the first tracker key such as `ENG-42` (case-insensitive, normalized to upper case). Configuration never supplies a regular expression. Scope extractors use the same source shape. Predicates may read a `source` instead of a `path`, and `contains` tests string containment.
+
+Static validation rejects a proposition that uses a variable outside an enclosing `bind` of that variable, a `bind` without a binding definition, bound variables in state updates, and `bind` inside `deadline`. If a bind point's sources yield nothing, the variable is frozen as missing and every comparison against it is false. `->`, `&`, and `|` short-circuit during progression, so a bind is only evaluated (and recorded in the trace item's `captured` field) when its value can matter.
+
+Finalization of a formula containing `bind` evaluates the residual on the empty remaining suffix (atoms false, `G` true, `F`/`U`/`X` false), because stored valuations cannot be re-evaluated under new bindings.
+
 ## Prefix verdicts and finalization
 
 For ordinary LTL, the monitor progresses a residual formula after every

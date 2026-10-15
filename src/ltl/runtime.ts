@@ -3,13 +3,16 @@ import { stableId } from "../core/crypto.js";
 import {
   applyStateUpdates,
   compileAssertion,
+  evaluatePredicate,
   evaluatePropositions,
+  extractBinding,
   extractScope,
   type AssertionDefinition,
   type CompiledAssertion,
   type PredicateEvaluation,
 } from "./assertion.js";
-import { evaluateCompleteTrace, prefixVerdict, progressFormula } from "./formula.js";
+import { containsBind, evaluateCompleteTrace, prefixVerdict, progressFormula } from "./formula.js";
+import type { BindingEnvironment, LtlFormula } from "./types.js";
 import type {
   CounterexampleRecord,
   DeadlineObligation,
@@ -81,6 +84,47 @@ function sourceReference(event: NormalizedEvent): SourceEventReference {
     links: event.evidence.links,
     bodySha256: event.evidence.bodySha256,
   };
+}
+
+function environmentLabel(env: BindingEnvironment): string {
+  return `{${Object.entries(env).map(([key, value]) => `${key}=${value === null ? "<missing>" : JSON.stringify(value)}`).join(", ")}}`;
+}
+
+/** Progresses the residual against one observation, evaluating bound propositions under each frozen environment. */
+function progressObservation(
+  assertion: CompiledAssertion,
+  residual: LtlFormula,
+  event: NormalizedEvent,
+  state: ReturnType<typeof applyStateUpdates>,
+  valuation: Readonly<Record<string, boolean>>,
+): {
+  readonly residual: LtlFormula;
+  readonly valuation: Readonly<Record<string, boolean>>;
+  readonly evaluations: Readonly<Record<string, PredicateEvaluation>>;
+  readonly captured: Readonly<Record<string, string | null>>;
+} {
+  const boundValuation: Record<string, boolean> = {};
+  const boundEvaluations: Record<string, PredicateEvaluation> = {};
+  const captured: Record<string, string | null> = {};
+  const next = progressFormula(residual, {
+    atom: (name, env) => {
+      if ((assertion.propositionVariables[name] ?? []).length === 0) return valuation[name] === true;
+      const key = `${name}${environmentLabel(env)}`;
+      if (!(key in boundValuation)) {
+        const proposition = assertion.propositions.find((candidate) => candidate.name === name)!;
+        const evaluated = evaluatePredicate(proposition.predicate, event, state, env);
+        boundValuation[key] = evaluated.value;
+        boundEvaluations[key] = evaluated;
+      }
+      return boundValuation[key]!;
+    },
+    bind: (variable) => {
+      const value = extractBinding(assertion, variable, event);
+      captured[variable] = value ?? null;
+      return value;
+    },
+  });
+  return { residual: next, valuation: boundValuation, evaluations: boundEvaluations, captured };
 }
 
 function initialCheckpoint(assertion: CompiledAssertion, instance: MonitorInstance): MonitorCheckpoint {
@@ -230,14 +274,20 @@ export class RuntimeMonitor {
       }
       const state = applyStateUpdates(assertion, event, previous.state);
       const evaluation = evaluatePropositions(assertion, event, state);
+      let progressed: ReturnType<typeof progressObservation> | undefined;
+      if (assertion.formula.kind !== "deadline") {
+        if (previous.residual === undefined) throw new Error("Ordinary LTL checkpoint is missing a residual formula");
+        progressed = progressObservation(assertion, previous.residual, event, state, evaluation.valuation);
+      }
       const item: ObservationTraceItem = {
         type: "observation",
         position: previous.processedCount + 1,
         inputId: event.id,
         at,
         source: sourceReference(event),
-        valuation: evaluation.valuation,
-        evaluations: evaluation.evaluations,
+        valuation: { ...evaluation.valuation, ...progressed?.valuation },
+        evaluations: { ...evaluation.evaluations, ...progressed?.evaluations },
+        ...(progressed === undefined || Object.keys(progressed.captured).length === 0 ? {} : { captured: progressed.captured }),
         state,
       };
       const fullTrace = [...await this.#store.loadTrace(instance.key), item];
@@ -271,15 +321,15 @@ export class RuntimeMonitor {
         }
         if (records.length > 0) verdict = "violated";
       } else {
-        if (residual === undefined) throw new Error("Ordinary LTL checkpoint is missing a residual formula");
+        if (residual === undefined || progressed === undefined) throw new Error("Ordinary LTL checkpoint is missing a residual formula");
         const before = prefixVerdict(residual);
-        residual = progressFormula(residual, evaluation.valuation);
+        residual = progressed.residual;
         verdict = prefixVerdict(residual);
         if (before !== "violated" && verdict === "violated") {
           records.push(violation(
             assertion, instance, "formula_false", at,
             `The progressed LTL formula became false after event ${event.id}.`,
-            fullTrace, evaluation.evaluations, event.id,
+            fullTrace, item.evaluations, event.id,
           ));
         }
       }
@@ -388,7 +438,11 @@ export class RuntimeMonitor {
         }
         pending = [];
       } else {
-        const complete = evaluateCompleteTrace(assertion.formula, observations.map((observation) => observation.valuation));
+        // Bound formulas cannot be re-evaluated from stored valuations; the residual already carries every frozen value,
+        // so the complete trace satisfies the formula exactly when the residual holds on the empty remaining suffix.
+        const complete = containsBind(assertion.formula)
+          ? evaluateCompleteTrace(previous.residual ?? assertion.formula, [], 0)
+          : evaluateCompleteTrace(assertion.formula, observations.map((observation) => observation.valuation));
         verdict = complete ? "satisfied" : "violated";
         if (!complete && previous.verdict !== "violated") {
           records.push(violation(

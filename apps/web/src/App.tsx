@@ -11,13 +11,15 @@ import {
 import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
 import { createDraftFromTemplate, formulaText, updateDraft, updateMeaningChoice } from "./authoring.js";
-import { confirmTranslation, fetchBootstrap, fetchWorkspace, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
+import { confirmTranslation, fetchBootstrap, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
   AuthoringTemplate,
   DemoReplay,
   DemoReplayRequest,
+  InvestigationRecord,
+  MonitorSnapshot,
   TranslationProposalResponse,
   WorkspaceBootstrap,
 } from "./domain.js";
@@ -160,7 +162,7 @@ function AppSkeleton() {
   return <div className="boot-screen"><span className="brand">needl<span className="brand-dot">.</span></span><div className="boot-line"/><p>Opening your workspace…</p></div>;
 }
 
-function AuthScreen({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
+function AuthScreen({ onAuthenticated, signupEnabled }: { readonly onAuthenticated: () => void; readonly signupEnabled: boolean }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -192,9 +194,9 @@ function AuthScreen({ onAuthenticated }: { readonly onAuthenticated: () => void 
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <button className="primary-button" type="submit" disabled={submitting}>{submitting ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
       </form>
-      <button className="auth-switch" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); }}>
+      {signupEnabled || mode === "signup" ? <button className="auth-switch" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); }}>
         {mode === "signin" ? "New to Needl? Create an account" : "Already have an account? Sign in"}
-      </button>
+      </button> : <p className="auth-closed">Account creation is invitation-only on this deployment.</p>}
     </section>
   </main>;
 }
@@ -456,10 +458,13 @@ function violationSummary(draft: AssertionDraft): string {
   return meaningViolationText(draft) ?? "The observed event sequence broke this rule.";
 }
 
-function AssertionDetail({ draft, templates, replay, onClose, onToggle, onEdit, onCopy, onMeaningChange }: {
+function AssertionDetail({ draft, templates, replay, investigations, investigationReady, onLaunchInvestigation, onClose, onToggle, onEdit, onCopy, onMeaningChange }: {
   readonly draft: AssertionDraft;
   readonly templates: readonly AuthoringTemplate[];
   readonly replay: DemoReplay | null;
+  readonly investigations: readonly InvestigationRecord[];
+  readonly investigationReady: boolean;
+  readonly onLaunchInvestigation: (violationId: string) => void;
   readonly onClose: () => void;
   readonly onToggle: () => void;
   readonly onEdit: () => void;
@@ -473,6 +478,8 @@ function AssertionDetail({ draft, templates, replay, onClose, onToggle, onEdit, 
   const checkpoint = replay?.checkpoints.find((item) => item.assertionId === draft.definition.id);
   const relatedEvents = replay?.events.filter((item) => providersFor(draft, templates).includes(item.provider)) ?? [];
   const outbox = replay?.outbox.find((item) => item.assertionId === draft.definition.id);
+  const latestViolation = violations.at(-1);
+  const investigation = latestViolation === undefined ? undefined : investigations.find((item) => item.violationId === latestViolation.id);
   const style = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}` } as CSSProperties;
   return <aside className={`detail detail--${tone}`} style={style} aria-label={`${draft.definition.name} detail`}>
     <div className="detail-scroll">
@@ -497,7 +504,7 @@ function AssertionDetail({ draft, templates, replay, onClose, onToggle, onEdit, 
         {tab === "overview" ? <>
           <section className="detail-section expectation-section"><span className="section-index">01</span><div><h3>What Needl watches</h3><MeaningRule draft={draft} activeField={activeField} onActiveField={setActiveField} onChange={onMeaningChange}/><p>Each underlined phrase is part of the stored monitor. Change one to create a new version and replay the evidence.</p></div></section>
           <section className="detail-section"><span className="section-index">02</span><div><h3>Observed scope</h3><p>Events are correlated by {draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")}.</p><div className="provider-list">{providersFor(draft, templates).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div></div></section>
-          <section className="detail-section"><span className="section-index">03</span><div><h3>Investigation state</h3><div className="investigation-card"><span className="simulated-mark">{outbox === undefined ? "NOT REQUESTED" : "REQUESTED"}</span><div><strong>{outbox === undefined ? "No investigation requested" : "Simulated investigation request pending"}</strong><p>{outbox === undefined ? "Needl only requests an investigation after a counterexample." : "The engine created a pending outbox request. No real agent has started and live dispatch is not configured."}</p></div><button disabled title="Configure a live GitLab dispatcher on the backend to start an agent">No agent started</button></div></div></section>
+          <section className="detail-section"><span className="section-index">03</span><div><h3>Investigation state</h3><div className="investigation-card"><span className="simulated-mark">{investigation?.status.toUpperCase() ?? (outbox === undefined ? "NOT REQUESTED" : "READY")}</span><div><strong>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Counterexample ready for review") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</strong><p>{investigation === undefined ? (outbox === undefined ? "Needl only offers an investigation after a counterexample." : investigationReady ? "A configured, read-only GitLab flow can be started explicitly. Needl never retries an ambiguous launch." : "The durable outbox is ready, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>{investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab</a> : null}</div><button disabled={latestViolation === undefined || !investigationReady || investigation !== undefined} onClick={() => latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined ? "This counterexample already has an investigation attempt" : undefined}>{investigation === undefined ? "Start investigation" : "Attempt recorded"}</button></div></div></section>
           {draft.status === "needs-review" ? <section className="review-panel"><Icon name="warning"/><div><h3>Preserved for review</h3><p>{draft.reviewReason} Your wording and advanced specification remain stored, but this rule cannot be enabled.</p></div></section> : null}
           {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>{violationSummary(draft)}</h3><p>Select a phrase above or an evidence link below to see how the trace supports that part of the rule.</p><CounterexampleView violation={violations.at(-1)!} draft={draft} activeField={activeField} onActiveField={setActiveField}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching fixture evidence. This is unavailable evidence, not proof that the rule holds." : "The current fixture produced no breaking event for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
         </> : null}
@@ -529,11 +536,12 @@ function ActivityPage({ replay }: { readonly replay: DemoReplay | null }) {
   </main>;
 }
 
-function ConnectionsPage({ replay }: { readonly replay: DemoReplay | null }) {
+function ConnectionsPage({ replay, integrations }: { readonly replay: DemoReplay | null; readonly integrations: WorkspaceBootstrap["integrations"] }) {
   const count = (provider: Provider) => replay?.events.filter((event) => event.provider === provider).length ?? 0;
-  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Local fixture catalog</span><h1>Connections</h1><p>No provider account is connected. These sources are deterministic event fixtures only.</p></div>
-    <div className="notice"><Icon name="warning"/><div><strong>Demo sources are not live connections</strong><p>Webhook authentication and normalization live in the engine package; this browser journey sends no provider requests and uses no secrets.</p></div></div>
-    <div className="connection-grid">{providers.map((provider) => <article key={provider}><span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span><div><h2>{providerNames[provider]}</h2><p>{count(provider)} event{count(provider) === 1 ? "" : "s"} in current fixture</p></div><Pill tone={count(provider) > 0 ? "fixture" : "unavailable"}>{count(provider) > 0 ? "Fixture ready" : "No event"}</Pill><dl><div><dt>Mode</dt><dd>Read-only replay</dd></div><div><dt>Credentials</dt><dd>Not configured</dd></div></dl></article>)}</div>
+  const connected = (provider: Provider) => integrations.find((item) => item.provider === provider && item.purpose === "ingestion" && item.enabled);
+  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Signed evidence routes</span><h1>Connections</h1><p>Enabled routes verify provider signatures on exact request bytes before durable processing.</p></div>
+    {integrations.length === 0 ? <div className="notice"><Icon name="warning"/><div><strong>Demo sources are not live connections</strong><p>No server-managed integration is configured. The visible activity remains deterministic fixture evidence and no browser secret can enable a route.</p></div></div> : <div className="notice"><Icon name="check"/><div><strong>{integrations.filter((item) => item.enabled).length} server-managed integration{integrations.filter((item) => item.enabled).length === 1 ? "" : "s"}</strong><p>Credentials remain server-side; disabled routes return not found.</p></div></div>}
+    <div className="connection-grid">{providers.map((provider) => <article key={provider}><span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span><div><h2>{providerNames[provider]}</h2><p>{count(provider)} event{count(provider) === 1 ? "" : "s"} in current fixture</p></div><Pill tone={connected(provider) ? "monitoring" : count(provider) > 0 ? "fixture" : "unavailable"}>{connected(provider) ? "Signed route ready" : count(provider) > 0 ? "Fixture ready" : "No event"}</Pill><dl><div><dt>Mode</dt><dd>{connected(provider) ? "Durable signed ingestion" : "Read-only replay"}</dd></div><div><dt>Credentials</dt><dd>{connected(provider) ? "Server-managed" : "Not configured"}</dd></div></dl></article>)}</div>
   </main>;
 }
 
@@ -565,7 +573,7 @@ function AuthoringDialog({ expectation, templates, translation, onClose, onChoos
   useEffect(() => closeRef.current?.focus(), []);
   return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="modal authoring-modal" role="dialog" aria-modal="true" aria-labelledby="authoring-title">
-      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Confirm structured interpretation</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
+      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Choose an interpretation template</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
       <div className="honesty-note"><Icon name="warning"/><p><strong>{translation === null ? "Reviewed interpretation" : "OpenAI proposal — confirmation required"}</strong>{translation === null ? "OpenAI translation is not configured. Your text stays as the expectation; choose one reviewed safety meaning below." : translation.proposal.explanation}</p></div>
       <blockquote>{expectation}</blockquote>
       <div className="template-list">{templates.map((template, index) => <button className={translation?.proposal.templateId === template.id ? "is-suggested" : ""} key={template.id} onClick={() => onChoose(template)}>
@@ -626,6 +634,8 @@ function EditDialog({ draft, onClose, onSave }: {
 export function App() {
   const { section, selectedId, previousSelected, navigate } = useRoute();
   const [workspace, setWorkspace] = useState<WorkspaceBootstrap | null>(null);
+  const [signupAllowed, setSignupAllowed] = useState(false);
+  const [durableMonitor, setDurableMonitor] = useState<MonitorSnapshot | null>(null);
   const [authGeneration, setAuthGeneration] = useState(0);
   const [templates, setTemplates] = useState<readonly AuthoringTemplate[]>([]);
   const [assertions, setAssertions] = useState<AssertionDraft[]>([]);
@@ -642,6 +652,8 @@ export function App() {
   const [toast, setToast] = useState<string | null>(null);
   const boardScroll = useRef(0);
   const replayGeneration = useRef(0);
+
+  useEffect(() => { void fetchPublicConfig().then((config) => setSignupAllowed(config.signupEnabled)).catch(() => setSignupAllowed(false)); }, []);
 
   const runReplay = async (nextAssertions: readonly AssertionDraft[], scenario: DemoReplayRequest["scenario"] = replay?.scenario ?? "violating") => {
     const generation = ++replayGeneration.current;
@@ -660,11 +672,12 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([fetchWorkspace(), fetchBootstrap()]).then(async ([nextWorkspace, bootstrap]) => {
+    Promise.all([fetchWorkspace(), fetchBootstrap(), fetchMonitor()]).then(async ([nextWorkspace, bootstrap, monitor]) => {
       if (!active) return;
       setWorkspace(nextWorkspace);
+      setDurableMonitor(monitor);
       const storageKey = storageKeyForTenant(nextWorkspace.tenantId);
-      const cached = parseStoredAssertions(localStorage.getItem(storageKey));
+      const cached = parseStoredAssertions(localStorage.getItem(storageKey) ?? localStorage.getItem("needl.assertions.v1"));
       const initial = nextWorkspace.assertions.length > 0 ? [...nextWorkspace.assertions] : mergeRestored(defaultDrafts(bootstrap.templates), cached);
       setTemplates(bootstrap.templates);
       setAssertions(initial);
@@ -763,6 +776,7 @@ export function App() {
       setWorkspace(null);
       setAssertions([]);
       setReplay(null);
+      setDurableMonitor(null);
       setLoading(false);
       navigate("assertions", undefined, true);
     }
@@ -807,9 +821,16 @@ export function App() {
     navigate("settings");
     setToast("Locally authored assertions removed");
   };
+  const startInvestigation = async (violationId: string) => {
+    try {
+      const next = await launchInvestigation(violationId);
+      setDurableMonitor((current) => current === null ? current : { ...current, investigations: [next, ...current.investigations.filter((item) => item.id !== next.id)] });
+      setToast(next.status === "running" ? "GitLab investigation started" : `Investigation recorded as ${next.status.replaceAll("_", " ")}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to start investigation"); }
+  };
 
   if (loading) return <AppSkeleton/>;
-  if (workspace === null) return <AuthScreen onAuthenticated={() => { setLoading(true); setError(null); setAuthGeneration((value) => value + 1); }}/>;
+  if (workspace === null) return <AuthScreen signupEnabled={signupAllowed} onAuthenticated={() => { setLoading(true); setError(null); setAuthGeneration((value) => value + 1); }}/>;
   return <div className={`app-shell ${selected !== undefined ? "detail-open" : ""}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar section={section} replay={replay} onNavigate={(next) => navigate(next)}/>
@@ -817,12 +838,12 @@ export function App() {
     <div className="workspace">
       {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={replay} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}
       {section === "activity" ? <ActivityPage replay={replay}/> : null}
-      {section === "connections" ? <ConnectionsPage replay={replay}/> : null}
+      {section === "connections" ? <ConnectionsPage replay={replay} integrations={workspace.integrations}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
-      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={replay} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
+      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={replay} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
     </div>
     {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Translating into a reviewed safety shape…" : "Replaying through engine…"}</div> : null}
-    {error ? <div className="error-banner" role="alert"><strong>Local demo error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}
+    {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}
     {toast ? <div className="toast" role="status">{toast}</div> : null}
     {authoringText !== null ? <AuthoringDialog expectation={authoringText} templates={templates} translation={translation} onClose={() => { setAuthoringText(null); setTranslation(null); }} onChoose={(template) => void chooseTemplate(template)}/> : null}
     {unsupportedText !== null ? <UnsupportedIntentDialog expectation={unsupportedText} onClose={() => setUnsupportedText(null)} onAcceptAlternative={() => { setUnsupportedText(null); setAuthoringText("Orders must not be fulfilled before payment is observed"); }}/> : null}

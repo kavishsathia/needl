@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 
 const screenshotDir = new URL("../artifacts/screenshots/", import.meta.url);
@@ -13,9 +14,44 @@ function watchConsole(page: Page): string[] {
   return failures;
 }
 
-test.beforeEach(async ({ page }) => {
+let currentUser: { email: string; password: string };
+
+test.beforeEach(async ({ page }, testInfo) => {
   await page.goto("/api/health");
   await page.evaluate(() => localStorage.clear());
+  const suffix = createHash("sha256").update(`${testInfo.title}-${testInfo.retry}`).digest("hex").slice(0, 12);
+  currentUser = { email: `e2e-${suffix}@needl.test`, password: "correct-horse-battery-staple" };
+  const response = await page.request.post("/api/auth/sign-up/email", {
+    headers: { origin: "http://127.0.0.1:4173" },
+    data: { name: "Needl E2E", ...currentUser },
+  });
+  expect(response.status()).toBe(200);
+});
+
+function tenantStorage() {
+  const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
+  return JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
+}
+
+test("browser signup, signout, and signin keep the private workspace", async ({ page }) => {
+  await page.goto("/#/settings");
+  await expect(page.getByText(`Signed in as ${currentUser.email}.`)).toBeVisible();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+
+  const secondEmail = `second-${currentUser.email}`;
+  await page.getByRole("button", { name: /Create an account/ }).click();
+  await page.getByLabel("Name").fill("Second Needl User");
+  await page.getByLabel("Email").fill(secondEmail);
+  await page.getByLabel("Password").fill(currentUser.password);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
+  await page.getByLabel("Open local settings").click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Email").fill(secondEmail);
+  await page.getByLabel("Password").fill(currentUser.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
 });
 
 test("complete assertion journey uses engine evidence and persists authored state", async ({ page }) => {
@@ -184,7 +220,7 @@ test("meaning chips update canonical semantics and link phrases to trace evidenc
 
   await expect(detail.getByRole("heading", { name: "No matching evidence" })).toBeVisible();
   const changed = await page.evaluate(() => {
-    const saved = JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}");
+    const saved = tenantStorage();
     const draft = saved.assertions.find((item: { localId: string }) => item.localId === "linked-issue-recurrence");
     return { version: draft.definition.version, formula: draft.definition.formula, propositions: draft.definition.propositions, scope: draft.definition.scope };
   });
@@ -231,7 +267,7 @@ test("unsupported saved rules are preserved disabled and excluded from replay", 
   await expect(page.getByRole("button", { name: "Open Every paid order should eventually be fulfilled" })).toBeVisible();
   await expect(page.getByText("Preserved but disabled", { exact: false })).toBeVisible();
   const stored = await page.evaluate((id) => {
-    const saved = JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}");
+    const saved = tenantStorage();
     return saved.assertions.find((item: { localId: string }) => item.localId === id);
   }, localId);
   expect(stored.expectation).toBe("Every paid order should eventually be fulfilled");
@@ -264,7 +300,7 @@ test("migration restores canonical chips and business evidence for a legacy auth
   await detail.getByRole("button", { name: /Counterexamples/ }).click();
   await expect(detail.locator(".counterexample").getByRole("heading", { name: "The linked issue occurred again after a fix was deployed in Production." })).toBeVisible();
   await expect.poll(async () => page.evaluate((id) => {
-    const saved = JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}");
+    const saved = tenantStorage();
     return saved.assertions.find((item: { localId: string }) => item.localId === id)?.meaning?.templateId;
   }, localId)).toBe("recurrence");
 });
@@ -278,7 +314,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   const pauseStarted = new Promise<void>((resolve) => { sawPause = resolve; });
   const pauseReleased = new Promise<void>((resolve) => { releasePause = resolve; });
   let held = false;
-  await page.route("**/api/demo/replay", async (route) => {
+  await page.route("**/api/replay", async (route) => {
     const body = route.request().postDataJSON();
     const recurrence = body.assertions.find((draft: { localId: string }) => draft.localId === "linked-issue-recurrence");
     if (!held && recurrence?.status === "paused") {
@@ -295,7 +331,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
   await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("3 inputs");
   const staleResponse = page.waitForResponse((response) => {
-    if (!response.url().endsWith("/api/demo/replay")) return false;
+    if (!response.url().endsWith("/api/replay")) return false;
     const body = response.request().postDataJSON();
     return body.assertions.some((draft: { localId: string; status: string }) => draft.localId === "linked-issue-recurrence" && draft.status === "paused");
   });
@@ -314,7 +350,7 @@ test("a late failed replay cannot replace a newer successful replay with an erro
   const pauseStarted = new Promise<void>((resolve) => { sawPause = resolve; });
   const pauseReleased = new Promise<void>((resolve) => { releasePause = resolve; });
   let held = false;
-  await page.route("**/api/demo/replay", async (route) => {
+  await page.route("**/api/replay", async (route) => {
     const body = route.request().postDataJSON();
     const recurrence = body.assertions.find((draft: { localId: string }) => draft.localId === "linked-issue-recurrence");
     if (!held && recurrence?.status === "paused") {
@@ -332,7 +368,7 @@ test("a late failed replay cannot replace a newer successful replay with an erro
   await detail.getByRole("button", { name: "Enable" }).click();
   await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
   const staleFailure = page.waitForEvent("requestfailed", {
-    predicate: (request) => request.url().endsWith("/api/demo/replay")
+    predicate: (request) => request.url().endsWith("/api/replay")
       && request.postDataJSON().assertions.some((draft: { localId: string; status: string }) => draft.localId === "linked-issue-recurrence" && draft.status === "paused"),
   });
   releasePause();
@@ -351,7 +387,7 @@ test("invalid restored data is rejected and replaced with safe defaults", async 
   });
   await page.goto("/#/assertions");
   await expect(page.locator(".assertion-card")).toHaveCount(3);
-  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.length)).toBe(3);
+  await expect.poll(async () => page.evaluate(tenantStorage).then((saved) => saved.assertions?.length)).toBe(3);
   await expect(page.getByText("bad", { exact: true })).toHaveCount(0);
 });
 
@@ -375,7 +411,7 @@ test("a malformed encoded assertion route falls back safely and preserves local 
   await page.goto("/#/assertions/%E0%A4%A");
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Preserve me across a malformed route" })).toBeVisible();
-  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.some((draft: { localId: string }) => draft.localId === "local-preserved-route-probe"))).toBe(true);
+  await expect.poll(async () => page.evaluate(tenantStorage).then((saved) => saved.assertions?.some((draft: { localId: string }) => draft.localId === "local-preserved-route-probe"))).toBe(true);
 });
 
 test("replay API returns controlled 400 responses for malformed inactive drafts", async ({ request }) => {
@@ -493,7 +529,7 @@ test("manual authoring stops at the shared 25 assertion capacity without changin
   await page.getByLabel("Continue authoring").click();
   await expect(page.getByRole("alert")).toContainText("at most 25 assertions");
   await expect(page.getByRole("dialog", { name: "Choose an interpretation template" })).toHaveCount(0);
-  await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem("needl.assertions.v1") ?? "{}").assertions?.length)).toBe(25);
+  await expect.poll(async () => page.evaluate(tenantStorage).then((saved) => saved.assertions?.length)).toBe(25);
 });
 
 test("mobile layout has no horizontal overflow and supports detail navigation", async ({ page }) => {

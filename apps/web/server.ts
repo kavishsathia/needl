@@ -3,12 +3,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { betterAuth } from "better-auth";
+import type { WebhookHeaders } from "../../src/core/types.js";
 import { getDemoBootstrap, runDemoScenario } from "./demo.js";
 import type { DemoReplayRequest } from "./src/domain.js";
 import { validateProductAssertionCollection } from "./src/collection.js";
 import { unsupportedAuthoringIntent } from "./src/safety.js";
-import { createAuthOptions, migrateAuthDatabase } from "./backend/auth.js";
+import { createAuthOptions, migrateAuthDatabase, signupEnabled } from "./backend/auth.js";
 import { createDatabaseRuntime, migrateApplicationDatabase } from "./backend/database.js";
+import { SignedIngestionService } from "./backend/ingestion.js";
+import { GitLabCallbackService, GitLabInvestigationService } from "./backend/investigations.js";
 import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./backend/repository.js";
 import { OpenAITranslationModel, translateSafetyAssertion } from "./backend/translator.js";
 
@@ -23,6 +26,9 @@ await migrateApplicationDatabase(runtime);
 if (process.env.NODE_ENV !== "production" || process.env.NEEDL_AUTO_MIGRATE === "true") await migrateAuthDatabase(authOptions);
 const auth = betterAuth(authOptions);
 const repository = new NeedlRepository(runtime, Number(process.env.NEEDL_TRANSLATION_DAILY_LIMIT ?? 5));
+const ingestion = new SignedIngestionService(repository);
+const investigations = new GitLabInvestigationService(repository);
+const callbacks = new GitLabCallbackService(repository);
 const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
 const trustedOrigins = new Set((process.env.NEEDL_TRUSTED_ORIGINS ?? `${process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:4173"},http://127.0.0.1:5173`).split(",").map((value) => value.trim()).filter(Boolean));
 
@@ -34,11 +40,17 @@ const mime: Readonly<Record<string, string>> = {
 function securityHeaders() {
   return {
     "cache-control": "no-store",
-    "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://api.openai.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     "referrer-policy": "same-origin",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
   };
+}
+
+function webhookHeaders(request: IncomingMessage): WebhookHeaders {
+  const headers: Record<string, string | readonly string[] | undefined> = {};
+  for (const [name, value] of Object.entries(request.headers)) headers[name.toLowerCase()] = value;
+  return headers;
 }
 
 function json(response: ServerResponse, status: number, body: unknown, extraHeaders: Record<string, string> = {}): void {
@@ -116,18 +128,34 @@ function serveStatic(request: IncomingMessage, response: ServerResponse): void {
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? "/", "http://localhost");
+    const callbackRoute = url.pathname.match(/^\/api\/hooks\/gitlab-flow\/([^/]+)$/);
+    if (request.method === "POST" && callbackRoute !== null) {
+      const outcome = await callbacks.receive(decodeURIComponent(callbackRoute[1]!), await readBody(request), webhookHeaders(request));
+      json(response, 200, { outcome }); return;
+    }
+    const ingestionRoute = url.pathname.match(/^\/api\/hooks\/([^/]+)$/);
+    if (request.method === "POST" && ingestionRoute !== null) {
+      const outcome = await ingestion.receive(decodeURIComponent(ingestionRoute[1]!), await readBody(request), webhookHeaders(request));
+      json(response, outcome.statusCode, outcome.outcome === "stored" ? { outcome: "stored", eventId: outcome.event.id } : outcome); return;
+    }
     if (url.pathname.startsWith("/api/auth/")) { await writeStandardResponse(await auth.handler(await standardRequest(request)), response); return; }
     if (request.method === "GET" && url.pathname === "/api/health") { json(response, 200, { status: "ok", mode: "durable-full-stack", database: runtime.type, openai: openAIModel === undefined ? "not-configured" : "configured" }); return; }
+    if (request.method === "GET" && url.pathname === "/api/config") { json(response, 200, { signupEnabled: signupEnabled() }); return; }
     if (request.method === "GET" && url.pathname === "/api/demo/bootstrap") { json(response, 200, getDemoBootstrap()); return; }
     // Retained as a public, side-effect-free compatibility contract for engine regressions.
     if (request.method === "POST" && url.pathname === "/api/demo/replay") {
+      if (process.env.NODE_ENV === "production") { json(response, 404, { error: "Unknown Needl endpoint" }); return; }
       const body = await readJson(request) as DemoReplayRequest;
       validateProductAssertionCollection(body.assertions, { allowNeedsReview: false });
       json(response, 200, await runDemoScenario(body)); return;
     }
     if (request.method === "GET" && url.pathname === "/api/workspace") {
       const { session, tenantId } = await requireWorkspace(request);
-      json(response, 200, { user: session.user, tenantId, assertions: await repository.listAssertions(tenantId), translator: openAIModel === undefined ? "unavailable" : "available" }); return;
+      json(response, 200, {
+        user: session.user, tenantId, assertions: await repository.listAssertions(tenantId),
+        translator: openAIModel === undefined ? "unavailable" : "available",
+        integrations: await repository.listIntegrationSummaries(tenantId),
+      }); return;
     }
     if (request.method === "GET" && url.pathname === "/api/monitor") {
       const { tenantId } = await requireWorkspace(request);
@@ -170,6 +198,13 @@ const server = createServer(async (request, response) => {
       const proposal = await translateSafetyAssertion(body.text, openAIModel);
       const proposalId = await repository.createTranslationProposal(tenantId, body.text.trim(), proposal, openAIModel.model);
       json(response, proposal.supported ? 200 : 422, { proposalId, proposal, remaining }); return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/investigations") {
+      assertMutationOrigin(request);
+      const { tenantId } = await requireWorkspace(request);
+      const body = await readJson(request) as { violationId?: unknown };
+      if (typeof body.violationId !== "string" || body.violationId.length === 0) throw new Error("violationId is required");
+      json(response, 200, await investigations.launch(tenantId, body.violationId)); return;
     }
     const confirmation = url.pathname.match(/^\/api\/translations\/([^/]+)\/confirm$/);
     if (request.method === "POST" && confirmation !== null) {

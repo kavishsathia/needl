@@ -68,6 +68,40 @@ describe("NeedlRepository", () => {
     expect(after).toEqual(before);
   });
 
+  it("durably processes live events with duplicate and tenant isolation", async () => {
+    const first = await setup();
+    const tenantA = await first.repository.tenantForUser("live-user-a");
+    const tenantB = await first.repository.tenantForUser("live-user-b");
+    const assertion = draft();
+    await first.repository.saveAssertion(tenantA, assertion);
+    await first.repository.saveAssertion(tenantB, assertion);
+    const replay = await runDemoScenario({ assertions: [assertion], scenario: "violating" });
+    const recurrenceEvents = replay.events.slice(0, 3);
+    for (const event of recurrenceEvents) {
+      const scoped = { ...event, tenantId: tenantA };
+      await expect(first.repository.store(scoped, { tenantId: tenantA, provider: scoped.provider, deliveryId: scoped.id })).resolves.toBe("stored");
+    }
+    const duplicate = { ...recurrenceEvents[2]!, tenantId: tenantA };
+    await expect(first.repository.store(duplicate, { tenantId: tenantA, provider: duplicate.provider, deliveryId: duplicate.id })).resolves.toBe("duplicate");
+    for (const event of recurrenceEvents.slice(0, 2)) {
+      const scoped = { ...event, tenantId: tenantB };
+      await first.repository.store(scoped, { tenantId: tenantB, provider: scoped.provider, deliveryId: scoped.id });
+    }
+    expect((await first.repository.loadMonitorSnapshot(tenantA)).counterexamples).toHaveLength(1);
+    expect((await first.repository.loadMonitorSnapshot(tenantB)).counterexamples).toHaveLength(0);
+    await first.runtime.close();
+    runtimes.splice(runtimes.indexOf(first.runtime), 1);
+
+    const restarted = await setup(first.path);
+    const afterA = await restarted.repository.loadMonitorSnapshot(tenantA);
+    const afterB = await restarted.repository.loadMonitorSnapshot(tenantB);
+    expect(afterA.events).toHaveLength(3);
+    expect(afterA.counterexamples).toHaveLength(1);
+    expect(afterA.checkpoints).toHaveLength(1);
+    expect(afterB.events).toHaveLength(2);
+    expect(afterB.counterexamples).toHaveLength(0);
+  });
+
   it("applies a durable daily quota per tenant", async () => {
     const { repository } = await setup();
     const tenant = await repository.tenantForUser("user-a");

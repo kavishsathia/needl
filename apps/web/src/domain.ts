@@ -73,6 +73,39 @@ export interface WorkspaceBootstrap {
   readonly tenantId: string;
   readonly assertions: readonly AssertionDraft[];
   readonly translator: "available" | "unavailable";
+  readonly integrations: readonly IntegrationSummary[];
+}
+
+export interface IntegrationSummary {
+  readonly id: string;
+  readonly provider: string;
+  readonly purpose: string;
+  readonly enabled: boolean;
+  readonly webhookPath?: string;
+}
+
+export interface InvestigationRecord {
+  readonly id: string;
+  readonly integrationId: string;
+  readonly violationId: string;
+  readonly assertionVersion: number;
+  readonly attempt: number;
+  readonly clientReference: string;
+  readonly workflowId?: string;
+  readonly webUrl?: string;
+  readonly status: "queued" | "launching" | "running" | "completed" | "failed" | "stopped" | "launch_unknown" | "failed_to_start" | "callback_lost";
+  readonly lastProgress?: unknown;
+  readonly resultMessage?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface MonitorSnapshot {
+  readonly events: readonly NormalizedEvent[];
+  readonly checkpoints: readonly MonitorCheckpoint[];
+  readonly counterexamples: readonly CounterexampleRecord[];
+  readonly outbox: readonly MonitorOutboxItem[];
+  readonly investigations: readonly InvestigationRecord[];
 }
 
 export interface TranslationProposalResponse {

@@ -13,3 +13,17 @@
 - Remaining work: signed live ingestion through the durable runtime, GitLab investigation dispatch/callback/status persistence, full-stack A/B/auth/security tests, bounded live OpenAI/database smokes, deployment files, UX integration status, and final handoff.
 
 External checks remain separate from local evidence. No push or deployment has been performed.
+
+## 2026-10-15 — signed ingestion and investigation checkpoint
+
+- Added an opaque, server-managed signed webhook route. Provider and tenant are resolved from durable configuration; browser input cannot select either or supply a credential.
+- Added a transactional live monitor store with per-scope checkpoints, traces, processed-input dedupe, counterexamples, and outbox persistence.
+- Connected verified normalized events to the actual runtime monitor and preserved event/restart dedupe semantics.
+- Added GitLab custom-flow launch using the researched REST contract, compact redacted counterexample context, one explicit attempt, and `launch_unknown` handling with no blind retry.
+- Added Standard Webhooks verification and event-id dedupe for GitLab flow callbacks; terminal callbacks cannot be overwritten by later progress.
+- Added server-managed integration summaries and honest frontend connection/investigation states. No configured credential is represented as live.
+- Production signup is closed unless `NEEDL_SIGNUP_ALLOWLIST` explicitly lists approved addresses; auth and translation rate limits remain durable.
+- Added unit/integration coverage for signed-byte tampering, webhook dedupe, live monitor restart, investigation correlation, ambiguous launch behavior, auth enforcement, CSRF/origin checks, signout, and A/B route isolation.
+- Verification: web tests 8 files / 39 tests pass; production TypeScript/Vite build passes.
+
+Neon remains unchanged: the configured OAuth connection still requires interactive reauthorization. No GitLab project credential was discovered, so no external flow was launched.

@@ -1,4 +1,4 @@
-import type { AssertionDraft, DemoBootstrap, DemoReplay, DemoReplayRequest, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
+import type { AssertionDraft, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { credentials: "same-origin", ...init });
@@ -11,6 +11,10 @@ export function fetchBootstrap(): Promise<DemoBootstrap> {
   return requestJson("/api/demo/bootstrap");
 }
 
+export function fetchPublicConfig(): Promise<{ readonly signupEnabled: boolean }> {
+  return requestJson("/api/config");
+}
+
 export function replayDemo(request: DemoReplayRequest): Promise<DemoReplay> {
   return requestJson("/api/replay", {
     method: "POST",
@@ -21,6 +25,10 @@ export function replayDemo(request: DemoReplayRequest): Promise<DemoReplay> {
 
 export function fetchWorkspace(): Promise<WorkspaceBootstrap> {
   return requestJson("/api/workspace");
+}
+
+export function fetchMonitor(): Promise<MonitorSnapshot> {
+  return requestJson("/api/monitor");
 }
 
 export function signUp(input: { readonly name: string; readonly email: string; readonly password: string }): Promise<unknown> {
@@ -53,4 +61,8 @@ export function translateAssertion(text: string): Promise<TranslationProposalRes
 
 export function confirmTranslation(proposalId: string): Promise<unknown> {
   return requestJson(`/api/translations/${encodeURIComponent(proposalId)}/confirm`, { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: "{}" });
+}
+
+export function launchInvestigation(violationId: string): Promise<InvestigationRecord> {
+  return requestJson("/api/investigations", { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: JSON.stringify({ violationId }) });
 }

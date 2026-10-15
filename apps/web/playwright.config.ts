@@ -18,6 +18,13 @@ export default defineConfig({
     url: "http://127.0.0.1:4173/api/health",
     reuseExistingServer: false,
     timeout: 120_000,
+    env: {
+      NODE_ENV: "test",
+      NEEDL_SQLITE_PATH: `.needl/e2e-${process.pid}.sqlite`,
+      BETTER_AUTH_URL: "http://127.0.0.1:4173",
+      NEEDL_TRUSTED_ORIGINS: "http://127.0.0.1:4173",
+      BETTER_AUTH_SECRET: "needl-playwright-secret-that-is-long-enough",
+    },
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 960 } } },

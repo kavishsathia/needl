@@ -66,3 +66,7 @@ export function confirmTranslation(proposalId: string): Promise<unknown> {
 export function launchInvestigation(violationId: string): Promise<InvestigationRecord> {
   return requestJson("/api/investigations", { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: JSON.stringify({ violationId }) });
 }
+
+export function refreshInvestigation(id: string): Promise<InvestigationRecord> {
+  return requestJson(`/api/investigations/${encodeURIComponent(id)}/refresh`, { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: "{}" });
+}

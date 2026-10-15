@@ -95,7 +95,12 @@ describe("GitLab investigations", () => {
       secretEnvName: "NEEDL_TEST_GITLAB_TOKEN",
       config: { purpose: "investigation", baseUrl: "https://gitlab.example", projectId: "needl/test-b", consumerId: 13, tokenType: "private-token" },
     });
-    const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).endsWith("/api/graphql")) {
+        const query = JSON.parse(String(init?.body)) as { variables: { workflowId: string } };
+        expect(query.variables.workflowId).toBe("gid://gitlab/Ai::DuoWorkflows::Workflow/918");
+        return new Response(JSON.stringify({ data: { duoWorkflowWorkflows: { nodes: [{ id: query.variables.workflowId, status: "RUNNING", statusName: "Running", statusGroup: "RUNNING", webUrl: "https://gitlab.example/needl/test/-/automate/agent-sessions/918", updatedAt: "2026-10-15T00:00:00Z" }] } } }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       const sent = JSON.parse(String(init?.body)) as Record<string, unknown>;
       expect(sent).toMatchObject({ project_id: "needl/test", ai_catalog_item_consumer_id: 12, start_workflow: true, allow_agent_to_request_user: false });
       expect(JSON.stringify(sent)).not.toContain("test-private-token");
@@ -108,6 +113,8 @@ describe("GitLab investigations", () => {
     await expect(service.launch(tenantA, violationId)).resolves.toMatchObject({ id: launched.id, status: "running" });
     expect(fetcher).toHaveBeenCalledTimes(1);
     await expect(service.launch(tenantB, violationId)).rejects.toThrow(/not found in this workspace/i);
+    await expect(service.refresh(tenantA, launched.id)).resolves.toMatchObject({ status: "running", workflowId: "918" });
+    expect(fetcher).toHaveBeenCalledTimes(2);
 
     const callbackBody = Buffer.from(JSON.stringify({ event_id: "callback-1", event_type: "flow.completed", client_reference: launched.clientReference, workflow: { id: "918" }, result: { message: "Read-only investigation completed." } }));
     const timestamp = String(Math.floor(Date.now() / 1_000));

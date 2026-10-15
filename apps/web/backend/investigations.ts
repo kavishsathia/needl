@@ -106,6 +106,56 @@ export class GitLabInvestigationService {
     }
   }
 
+  async refresh(tenantId: string, investigationId: string): Promise<InvestigationRecord> {
+    const investigation = await this.repository.getInvestigation(tenantId, investigationId);
+    if (["completed", "failed", "stopped"].includes(investigation.status) || investigation.workflowId === undefined) return investigation;
+    const integration = await this.repository.getIntegration(investigation.integrationId);
+    if (integration.tenantId !== tenantId || !integration.enabled || integration.config.purpose !== "investigation") {
+      throw Object.assign(new Error("GitLab investigation integration is not enabled for this workspace"), { statusCode: 404 });
+    }
+    const config = investigationConfig(integration);
+    const token = this.environment[integration.secretEnvName];
+    if (token === undefined || token.length === 0) throw Object.assign(new Error(`Integration credential ${integration.secretEnvName} is not configured on the server`), { statusCode: 503 });
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    headers[config.tokenType === "bearer" ? "authorization" : "private-token"] = config.tokenType === "bearer" ? `Bearer ${token}` : token;
+    let response: Response;
+    try {
+      response = await this.fetcher(`${config.baseUrl}/api/graphql`, {
+        method: "POST", headers, signal: AbortSignal.timeout(10_000),
+        body: JSON.stringify({
+          query: "query NeedlFlowStatus($workflowId: AiDuoWorkflowsWorkflowID!) { duoWorkflowWorkflows(workflowId: $workflowId) { nodes { id status statusName statusGroup webUrl summary title updatedAt aiCatalogItemVersionId } } }",
+          variables: { workflowId: `gid://gitlab/Ai::DuoWorkflows::Workflow/${investigation.workflowId}` },
+        }),
+      });
+    } catch {
+      throw Object.assign(new Error("GitLab status could not be resolved after a timeout or network failure"), { statusCode: 502 });
+    }
+    let body: unknown;
+    try { body = await response.json(); } catch { body = undefined; }
+    if (!response.ok) throw Object.assign(new Error(`GitLab status lookup failed (${response.status}): ${safeProviderMessage(body, response.statusText || "request failed")}`), { statusCode: 502 });
+    const root = object(body);
+    const data = object(root?.data);
+    const connection = object(data?.duoWorkflowWorkflows);
+    const nodes = Array.isArray(connection?.nodes) ? connection.nodes : [];
+    const node = object(nodes[0]);
+    if (node === undefined) throw Object.assign(new Error("GitLab status lookup returned no workflow owned by this credential"), { statusCode: 404 });
+    const rawStatus = `${text(node.statusGroup) ?? ""} ${text(node.status) ?? ""} ${text(node.statusName) ?? ""}`.toUpperCase();
+    const status = /FAIL|ERROR/.test(rawStatus) ? "failed" as const
+      : /CANCEL|STOP/.test(rawStatus) ? "stopped" as const
+        : /SUCCESS|COMPLETE|FINISH/.test(rawStatus) ? "completed" as const
+          : "running" as const;
+    return this.repository.recordInvestigationStatus(tenantId, investigationId, {
+      status,
+      ...(text(node.webUrl) === undefined ? {} : { webUrl: text(node.webUrl) }),
+      progress: {
+        source: "gitlab-graphql", status: node.status ?? null, statusName: node.statusName ?? null,
+        statusGroup: node.statusGroup ?? null, updatedAt: node.updatedAt ?? null,
+        catalogVersionId: node.aiCatalogItemVersionId ?? null,
+      },
+      ...(text(node.summary) === undefined || status === "running" ? {} : { resultMessage: text(node.summary) }),
+    });
+  }
+
   private async callGitLab(
     integration: StoredIntegration,
     config: GitLabInvestigationConfig,

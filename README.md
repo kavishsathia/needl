@@ -2,7 +2,7 @@
 
 `@needl/integrations` is a strict TypeScript package for authenticating webhook requests, turning selected provider events into evidence-bearing normalized observations, and monitoring those observations with a durable LTL runtime. It covers GitLab, Linear, LaunchDarkly, Sentry, PostHog, Intercom, and Stripe.
 
-The published package does not translate natural language or execute agents. Assertions are trusted configuration supplied as validated JSON AST; violations create transactional outbox requests for a future dispatcher but perform no external action. This repository also contains a separate local-only demonstration frontend in `apps/web`; it uses explicit authoring templates and the actual runtime through a localhost bridge rather than claiming general AI translation or live integrations. The product demo accepts only a conservative safety subset even though the underlying library retains its general LTL and deadline capabilities; see [the safety product policy](docs/safety-product-policy.md).
+The published library package does not translate natural language or execute agents; assertions remain trusted validated JSON AST. The separate application in `apps/web` adds authenticated tenant workspaces, PostgreSQL/SQLite persistence, bounded server-side OpenAI translation, signed webhook ingestion, and an explicitly launched read-only GitLab investigation lifecycle. None of those application integrations silently fall back to a demo or launch without server-managed credentials. The product accepts only a conservative safety subset even though the underlying library retains its general LTL and deadline capabilities; see [the safety product policy](docs/safety-product-policy.md).
 
 ## Design
 
@@ -66,23 +66,23 @@ npm install
 npm run check
 ```
 
-## Run the local frontend demonstration
+## Run the full-stack web application locally
 
-Install the isolated frontend dependencies, then start its Vite client and localhost engine bridge:
+Install the web dependencies, then start its Vite client and local API process:
 
 ```bash
 npm --prefix apps/web ci --legacy-peer-deps
 npm run web:dev
 ```
 
-Open `http://127.0.0.1:5173`. The interface is a deterministic synthetic demo: replayed observations run through the actual `RuntimeMonitor`, authored assertions persist in browser storage, and no provider, LLM, GitLab flow, or external account is contacted. For a production-build preview use:
+Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in local SQLite; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable bounded translation. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
 
 ```bash
 npm run web:build
 npm run web:serve
 ```
 
-The production-build server listens only on `127.0.0.1:4173`. See [SAFETY-UX-HANDOFF.md](SAFETY-UX-HANDOFF.md) for current browser-test commands, screenshots, and integration boundaries.
+The production-build server defaults to `127.0.0.1:4173`; set `HOST` and `PORT` in hosting. Production refuses SQLite and public signup is closed unless `NEEDL_SIGNUP_ALLOWLIST` contains the email. See [deployment readiness](docs/deployment.md) for the prepared hosting contract and secure integration provisioning.
 
 The runtime package has one portable dependency, Zod. SQLite is an optional subpath backed by Node's `node:sqlite`; importing the core or receiver does not load it.
 
@@ -272,5 +272,7 @@ The LTL suites cover every operator, nested formulas, empty and complete traces,
 - `examples/ltl-demo.ts` — deterministic synthetic cross-provider monitoring demo
 - `docs/providers.md` — setup, coverage, delivery, and source details
 - `docs/ltl-semantics.md` — normative monitor semantics and operational policies
+- `docs/deployment.md` — authenticated hosting, secrets, integration records, and hosted acceptance
+- `apps/web/backend` — auth, persistence, translation, signed ingestion, live monitor store, and GitLab investigation service
 - `tests` — unit, persistence, and HTTP end-to-end tests
 - `FINAL.md` — verified handoff and remaining limitations

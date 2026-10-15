@@ -42,8 +42,10 @@ function securityHeaders() {
     "cache-control": "no-store",
     "content-security-policy": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     "referrer-policy": "same-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
     "x-content-type-options": "nosniff",
     "x-frame-options": "DENY",
+    ...(process.env.NODE_ENV === "production" ? { "strict-transport-security": "max-age=31536000; includeSubDomains" } : {}),
   };
 }
 
@@ -205,6 +207,12 @@ const server = createServer(async (request, response) => {
       const body = await readJson(request) as { violationId?: unknown };
       if (typeof body.violationId !== "string" || body.violationId.length === 0) throw new Error("violationId is required");
       json(response, 200, await investigations.launch(tenantId, body.violationId)); return;
+    }
+    const investigationRefresh = url.pathname.match(/^\/api\/investigations\/([^/]+)\/refresh$/);
+    if (request.method === "POST" && investigationRefresh !== null) {
+      assertMutationOrigin(request);
+      const { tenantId } = await requireWorkspace(request);
+      json(response, 200, await investigations.refresh(tenantId, decodeURIComponent(investigationRefresh[1]!))); return;
     }
     const confirmation = url.pathname.match(/^\/api\/translations\/([^/]+)\/confirm$/);
     if (request.method === "POST" && confirmation !== null) {

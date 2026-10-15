@@ -110,4 +110,20 @@ describe("NeedlRepository", () => {
     await expect(repository.consumeTranslationQuota(tenant, now)).resolves.toBe(0);
     await expect(repository.consumeTranslationQuota(tenant, now)).rejects.toBeInstanceOf(QuotaExceededError);
   });
+
+  it("atomically caps concurrent translation requests and stale writes", async () => {
+    const { repository } = await setup();
+    const tenant = await repository.tenantForUser("concurrent-user");
+    const now = new Date("2026-10-14T12:00:00.000Z");
+    const quota = await Promise.allSettled(Array.from({ length: 4 }, () => repository.consumeTranslationQuota(tenant, now)));
+    expect(quota.filter((result) => result.status === "fulfilled")).toHaveLength(2);
+    expect(quota.filter((result) => result.status === "rejected" && result.reason instanceof QuotaExceededError)).toHaveLength(2);
+
+    await repository.saveAssertion(tenant, draft());
+    const first = { ...draft(), expectation: "Concurrent edit one", definition: { ...draft().definition, name: "Concurrent edit one", version: 2 }, updatedAt: "2026-02-18T10:40:00.000Z" };
+    const second = { ...draft(), expectation: "Concurrent edit two", definition: { ...draft().definition, name: "Concurrent edit two", version: 2 }, updatedAt: "2026-02-18T10:40:01.000Z" };
+    const writes = await Promise.allSettled([repository.saveAssertion(tenant, first, 1), repository.saveAssertion(tenant, second, 1)]);
+    expect(writes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(writes.filter((result) => result.status === "rejected" && result.reason instanceof StaleAssertionError)).toHaveLength(1);
+  });
 });

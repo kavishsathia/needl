@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 import type { NormalizedEvent } from "../../../src/core/types.js";
 import type { AssertionDefinition } from "../../../src/ltl/assertion.js";
 import { RuntimeMonitor } from "../../../src/ltl/runtime.js";
@@ -97,14 +97,21 @@ export class NeedlRepository implements DeduplicatingEventSink {
       if (expectedVersion !== undefined && current?.version !== expectedVersion) throw new StaleAssertionError();
       if (current !== undefined && draft.definition.version <= current.version && expectedVersion === undefined) throw new StaleAssertionError();
       const serialized = JSON.stringify(draft);
-      await transaction.insertInto("assertions").values({
-        tenantId, assertionId: draft.localId, version: draft.definition.version, expectation: draft.expectation,
-        status: draft.status, definitionJson: JSON.stringify(draft.definition), draftJson: serialized,
-        createdAt: current?.createdAt ?? draft.createdAt, updatedAt: draft.updatedAt,
-      }).onConflict((conflict) => conflict.columns(["tenantId", "assertionId"]).doUpdateSet({
-        version: draft.definition.version, expectation: draft.expectation, status: draft.status,
-        definitionJson: JSON.stringify(draft.definition), draftJson: serialized, updatedAt: draft.updatedAt,
-      })).execute();
+      if (current === undefined) {
+        const inserted = await transaction.insertInto("assertions").values({
+          tenantId, assertionId: draft.localId, version: draft.definition.version, expectation: draft.expectation,
+          status: draft.status, definitionJson: JSON.stringify(draft.definition), draftJson: serialized,
+          createdAt: draft.createdAt, updatedAt: draft.updatedAt,
+        }).onConflict((conflict) => conflict.columns(["tenantId", "assertionId"]).doNothing()).executeTakeFirst();
+        if (Number(inserted.numInsertedOrUpdatedRows ?? 0) !== 1) throw new StaleAssertionError();
+      } else {
+        const updated = await transaction.updateTable("assertions").set({
+          version: draft.definition.version, expectation: draft.expectation, status: draft.status,
+          definitionJson: JSON.stringify(draft.definition), draftJson: serialized, updatedAt: draft.updatedAt,
+        }).where("tenantId", "=", tenantId).where("assertionId", "=", draft.localId)
+          .where("version", "=", current.version).executeTakeFirst();
+        if (Number(updated.numUpdatedRows) !== 1) throw new StaleAssertionError();
+      }
       await transaction.insertInto("assertionVersions").values({ tenantId, assertionId: draft.localId, version: draft.definition.version, draftJson: serialized, createdAt: draft.updatedAt }).onConflict((conflict) => conflict.columns(["tenantId", "assertionId", "version"]).doNothing()).execute();
     });
     return draft;
@@ -172,10 +179,11 @@ export class NeedlRepository implements DeduplicatingEventSink {
   async consumeTranslationQuota(tenantId: string, now = new Date()): Promise<number> {
     const day = now.toISOString().slice(0, 10);
     return this.db.transaction().execute(async (transaction) => {
-      const current = await transaction.selectFrom("translationUsage").select("requestCount").where("tenantId", "=", tenantId).where("usageDay", "=", day).executeTakeFirst();
-      if ((current?.requestCount ?? 0) >= this.translationDailyLimit) throw new QuotaExceededError();
-      const count = (current?.requestCount ?? 0) + 1;
-      await transaction.insertInto("translationUsage").values({ tenantId, usageDay: day, requestCount: count }).onConflict((conflict) => conflict.columns(["tenantId", "usageDay"]).doUpdateSet({ requestCount: count })).execute();
+      const row = await transaction.insertInto("translationUsage").values({ tenantId, usageDay: day, requestCount: 1 })
+        .onConflict((conflict) => conflict.columns(["tenantId", "usageDay"]).doUpdateSet({ requestCount: sql<number>`request_count + 1` }))
+        .returning("requestCount").executeTakeFirstOrThrow();
+      const count = row.requestCount;
+      if (count > this.translationDailyLimit) throw new QuotaExceededError();
       return this.translationDailyLimit - count;
     });
   }
@@ -294,6 +302,26 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const row = await this.db.selectFrom("investigations").selectAll().where("tenantId", "=", tenantId).where("id", "=", id).executeTakeFirst();
     if (row === undefined) throw Object.assign(new Error("Investigation was not found in this workspace"), { statusCode: 404 });
     return investigationFromRow(row);
+  }
+
+  async recordInvestigationStatus(tenantId: string, id: string, input: {
+    readonly status: "running" | "completed" | "failed" | "stopped";
+    readonly webUrl?: string;
+    readonly progress: unknown;
+    readonly resultMessage?: string;
+  }): Promise<InvestigationRecord> {
+    const row = await this.db.selectFrom("investigations").select("status")
+      .where("tenantId", "=", tenantId).where("id", "=", id).executeTakeFirst();
+    if (row === undefined) throw Object.assign(new Error("Investigation was not found in this workspace"), { statusCode: 404 });
+    if (["completed", "failed", "stopped"].includes(row.status)) return this.getInvestigation(tenantId, id);
+    await this.db.updateTable("investigations").set({
+      status: input.status,
+      ...(input.webUrl === undefined ? {} : { webUrl: input.webUrl }),
+      lastProgressJson: JSON.stringify(input.progress),
+      ...(input.resultMessage === undefined ? {} : { resultMessage: input.resultMessage.slice(0, 10_000) }),
+      updatedAt: new Date().toISOString(),
+    }).where("tenantId", "=", tenantId).where("id", "=", id).execute();
+    return this.getInvestigation(tenantId, id);
   }
 
   async applyInvestigationCallback(input: {

@@ -9,6 +9,8 @@
     "test": "vitest run --config vitest.config.ts",
     "serve": "tsx server.ts",
     "db:migrate": "tsx backend/migrate.ts",
+    "db:configure-integrations": "tsx backend/configure-integrations.ts",
+    "smoke:openai": "tsx backend/live-openai-smoke.ts",
     "e2e": "playwright test"
   },
   "dependencies": {

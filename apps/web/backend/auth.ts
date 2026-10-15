@@ -26,7 +26,13 @@ export function createAuthOptions(runtime: DatabaseRuntime, environment: NodeJS.
     emailAndPassword: { enabled: true, disableSignUp: !signupEnabled(environment), minPasswordLength: 12, maxPasswordLength: 128 },
     session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24 },
     trustedOrigins,
-    rateLimit: { enabled: true, window: 60, max: 20, storage: "database" as const },
+    rateLimit: {
+      enabled: true, window: 60, max: 20, storage: "database" as const,
+      customRules: {
+        "/sign-up/email": { window: 60, max: environment.NODE_ENV === "production" ? 3 : 100 },
+        "/sign-in/email": { window: 10, max: environment.NODE_ENV === "production" ? 3 : 100 },
+      },
+    },
     databaseHooks: {
       user: {
         create: {

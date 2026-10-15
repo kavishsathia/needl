@@ -220,7 +220,8 @@ test("meaning chips update canonical semantics and link phrases to trace evidenc
 
   await expect(detail.getByRole("heading", { name: "No matching evidence" })).toBeVisible();
   const changed = await page.evaluate(() => {
-    const saved = tenantStorage();
+    const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
+    const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
     const draft = saved.assertions.find((item: { localId: string }) => item.localId === "linked-issue-recurrence");
     return { version: draft.definition.version, formula: draft.definition.formula, propositions: draft.definition.propositions, scope: draft.definition.scope };
   });
@@ -267,7 +268,8 @@ test("unsupported saved rules are preserved disabled and excluded from replay", 
   await expect(page.getByRole("button", { name: "Open Every paid order should eventually be fulfilled" })).toBeVisible();
   await expect(page.getByText("Preserved but disabled", { exact: false })).toBeVisible();
   const stored = await page.evaluate((id) => {
-    const saved = tenantStorage();
+    const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
+    const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
     return saved.assertions.find((item: { localId: string }) => item.localId === id);
   }, localId);
   expect(stored.expectation).toBe("Every paid order should eventually be fulfilled");
@@ -300,7 +302,8 @@ test("migration restores canonical chips and business evidence for a legacy auth
   await detail.getByRole("button", { name: /Counterexamples/ }).click();
   await expect(detail.locator(".counterexample").getByRole("heading", { name: "The linked issue occurred again after a fix was deployed in Production." })).toBeVisible();
   await expect.poll(async () => page.evaluate((id) => {
-    const saved = tenantStorage();
+    const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
+    const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
     return saved.assertions.find((item: { localId: string }) => item.localId === id)?.meaning?.templateId;
   }, localId)).toBe("recurrence");
 });

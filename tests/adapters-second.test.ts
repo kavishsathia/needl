@@ -30,6 +30,27 @@ describe("SentryAdapter", () => {
     expect(result.event.evidence.providerPayload).toMatchObject({ status: "resolved", shortId: "NEEDL-9" });
   });
 
+  it("normalizes a documented event alert: event_id subject, Unix-seconds time, tags, and tagged environment", async () => {
+    const rawBody = await fixture("sentry-event-alert.json");
+    const secret = "sentry-client-secret";
+    const result = await new SentryAdapter().ingest(request(rawBody, {
+      "Sentry-Hook-Signature": createHmac("sha256", secret).update(rawBody).digest("hex"),
+      "Sentry-Hook-Resource": "event_alert",
+      "Request-ID": "sentry-delivery-2",
+    }), { secrets: [secret] });
+    expect(result.status).toBe("accepted");
+    if (result.status !== "accepted") return;
+    expect(result.event.providerEventType).toBe("event_alert.triggered");
+    expect(result.event.subject).toMatchObject({ type: "error_event", id: "e4874d664c3540c1a32eab185f12c5ab", name: "CheckoutError: retry loop" });
+    expect(result.event.occurredAt).toBe("2026-10-14T09:00:00.677Z");
+    expect(result.event.relationships).toEqual(expect.arrayContaining([
+      { type: "project", id: "12", evidencePath: "/data/event/project" },
+      { type: "tag.linear_issue", id: "NDL-42", evidencePath: "/data/event/tags/1" },
+      { type: "tag.browser.name", id: "Chrome", evidencePath: "/data/event/tags/2" },
+      { type: "environment", id: "production", evidencePath: "/data/event/tags/0" },
+    ]));
+  });
+
   it("rejects a signature made for different bytes", async () => {
     const rawBody = await fixture("sentry-issue.json");
     const result = await new SentryAdapter().ingest(request(rawBody, {

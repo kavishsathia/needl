@@ -1,0 +1,30 @@
+{
+  "action": "triggered",
+  "actor": {
+    "id": "sentry",
+    "name": "Sentry",
+    "type": "application"
+  },
+  "data": {
+    "event": {
+      "event_id": "e4874d664c3540c1a32eab185f12c5ab",
+      "issue_id": "1117540176",
+      "issue_url": "https://needl.sentry.io/api/0/issues/1117540176/",
+      "project": 12,
+      "release": null,
+      "timestamp": 1791968400.677,
+      "title": "CheckoutError: retry loop",
+      "url": "https://needl.sentry.io/api/0/projects/needl/api/events/e4874d664c3540c1a32eab185f12c5ab/",
+      "web_url": "https://needl.sentry.io/organizations/needl/issues/1117540176/events/e4874d664c3540c1a32eab185f12c5ab/",
+      "tags": [
+        ["environment", "production"],
+        ["linear_issue", "NDL-42"],
+        ["browser.name", "Chrome"]
+      ]
+    },
+    "triggered_rule": "Checkout errors"
+  },
+  "installation": {
+    "uuid": "sentry-installation-1"
+  }
+}

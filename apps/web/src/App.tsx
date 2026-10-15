@@ -23,7 +23,7 @@ import type {
   TranslationProposalResponse,
   WorkspaceBootstrap,
 } from "./domain.js";
-import { MAX_ASSERTIONS } from "./domain.js";
+import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
 import { Icon } from "./icons.js";
 import { parseStoredAssertions, serializeAssertions, storageKeyForTenant } from "./storage.js";
 import {
@@ -259,16 +259,17 @@ function MeaningRule({ draft, activeField, onActiveField, onChange }: {
               setOpenField(null);
               if (option.value !== selected.value) onChange?.(field.id, option.value);
             }}
-          ><span>{option.label}</span><small>{option.evidence === "matched" ? "Fixture evidence available" : "No matching fixture evidence"}</small></button>)}
+          ><span>{option.label}</span><small>{option.evidence === "matched" ? "Sample evidence available" : "No matching sample evidence"}</small></button>)}
         </span> : null}
       </span>;
     })}
   </p>;
 }
 
-function Sidebar({ section, replay, onNavigate }: {
+function Sidebar({ section, replay, liveSources, onNavigate }: {
   readonly section: Section;
   readonly replay: DemoReplay | null;
+  readonly liveSources: number;
   readonly onNavigate: (section: Section) => void;
 }) {
   const items: readonly { id: Section; label: string; icon: string }[] = [
@@ -286,8 +287,8 @@ function Sidebar({ section, replay, onNavigate }: {
       </button>)}
     </nav>
     <div className="sidebar-foot">
-      <div className="connection-summary"><span className="live-dot"/>7 fixture sources</div>
-      <span>Local demo · no live accounts</span>
+      <div className="connection-summary"><span className="live-dot"/>{liveSources > 0 ? `${liveSources} live source${liveSources === 1 ? "" : "s"}` : "Sample data only"}</div>
+      <span>{liveSources > 0 ? "Signed webhooks + sample replay" : "No live connections"}</span>
     </div>
   </aside>;
 }
@@ -374,8 +375,8 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
     <div className="board-heading">
       <div><span className="eyebrow">Acme / Production</span><h1>Assertions</h1><p>Catch a broken promise while it happens.</p></div>
       <div className="replay-control">
-        <span>Deterministic demo</span>
-        <button onClick={() => onReplay(replay?.scenario === "healthy" ? "violating" : "healthy")} title="Switch and replay the fixture scenario"><Icon name="replay"/>Replay {replay?.scenario === "healthy" ? "violations" : "healthy path"}</button>
+        <span>Sample replay</span>
+        <button onClick={() => onReplay(replay?.scenario === "healthy" ? "violating" : "healthy")} title="Switch and replay the sample scenario"><Icon name="replay"/>Replay {replay?.scenario === "healthy" ? "violations" : "healthy path"}</button>
       </div>
     </div>
     <form className="composer" onSubmit={submit}>
@@ -400,8 +401,9 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
   </main>;
 }
 
-function TraceTimeline({ trace, draft, activeField, onActiveField }: {
+function TraceTimeline({ trace, sample, draft, activeField, onActiveField }: {
   readonly trace: readonly MonitorTraceItem[];
+  readonly sample: boolean;
   readonly draft: AssertionDraft;
   readonly activeField?: string;
   readonly onActiveField: (fieldId: string) => void;
@@ -426,7 +428,7 @@ function TraceTimeline({ trace, draft, activeField, onActiveField }: {
           <p>{item.source.subject.name ?? item.source.subject.id}</p>
           <div className="trace-links">
             {eventField !== undefined ? <button type="button" onClick={() => onActiveField(eventField)}>Highlight {eventFieldLabel?.toLowerCase() ?? "its role"} in the rule</button> : null}
-            {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">Synthetic source ↗</a> : null}
+            {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">{sample ? "Sample source" : "Source"} ↗</a> : null}
           </div>
           <details className="advanced-evidence"><summary>Advanced event details</summary>
             <code>{item.source.kind}</code>
@@ -446,11 +448,11 @@ function CounterexampleView({ violation, draft, activeField, onActiveField }: {
   readonly onActiveField: (fieldId: string) => void;
 }) {
   return <article className="counterexample">
-    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{meaningViolationText(draft) ?? "The observed event sequence broke this rule."}</h3></div><Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
+    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{meaningViolationText(draft) ?? "The observed event sequence broke this rule."}</h3></div>{violation.tenantId === DEMO_TENANT_ID ? null : <Pill tone="monitoring">Live</Pill>}<Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
     <div className="binding-row">{Object.entries(violation.scope).map(([key, value]) => <span key={key}><small>{key}</small>{value}</span>)}</div>
-    <TraceTimeline trace={violation.trace} draft={draft} activeField={activeField} onActiveField={onActiveField}/>
+    <TraceTimeline trace={violation.trace} sample={violation.tenantId === DEMO_TENANT_ID} draft={draft} activeField={activeField} onActiveField={onActiveField}/>
     <details className="advanced-evidence counterexample-engine-details"><summary>Advanced engine details</summary><dl><div><dt>Technical cause</dt><dd><code>{violation.cause}</code></dd></div><div><dt>Engine explanation</dt><dd>{violation.explanation}</dd></div></dl></details>
-    <p className="evidence-note">This is a sufficient engine trace, not a minimality claim. Source references are synthetic fixture evidence.</p>
+    <p className="evidence-note">This is a sufficient engine trace, not a minimality claim. {violation.tenantId === DEMO_TENANT_ID ? "Source references are sample evidence." : "Built from signed webhooks received by this workspace."}</p>
   </article>;
 }
 
@@ -508,14 +510,14 @@ function AssertionDetail({ draft, templates, replay, investigations, investigati
           <section className="detail-section"><span className="section-index">02</span><div><h3>Observed scope</h3><p>Events are correlated by {draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")}.</p><div className="provider-list">{providersFor(draft, templates).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div></div></section>
           <section className="detail-section"><span className="section-index">03</span><div><h3>Investigation state</h3><div className="investigation-card"><span className="simulated-mark">{investigation?.status.toUpperCase() ?? (outbox === undefined ? "NOT REQUESTED" : "READY")}</span><div><strong>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Counterexample ready for review") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</strong><p>{investigation === undefined ? (outbox === undefined ? "Needl only offers an investigation after a counterexample." : investigationReady ? "A configured, read-only GitLab flow can be started explicitly. Needl never retries an ambiguous launch." : "The durable outbox is ready, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>{investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab</a> : null}</div><button disabled={investigation === undefined ? latestViolation === undefined || !investigationReady : !refreshable} onClick={() => investigation !== undefined ? onRefreshInvestigation(investigation.id) : latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined && !refreshable ? "This attempt has no refreshable workflow" : undefined}>{investigation === undefined ? "Start investigation" : refreshable ? "Refresh status" : "Attempt recorded"}</button></div></div></section>
           {draft.status === "needs-review" ? <section className="review-panel"><Icon name="warning"/><div><h3>Preserved for review</h3><p>{draft.reviewReason} Your wording and advanced specification remain stored, but this rule cannot be enabled.</p></div></section> : null}
-          {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>{violationSummary(draft)}</h3><p>Select a phrase above or an evidence link below to see how the trace supports that part of the rule.</p><CounterexampleView violation={violations.at(-1)!} draft={draft} activeField={activeField} onActiveField={setActiveField}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching fixture evidence. This is unavailable evidence, not proof that the rule holds." : "The current fixture produced no breaking event for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
+          {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>{violationSummary(draft)}</h3><p>Select a phrase above or an evidence link below to see how the trace supports that part of the rule.</p><CounterexampleView violation={violations.at(-1)!} draft={draft} activeField={activeField} onActiveField={setActiveField}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching evidence yet. This is unavailable evidence, not proof that the rule holds." : "No breaking event has been observed for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
         </> : null}
-        {tab === "counterexamples" ? violations.length > 0 ? violations.map((violation) => <CounterexampleView key={violation.id} violation={violation} draft={draft} activeField={activeField} onActiveField={setActiveField}/>) : <EmptyState title="No counterexamples">Replay the violating fixture to exercise the monitor, or inspect the current evidence in Activity.</EmptyState> : null}
+        {tab === "counterexamples" ? violations.length > 0 ? violations.map((violation) => <CounterexampleView key={violation.id} violation={violation} draft={draft} activeField={activeField} onActiveField={setActiveField}/>) : <EmptyState title="No counterexamples">Replay the violating sample, send a breaking event through a connected source, or inspect the current evidence in Activity.</EmptyState> : null}
         {tab === "activity" ? <EventTable events={relatedEvents}/> : null}
       </div>
     </div>
     <footer className="detail-footer">
-      <div><span>Violations · current replay</span><strong>{violations.length}</strong></div>
+      <div><span>Counterexamples</span><strong>{violations.length}</strong></div>
       <div><span>Last observed</span><strong>{checkpoint?.lastLogicalTime ? `${formatTime(checkpoint.lastLogicalTime)} UTC` : "Unavailable"}</strong></div>
       <button onClick={onCopy}><Icon name="copy"/>Copy local link</button>
     </footer>
@@ -523,7 +525,7 @@ function AssertionDetail({ draft, templates, replay, investigations, investigati
 }
 
 function EventTable({ events }: { readonly events: DemoReplay["events"] }) {
-  if (events.length === 0) return <EmptyState title="No matching activity">This assertion has no provider-matched fixture events.</EmptyState>;
+  if (events.length === 0) return <EmptyState title="No matching activity">This assertion has no provider-matched events yet.</EmptyState>;
   return <div className="event-table">{events.map((event) => <article key={event.id}>
     <span className={`provider-icon provider-icon--${event.provider}`}>{providerGlyphs[event.provider]}</span>
     <div><strong>{event.subject.name ?? event.subject.id}</strong><p>{event.kind}</p><span>{event.relationships.map((item) => `${item.type}: ${item.id}`).join(" · ")}</span></div>
@@ -532,9 +534,9 @@ function EventTable({ events }: { readonly events: DemoReplay["events"] }) {
 }
 
 function ActivityPage({ replay }: { readonly replay: DemoReplay | null }) {
-  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Engine evidence log</span><h1>Activity</h1><p>Every row below comes from the currently replayed synthetic fixture.</p></div>
+  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Engine evidence log</span><h1>Activity</h1><p>Sample replay events plus signed webhooks received by this workspace.</p></div>
     <div className="page-summary"><div><span>Normalized events</span><strong>{replay?.events.length ?? 0}</strong></div><div><span>Counterexamples</span><strong>{replay?.violations.length ?? 0}</strong></div><div><span>Outbox requests</span><strong>{replay?.outbox.length ?? 0}</strong></div><div><span>Scenario</span><strong>{replay?.scenario ?? "loading"}</strong></div></div>
-    <section className="page-panel"><div className="panel-heading"><div><h2>Observation timeline</h2><p>Times are fixed in UTC so replay results stay deterministic.</p></div><Pill tone="demo">Synthetic</Pill></div><EventTable events={replay?.events ?? []}/></section>
+    <section className="page-panel"><div className="panel-heading"><div><h2>Observation timeline</h2><p>All times are UTC.</p></div></div><EventTable events={replay?.events ?? []}/></section>
   </main>;
 }
 
@@ -542,8 +544,8 @@ function ConnectionsPage({ replay, integrations }: { readonly replay: DemoReplay
   const count = (provider: Provider) => replay?.events.filter((event) => event.provider === provider).length ?? 0;
   const connected = (provider: Provider) => integrations.find((item) => item.provider === provider && item.purpose === "ingestion" && item.enabled);
   return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Signed evidence routes</span><h1>Connections</h1><p>Enabled routes verify provider signatures on exact request bytes before durable processing.</p></div>
-    {integrations.length === 0 ? <div className="notice"><Icon name="warning"/><div><strong>Demo sources are not live connections</strong><p>No server-managed integration is configured. The visible activity remains deterministic fixture evidence and no browser secret can enable a route.</p></div></div> : <div className="notice"><Icon name="check"/><div><strong>{integrations.filter((item) => item.enabled).length} server-managed integration{integrations.filter((item) => item.enabled).length === 1 ? "" : "s"}</strong><p>Credentials remain server-side; disabled routes return not found.</p></div></div>}
-    <div className="connection-grid">{providers.map((provider) => <article key={provider}><span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span><div><h2>{providerNames[provider]}</h2><p>{count(provider)} event{count(provider) === 1 ? "" : "s"} in current fixture</p></div><Pill tone={connected(provider) ? "monitoring" : count(provider) > 0 ? "fixture" : "unavailable"}>{connected(provider) ? "Signed route ready" : count(provider) > 0 ? "Fixture ready" : "No event"}</Pill><dl><div><dt>Mode</dt><dd>{connected(provider) ? "Durable signed ingestion" : "Read-only replay"}</dd></div><div><dt>Credentials</dt><dd>{connected(provider) ? "Server-managed" : "Not configured"}</dd></div></dl></article>)}</div>
+    {integrations.length === 0 ? <div className="notice"><Icon name="warning"/><div><strong>Demo sources are not live connections</strong><p>No server-managed integration is configured. Activity shows sample replay data only, and no browser secret can enable a route.</p></div></div> : <div className="notice"><Icon name="check"/><div><strong>{integrations.filter((item) => item.enabled).length} server-managed integration{integrations.filter((item) => item.enabled).length === 1 ? "" : "s"}</strong><p>Credentials remain server-side; disabled routes return not found.</p></div></div>}
+    <div className="connection-grid">{providers.map((provider) => <article key={provider}><span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span><div><h2>{providerNames[provider]}</h2><p>{count(provider)} event{count(provider) === 1 ? "" : "s"} received</p></div><Pill tone={connected(provider) ? "monitoring" : count(provider) > 0 ? "fixture" : "unavailable"}>{connected(provider) ? "Signed route ready" : count(provider) > 0 ? "Sample only" : "No event"}</Pill><dl><div><dt>Mode</dt><dd>{connected(provider) ? "Durable signed ingestion" : "Sample replay"}</dd></div><div><dt>Credentials</dt><dd>{connected(provider) ? "Server-managed" : "Not configured"}</dd></div></dl></article>)}</div>
   </main>;
 }
 
@@ -559,7 +561,7 @@ function SettingsPage({ assertions, templates, user, onRestore, onClear, onSignO
   return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Workspace preferences</span><h1>Settings</h1><p>Signed in as {user.email}. Assertion changes are stored server-side and cached in this browser.</p></div>
     <section className="settings-panel"><div><h2>Account session</h2><p>Signing out revokes this browser session without deleting workspace data.</p></div><button onClick={onSignOut}>Sign out</button></section>
     <section className="settings-panel"><div><h2>Demo workspace</h2><p>Restore the three reviewed sample assertions. Your {localCount} locally authored assertion{localCount === 1 ? "" : "s"} will be preserved.</p></div><button onClick={onRestore}>Restore sample rules</button></section>
-    <section className="settings-panel"><div><h2>Locally authored assertions</h2><p>Remove custom assertions from browser storage. This action requires confirmation and does not change engine fixtures.</p></div><button className="danger-button" onClick={onClear} disabled={localCount === 0} title={localCount === 0 ? "There are no local assertions to remove" : undefined}>Remove local assertions</button></section>
+    <section className="settings-panel"><div><h2>Locally authored assertions</h2><p>Remove custom assertions from browser storage. This action requires confirmation and does not change sample data.</p></div><button className="danger-button" onClick={onClear} disabled={localCount === 0} title={localCount === 0 ? "There are no local assertions to remove" : undefined}>Remove local assertions</button></section>
     <section className="settings-panel is-muted"><div><h2>Live provider and GitLab setup</h2><p>Unavailable in this frontend. Configure credentials, webhook routes, durable production storage, and a dispatcher on a backend before enabling live controls.</p></div><button disabled title="Live provider setup is outside this local demo">Configure live services</button></section>
   </main>;
 }
@@ -862,7 +864,7 @@ export function App() {
   if (workspace === null) return <AuthScreen signupEnabled={signupAllowed} onAuthenticated={() => { setLoading(true); setError(null); setAuthGeneration((value) => value + 1); }}/>;
   return <div className={`app-shell ${selected !== undefined ? "detail-open" : ""}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
-    <Sidebar section={section} replay={evidence} onNavigate={(next) => navigate(next)}/>
+    <Sidebar section={section} replay={evidence} liveSources={workspace.integrations.filter((item) => item.purpose === "ingestion" && item.enabled).length} onNavigate={(next) => navigate(next)}/>
     <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
       {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}

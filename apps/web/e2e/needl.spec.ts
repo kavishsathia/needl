@@ -59,7 +59,7 @@ test("complete assertion journey uses engine evidence and persists authored stat
   const consoleErrors = watchConsole(page);
   await page.goto("/#/assertions");
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
-  await expect(page.getByText("Deterministic demo")).toBeVisible();
+  await expect(page.getByText("Sample replay")).toBeVisible();
   await expect(page.locator(".assertion-card")).toHaveCount(3);
 
   await page.screenshot({ path: fileURLToPath(new URL("safety-desktop-board.png", screenshotDir)), fullPage: true });

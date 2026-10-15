@@ -8,6 +8,7 @@
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test": "vitest run --config vitest.config.ts",
     "serve": "tsx server.ts",
+    "db:migrate": "tsx backend/migrate.ts",
     "e2e": "playwright test"
   },
   "dependencies": {

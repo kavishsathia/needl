@@ -114,4 +114,10 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const result = await this.db.updateTable("translationProposals").set({ status: "confirmed", confirmedAt: new Date().toISOString() }).where("id", "=", proposalId).where("tenantId", "=", tenantId).where("status", "=", "pending").executeTakeFirst();
     if (Number(result.numUpdatedRows) !== 1) throw new Error("Translation proposal is missing, belongs to another workspace, or was already used");
   }
+
+  async getTranslationProposal(tenantId: string, proposalId: string): Promise<{ inputText: string; proposal: unknown; status: string }> {
+    const row = await this.db.selectFrom("translationProposals").select(["inputText", "proposalJson", "status"]).where("id", "=", proposalId).where("tenantId", "=", tenantId).executeTakeFirst();
+    if (row === undefined) throw new Error("Translation proposal was not found in this workspace");
+    return { inputText: row.inputText, proposal: JSON.parse(row.proposalJson), status: row.status };
+  }
 }

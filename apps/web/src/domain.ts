@@ -67,3 +67,22 @@ export interface StoredAssertionEnvelope {
   readonly version: typeof STORAGE_VERSION;
   readonly assertions: readonly AssertionDraft[];
 }
+
+export interface WorkspaceBootstrap {
+  readonly user: { readonly id: string; readonly name: string; readonly email: string };
+  readonly tenantId: string;
+  readonly assertions: readonly AssertionDraft[];
+  readonly translator: "available" | "unavailable";
+}
+
+export interface TranslationProposalResponse {
+  readonly proposalId: string;
+  readonly remaining: number;
+  readonly proposal: {
+    readonly supported: boolean;
+    readonly templateId?: TemplateId;
+    readonly values?: Readonly<Record<string, string>>;
+    readonly explanation: string;
+    readonly rejectionReason?: string;
+  };
+}

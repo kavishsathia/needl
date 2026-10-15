@@ -23,6 +23,35 @@
 }
 
 * { box-sizing: border-box; }
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(211, 151, 53, .16), transparent 32rem),
+    var(--paper, #f7f4ed);
+}
+
+.auth-card {
+  width: min(460px, 100%);
+  padding: 38px;
+  border: 1px solid rgba(30, 29, 26, .15);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .86);
+  box-shadow: 0 28px 80px rgba(31, 29, 23, .12);
+}
+
+.auth-card > .brand { display: block; margin-bottom: 40px; font-size: 1.7rem; }
+.auth-card h1 { margin: 7px 0 9px; font-size: clamp(2rem, 6vw, 3rem); letter-spacing: -.055em; }
+.auth-card > p { margin: 0 0 28px; color: var(--muted, #6f6b62); line-height: 1.55; }
+.auth-card form { display: grid; gap: 16px; }
+.auth-card label { display: grid; gap: 7px; font-size: .76rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.auth-card input { width: 100%; min-height: 48px; padding: 0 14px; border: 1px solid rgba(30, 29, 26, .22); border-radius: 10px; background: #fff; font: inherit; }
+.auth-card form > button { min-height: 48px; margin-top: 4px; }
+.auth-switch { width: 100%; margin-top: 22px; border: 0; background: none; color: inherit; font-weight: 650; cursor: pointer; }
+.template-list button.is-suggested { outline: 2px solid var(--amber, #c98413); outline-offset: 2px; }
 html { background: var(--bg); scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--bg); }
 button, input, textarea { font: inherit; }

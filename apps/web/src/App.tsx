@@ -11,17 +11,19 @@ import {
 import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
 import { createDraftFromTemplate, formulaText, updateDraft, updateMeaningChoice } from "./authoring.js";
-import { fetchBootstrap, replayDemo } from "./api.js";
+import { confirmTranslation, fetchBootstrap, fetchWorkspace, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
   AuthoringTemplate,
   DemoReplay,
   DemoReplayRequest,
+  TranslationProposalResponse,
+  WorkspaceBootstrap,
 } from "./domain.js";
-import { MAX_ASSERTIONS, STORAGE_KEY } from "./domain.js";
+import { MAX_ASSERTIONS } from "./domain.js";
 import { Icon } from "./icons.js";
-import { parseStoredAssertions, serializeAssertions } from "./storage.js";
+import { parseStoredAssertions, serializeAssertions, storageKeyForTenant } from "./storage.js";
 import {
   defaultMeaningValues,
   eventKindsForField,
@@ -155,7 +157,46 @@ function Pill({ tone, children }: { readonly tone: string; readonly children: Re
 }
 
 function AppSkeleton() {
-  return <div className="boot-screen"><span className="brand">needl<span className="brand-dot">.</span></span><div className="boot-line"/><p>Preparing deterministic demo…</p></div>;
+  return <div className="boot-screen"><span className="brand">needl<span className="brand-dot">.</span></span><div className="boot-line"/><p>Opening your workspace…</p></div>;
+}
+
+function AuthScreen({ onAuthenticated }: { readonly onAuthenticated: () => void }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      if (mode === "signup") await signUp({ name: name.trim(), email: email.trim(), password });
+      else await signIn({ email: email.trim(), password });
+      onAuthenticated();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Authentication failed");
+    } finally { setSubmitting(false); }
+  };
+  return <main className="auth-shell">
+    <section className="auth-card" aria-labelledby="auth-title">
+      <span className="brand">needl<span className="brand-dot">.</span></span>
+      <span className="eyebrow">Durable safety monitoring</span>
+      <h1 id="auth-title">{mode === "signin" ? "Welcome back" : "Create your workspace"}</h1>
+      <p>{mode === "signin" ? "Sign in to your private assertion workspace." : "Start with an isolated workspace and a bounded translation allowance."}</p>
+      <form onSubmit={(event) => void submit(event)}>
+        {mode === "signup" ? <label>Name<input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={80}/></label> : null}
+        <label>Email<input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} required/></label>
+        <label>Password<input type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} required minLength={12} maxLength={128}/></label>
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
+        <button className="primary-button" type="submit" disabled={submitting}>{submitting ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}</button>
+      </form>
+      <button className="auth-switch" type="button" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); }}>
+        {mode === "signin" ? "New to Needl? Create an account" : "Already have an account? Sign in"}
+      </button>
+    </section>
+  </main>;
 }
 
 function EmptyState({ title, children }: { readonly title: string; readonly children: ReactNode }) {
@@ -496,23 +537,27 @@ function ConnectionsPage({ replay }: { readonly replay: DemoReplay | null }) {
   </main>;
 }
 
-function SettingsPage({ assertions, templates, onRestore, onClear }: {
+function SettingsPage({ assertions, templates, user, onRestore, onClear, onSignOut }: {
   readonly assertions: readonly AssertionDraft[];
   readonly templates: readonly AuthoringTemplate[];
+  readonly user: WorkspaceBootstrap["user"];
   readonly onRestore: () => void;
   readonly onClear: () => void;
+  readonly onSignOut: () => void;
 }) {
   const localCount = assertions.filter((draft) => !templates.some((template) => template.definition.id === draft.localId)).length;
-  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Browser-local preferences</span><h1>Settings</h1><p>Local demo state is kept in this browser only.</p></div>
+  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Workspace preferences</span><h1>Settings</h1><p>Signed in as {user.email}. Assertion changes are stored server-side and cached in this browser.</p></div>
+    <section className="settings-panel"><div><h2>Account session</h2><p>Signing out revokes this browser session without deleting workspace data.</p></div><button onClick={onSignOut}>Sign out</button></section>
     <section className="settings-panel"><div><h2>Demo workspace</h2><p>Restore the three reviewed sample assertions. Your {localCount} locally authored assertion{localCount === 1 ? "" : "s"} will be preserved.</p></div><button onClick={onRestore}>Restore sample rules</button></section>
     <section className="settings-panel"><div><h2>Locally authored assertions</h2><p>Remove custom assertions from browser storage. This action requires confirmation and does not change engine fixtures.</p></div><button className="danger-button" onClick={onClear} disabled={localCount === 0} title={localCount === 0 ? "There are no local assertions to remove" : undefined}>Remove local assertions</button></section>
     <section className="settings-panel is-muted"><div><h2>Live provider and GitLab setup</h2><p>Unavailable in this frontend. Configure credentials, webhook routes, durable production storage, and a dispatcher on a backend before enabling live controls.</p></div><button disabled title="Live provider setup is outside this local demo">Configure live services</button></section>
   </main>;
 }
 
-function AuthoringDialog({ expectation, templates, onClose, onChoose }: {
+function AuthoringDialog({ expectation, templates, translation, onClose, onChoose }: {
   readonly expectation: string;
   readonly templates: readonly AuthoringTemplate[];
+  readonly translation: TranslationProposalResponse | null;
   readonly onClose: () => void;
   readonly onChoose: (template: AuthoringTemplate) => void;
 }) {
@@ -520,10 +565,10 @@ function AuthoringDialog({ expectation, templates, onClose, onChoose }: {
   useEffect(() => closeRef.current?.focus(), []);
   return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="modal authoring-modal" role="dialog" aria-modal="true" aria-labelledby="authoring-title">
-      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Choose an interpretation template</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
-      <div className="honesty-note"><Icon name="warning"/><p><strong>Template-assisted interpretation</strong>Natural-language AI translation is not configured. Your text stays as the expectation; you choose one reviewed safety meaning below, then confirm its editable phrases.</p></div>
+      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Confirm structured interpretation</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
+      <div className="honesty-note"><Icon name="warning"/><p><strong>{translation === null ? "Reviewed interpretation" : "OpenAI proposal — confirmation required"}</strong>{translation === null ? "OpenAI translation is not configured. Your text stays as the expectation; choose one reviewed safety meaning below." : translation.proposal.explanation}</p></div>
       <blockquote>{expectation}</blockquote>
-      <div className="template-list">{templates.map((template, index) => <button key={template.id} onClick={() => onChoose(template)}>
+      <div className="template-list">{templates.map((template, index) => <button className={translation?.proposal.templateId === template.id ? "is-suggested" : ""} key={template.id} onClick={() => onChoose(template)}>
         <span className="template-index">0{index + 1}</span><div><strong>{template.shortLabel}</strong><p>{template.description}</p><span>{template.providers.map((provider) => providerNames[provider]).join(" · ")}</span></div><Icon name="arrow"/>
       </button>)}</div>
     </section>
@@ -580,6 +625,8 @@ function EditDialog({ draft, onClose, onSave }: {
 
 export function App() {
   const { section, selectedId, previousSelected, navigate } = useRoute();
+  const [workspace, setWorkspace] = useState<WorkspaceBootstrap | null>(null);
+  const [authGeneration, setAuthGeneration] = useState(0);
   const [templates, setTemplates] = useState<readonly AuthoringTemplate[]>([]);
   const [assertions, setAssertions] = useState<AssertionDraft[]>([]);
   const [replay, setReplay] = useState<DemoReplay | null>(null);
@@ -588,6 +635,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [authoringText, setAuthoringText] = useState<string | null>(null);
+  const [translation, setTranslation] = useState<TranslationProposalResponse | null>(null);
+  const [translating, setTranslating] = useState(false);
   const [unsupportedText, setUnsupportedText] = useState<string | null>(null);
   const [editing, setEditing] = useState<AssertionDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -611,11 +660,17 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    fetchBootstrap().then(async (bootstrap) => {
+    Promise.all([fetchWorkspace(), fetchBootstrap()]).then(async ([nextWorkspace, bootstrap]) => {
       if (!active) return;
-      const initial = mergeRestored(defaultDrafts(bootstrap.templates), parseStoredAssertions(localStorage.getItem(STORAGE_KEY)));
+      setWorkspace(nextWorkspace);
+      const storageKey = storageKeyForTenant(nextWorkspace.tenantId);
+      const cached = parseStoredAssertions(localStorage.getItem(storageKey));
+      const initial = nextWorkspace.assertions.length > 0 ? [...nextWorkspace.assertions] : mergeRestored(defaultDrafts(bootstrap.templates), cached);
       setTemplates(bootstrap.templates);
       setAssertions(initial);
+      if (nextWorkspace.assertions.length === 0) {
+        await Promise.all(initial.map((draft) => saveAssertion(draft)));
+      }
       const generation = ++replayGeneration.current;
       try {
         const initialReplay = await replayDemo({ assertions: initial.filter((draft) => draft.status !== "needs-review"), scenario: "violating" });
@@ -625,13 +680,13 @@ export function App() {
         if (active && generation === replayGeneration.current) setError(cause instanceof Error ? cause.message : "Demo replay failed");
       }
       finally { if (active) setLoading(false); }
-    }).catch((cause) => { if (active) { setError(cause instanceof Error ? cause.message : "Unable to load demo"); setLoading(false); } });
+    }).catch((cause) => { if (active) { const message = cause instanceof Error ? cause.message : "Unable to load workspace"; if (!/Authentication required/i.test(message)) setError(message); setWorkspace(null); setLoading(false); } });
     return () => { active = false; replayGeneration.current += 1; };
-  }, []);
+  }, [authGeneration]);
 
   useEffect(() => {
-    if (!loading && assertions.length > 0) localStorage.setItem(STORAGE_KEY, serializeAssertions(assertions));
-  }, [assertions, loading]);
+    if (!loading && workspace !== null && assertions.length > 0) localStorage.setItem(storageKeyForTenant(workspace.tenantId), serializeAssertions(assertions));
+  }, [assertions, loading, workspace]);
 
   useEffect(() => {
     if (selectedId === undefined && previousSelected.current !== undefined) {
@@ -658,8 +713,16 @@ export function App() {
   const updateAssertions = (next: AssertionDraft[], replayNow = true) => {
     try {
       const accepted = validateAssertionCollection(next);
-      localStorage.setItem(STORAGE_KEY, serializeAssertions(accepted));
+      if (workspace === null) throw new Error("Authentication required");
+      localStorage.setItem(storageKeyForTenant(workspace.tenantId), serializeAssertions(accepted));
+      const previous = assertions;
       setAssertions(accepted);
+      const writes = accepted.filter((draft) => {
+        const prior = previous.find((item) => item.localId === draft.localId);
+        return prior === undefined || JSON.stringify(prior) !== JSON.stringify(draft);
+      }).map((draft) => saveAssertion(draft, previous.find((item) => item.localId === draft.localId)?.definition.version));
+      const removals = previous.filter((draft) => !accepted.some((item) => item.localId === draft.localId)).map((draft) => removeAssertion(draft.localId));
+      void Promise.all([...writes, ...removals]).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to persist assertion changes"));
       if (replayNow) void runReplay(accepted);
       return true;
     } catch (cause) {
@@ -671,20 +734,38 @@ export function App() {
     try {
       assertAssertionCapacity(assertions.length);
       if (unsupportedAuthoringIntent(text)) setUnsupportedText(text);
-      else setAuthoringText(text);
+      else if (workspace?.translator === "available") {
+        setTranslating(true);
+        void translateAssertion(text).then((proposal) => { setTranslation(proposal); setAuthoringText(text); }).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to translate assertion")).finally(() => setTranslating(false));
+      } else { setTranslation(null); setAuthoringText(text); }
       return undefined;
     } catch (cause) {
       return cause instanceof Error ? cause.message : "Assertion capacity reached";
     }
   };
-  const chooseTemplate = (template: AuthoringTemplate) => {
+  const chooseTemplate = async (template: AuthoringTemplate) => {
     if (authoringText === null) return;
+    if (translation?.proposal.templateId === template.id) {
+      try { await confirmTranslation(translation.proposalId); }
+      catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to confirm translation"); return; }
+    }
     const draft = createDraftFromTemplate(authoringText, template, assertions.map((item) => item.localId));
     const next = [...assertions, draft];
     setAuthoringText(null);
+    setTranslation(null);
     updateAssertions(next);
     openDetail(draft.localId);
     setToast("Draft created paused — inspect it, then enable monitoring");
+  };
+  const endSession = async () => {
+    try { await signOut(); }
+    finally {
+      setWorkspace(null);
+      setAssertions([]);
+      setReplay(null);
+      setLoading(false);
+      navigate("assertions", undefined, true);
+    }
   };
   const toggleSelected = () => {
     if (selected === undefined || selected.status === "needs-review") return;
@@ -728,6 +809,7 @@ export function App() {
   };
 
   if (loading) return <AppSkeleton/>;
+  if (workspace === null) return <AuthScreen onAuthenticated={() => { setLoading(true); setError(null); setAuthGeneration((value) => value + 1); }}/>;
   return <div className={`app-shell ${selected !== undefined ? "detail-open" : ""}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar section={section} replay={replay} onNavigate={(next) => navigate(next)}/>
@@ -736,13 +818,13 @@ export function App() {
       {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={replay} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}
       {section === "activity" ? <ActivityPage replay={replay}/> : null}
       {section === "connections" ? <ConnectionsPage replay={replay}/> : null}
-      {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} onRestore={restoreSamples} onClear={clearLocal}/> : null}
+      {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
       {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={replay} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
     </div>
-    {replaying ? <div className="replaying" role="status"><span/>Replaying through engine…</div> : null}
+    {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Translating into a reviewed safety shape…" : "Replaying through engine…"}</div> : null}
     {error ? <div className="error-banner" role="alert"><strong>Local demo error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}
     {toast ? <div className="toast" role="status">{toast}</div> : null}
-    {authoringText !== null ? <AuthoringDialog expectation={authoringText} templates={templates} onClose={() => setAuthoringText(null)} onChoose={chooseTemplate}/> : null}
+    {authoringText !== null ? <AuthoringDialog expectation={authoringText} templates={templates} translation={translation} onClose={() => { setAuthoringText(null); setTranslation(null); }} onChoose={(template) => void chooseTemplate(template)}/> : null}
     {unsupportedText !== null ? <UnsupportedIntentDialog expectation={unsupportedText} onClose={() => setUnsupportedText(null)} onAcceptAlternative={() => { setUnsupportedText(null); setAuthoringText("Orders must not be fulfilled before payment is observed"); }}/> : null}
     {editing !== null ? <EditDialog draft={editing} onClose={() => setEditing(null)} onSave={saveEdit}/> : null}
   </div>;

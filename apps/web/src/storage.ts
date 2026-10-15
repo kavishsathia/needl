@@ -4,6 +4,10 @@ import { validateAssertionCollection, validateProductAssertionCollection } from 
 import { productSafetyIssue } from "./safety.js";
 import { restoreCanonicalMeaning } from "./meaning.js";
 
+export function storageKeyForTenant(tenantId: string): string {
+  return `needl.assertions.v1.${tenantId}`;
+}
+
 export function parseStoredAssertions(raw: string | null): AssertionDraft[] {
   if (raw === null) return [];
   try {

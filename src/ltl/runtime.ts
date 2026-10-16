@@ -11,7 +11,7 @@ import {
   type CompiledAssertion,
   type PredicateEvaluation,
 } from "./assertion.js";
-import { advanceFormulaTime, containsBind, containsTimed, evaluateCompleteTrace, nextDeadline, prefixVerdict, progressFormula } from "./formula.js";
+import { advanceFormulaTime, containsBind, containsTimed, evaluateCompleteTrace, nextDeadline, prefixVerdict, progressFormula, type ProgressionContext } from "./formula.js";
 import type { BindingEnvironment, LtlFormula } from "./types.js";
 import type {
   CounterexampleRecord,
@@ -103,11 +103,13 @@ function progressObservation(
   readonly valuation: Readonly<Record<string, boolean>>;
   readonly evaluations: Readonly<Record<string, PredicateEvaluation>>;
   readonly captured: Readonly<Record<string, string | null>>;
+  /** Obligations that failed at this observation (isolated `G` formulas only). */
+  readonly failed: number;
 } {
   const boundValuation: Record<string, boolean> = {};
   const boundEvaluations: Record<string, PredicateEvaluation> = {};
   const captured: Record<string, string | null> = {};
-  const next = progressFormula(residual, {
+  const context: ProgressionContext = {
     atom: (name, env) => {
       if ((assertion.propositionVariables[name] ?? []).length === 0) return valuation[name] === true;
       const key = `${name}${environmentLabel(env)}`;
@@ -125,8 +127,45 @@ function progressObservation(
       return value;
     },
     at,
-  });
-  return { residual: next, valuation: boundValuation, evaluations: boundEvaluations, captured };
+  };
+  if (isolatesViolations(assertion)) {
+    const step = stepIsolated(resume(assertion, residual), (part) => progressFormula(part, context), true);
+    return { residual: step.residual, valuation: boundValuation, evaluations: boundEvaluations, captured, failed: step.failed };
+  }
+  return { residual: progressFormula(residual, context), valuation: boundValuation, evaluations: boundEvaluations, captured, failed: 0 };
+}
+
+/**
+ * A rule `G φ` keeps monitoring after a violation. Its residual is a conjunction of independent obligations (one per
+ * trigger, each with its own frozen values and time windows) plus `G φ` itself, so each obligation is progressed on its
+ * own: one that fails is reported and dropped, and the others, and every future trigger, continue.
+ */
+function isolatesViolations(assertion: CompiledAssertion): boolean {
+  return assertion.formula.kind === "always";
+}
+
+/** Monitors saved before violations were isolated stopped at `false`; they resume watching from the rule itself. */
+function resume(assertion: CompiledAssertion, residual: LtlFormula): LtlFormula {
+  return residual.kind === "false" ? assertion.formula as LtlFormula : residual;
+}
+
+function conjuncts(formula: LtlFormula): LtlFormula[] {
+  return formula.kind === "and" ? formula.operands.flatMap(conjuncts) : [formula];
+}
+
+function stepIsolated(residual: LtlFormula, step: (part: LtlFormula) => LtlFormula, unfoldAlways: boolean): { readonly residual: LtlFormula; readonly failed: number } {
+  const kept = new Map<string, LtlFormula>();
+  let failed = 0;
+  for (const part of conjuncts(residual)) {
+    // G φ progresses to (progress φ) ∧ G φ; progressing φ separately keeps G φ when this observation breaks φ.
+    const pieces = unfoldAlways && part.kind === "always" ? [step(part.operand), part] : [step(part)];
+    for (const piece of pieces.flatMap(conjuncts)) {
+      if (piece.kind === "false") failed += 1;
+      else if (piece.kind !== "true") kept.set(JSON.stringify(piece), piece);
+    }
+  }
+  const remaining = [...kept.values()];
+  return { residual: remaining.length === 0 ? { kind: "true" } : remaining.length === 1 ? remaining[0]! : { kind: "and", operands: remaining }, failed };
 }
 
 function initialCheckpoint(assertion: CompiledAssertion, instance: MonitorInstance): MonitorCheckpoint {
@@ -338,13 +377,24 @@ export class RuntimeMonitor {
         if (residual === undefined || progressed === undefined) throw new Error("Ordinary LTL checkpoint is missing a residual formula");
         const before = prefixVerdict(residual);
         residual = progressed.residual;
-        verdict = prefixVerdict(residual);
-        if (before !== "violated" && verdict === "violated") {
-          records.push(violation(
-            assertion, instance, "formula_false", at,
-            `The progressed LTL formula became false after event ${event.id}.`,
-            fullTrace, item.evaluations, event.id,
-          ));
+        if (isolatesViolations(assertion)) {
+          for (let index = 0; index < progressed.failed; index += 1) {
+            records.push(violation(
+              assertion, instance, "formula_false", at,
+              `An obligation of the rule became false at event ${event.id}; monitoring continues for the others.`,
+              fullTrace, item.evaluations, index === 0 ? event.id : `${event.id}#${index}`,
+            ));
+          }
+          verdict = records.length > 0 || previous.verdict === "violated" ? "violated" : prefixVerdict(residual);
+        } else {
+          verdict = prefixVerdict(residual);
+          if (before !== "violated" && verdict === "violated") {
+            records.push(violation(
+              assertion, instance, "formula_false", at,
+              `The progressed LTL formula became false after event ${event.id}.`,
+              fullTrace, item.evaluations, event.id,
+            ));
+          }
         }
       }
       const tail = traceTail(assertion, previous, item);
@@ -396,15 +446,28 @@ export class RuntimeMonitor {
       let residual = previous.residual;
       if (assertion.formula.kind !== "deadline" && residual !== undefined) {
         const closing = nextDeadline(residual);
-        residual = advanceFormulaTime(residual, at);
         const before = verdict;
-        verdict = prefixVerdict(residual);
-        if (before !== "violated" && verdict === "violated") {
-          records.push(violation(
-            assertion, instance, "deadline_expired", at,
-            `A time window ending ${closing ?? "earlier"} closed at ${at} without the rule being met.`,
-            fullTrace, {}, input.id,
-          ));
+        if (isolatesViolations(assertion)) {
+          const step = stepIsolated(resume(assertion, residual), (part) => advanceFormulaTime(part, at), false);
+          residual = step.residual;
+          for (let index = 0; index < step.failed; index += 1) {
+            records.push(violation(
+              assertion, instance, "deadline_expired", at,
+              `A time window ending ${closing ?? "earlier"} closed at ${at} without the rule being met; monitoring continues.`,
+              fullTrace, {}, index === 0 ? input.id : `${input.id}#${index}`,
+            ));
+          }
+          if (records.length > 0) verdict = "violated";
+        } else {
+          residual = advanceFormulaTime(residual, at);
+          verdict = prefixVerdict(residual);
+          if (before !== "violated" && verdict === "violated") {
+            records.push(violation(
+              assertion, instance, "deadline_expired", at,
+              `A time window ending ${closing ?? "earlier"} closed at ${at} without the rule being met.`,
+              fullTrace, {}, input.id,
+            ));
+          }
         }
       }
       if (assertion.formula.kind === "deadline") {

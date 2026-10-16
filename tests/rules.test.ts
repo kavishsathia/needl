@@ -212,6 +212,37 @@ describe("compiling and running rules", () => {
   });
 });
 
+describe("monitoring continues after a violation", () => {
+  it("reports every broken obligation of a shared monitor, from events and from clock ticks", async () => {
+    const rule = ok("always (gitlab.push bind commit = commit -> eventually within 1m linear.issue(title contains commit))");
+    expect(rule.partition).toBeUndefined();
+    const definition = compileRule(rule, {}, { id: "sha", version: 1, tenantId, name: "sha" });
+    const store = new InMemoryMonitorStore();
+    const monitor = new RuntimeMonitor({ store, assertions: [definition] });
+    const push = (id: string, sha: string, at: string) => monitor.process(event({ id, provider: "gitlab", type: "push", at, relationships: { commit: sha } }));
+    await push("p1", "aaa111", "2026-10-15T10:00:00Z");
+    await push("p2", "bbb222", "2026-10-15T10:00:10Z");
+    await monitor.process(event({ id: "l1", provider: "linear", type: "Issue.update", at: "2026-10-15T10:00:20Z", subject: "issue-1" }));
+    await monitor.process({ ...event({ id: "l2", provider: "linear", type: "Issue.update", at: "2026-10-15T10:00:30Z" }), subject: { type: "issue", id: "x", name: "Shipped aaa111" } });
+    await monitor.advanceTime({ id: "t1", tenantId, assertionId: "sha", assertionVersion: 1, scope: { rule: "all" }, at: "2026-10-15T10:01:15Z" });
+    await push("p3", "ccc333", "2026-10-15T10:02:00Z");
+    await monitor.advanceTime({ id: "t2", tenantId, assertionId: "sha", assertionVersion: 1, scope: { rule: "all" }, at: "2026-10-15T10:03:05Z" });
+    expect((await store.listViolations()).map((record) => record.cause)).toEqual(["deadline_expired", "deadline_expired"]);
+    expect((await store.listCheckpoints())[0]?.nextDueAt).toBeUndefined();
+  });
+
+  it("reports a second breach for the same entity", async () => {
+    const definition = compileRule(ok(ghost), { env: "production" }, { id: "ghost", version: 1, tenantId, name: "Ghost" });
+    const store = new InMemoryMonitorStore();
+    const monitor = new RuntimeMonitor({ store, assertions: [definition] });
+    await monitor.process(event({ id: "d1", provider: "gitlab", type: "deployment.success", at: "2026-10-15T10:00:00Z", relationships: { ref: "eng-42-fix", environment: "production" }, payload: { status: "success" } }));
+    for (const [id, at] of [["s1", "2026-10-15T10:01:00Z"], ["s2", "2026-10-15T10:02:00Z"]] as const) {
+      await monitor.process(event({ id, provider: "sentry", type: "event_alert.triggered", at, relationships: { "tag.linear_issue": "ENG-42", environment: "production" } }));
+    }
+    expect(await store.listViolations()).toHaveLength(2);
+  });
+});
+
 describe("time-limit choices", () => {
   const source = "always (stripe.invoice.payment_failed bind customer = customer -> eventually within $time_limit stripe.invoice.paid(customer = customer))";
 

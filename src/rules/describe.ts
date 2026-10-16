@@ -53,7 +53,8 @@ NOTES (#"…" before any part)
   A note is the English reading of the part right after it. {1}, {2}, … stand for that part's own parts, in the
   order they appear in the source: for an event, each condition's value then each bind; for always/eventually/
   until with a time limit, the duration is a part; for A -> B, A is {1} and B is {2}; for A and B / A or B, each
-  operand. Every part must be used exactly once. Notes must not contain numbers, values, or provider.event names:
+  operand. A bind's slot reads as "its <field> as “<name>”", so write e.g. #"a push to {1}, keeping {2}", not
+  "keeping its commit as {2}". Every part must be used exactly once. Notes must not contain numbers, values, or provider.event names:
   values and time limits always come from slots, so the reading can never show something the rule does not check.
   A part without a note is read mechanically. Put a note on the parts a person reads; keep notes short and plain.
   To annotate a whole -> / and / or, wrap it in parentheses: #"once {1}, {2}" ( A -> B ).

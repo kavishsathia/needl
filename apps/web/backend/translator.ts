@@ -70,14 +70,14 @@ export class OpenAITranslationModel implements TranslationModel {
   readonly #client: OpenAI;
 
   constructor(options: { readonly apiKey: string; readonly model?: string }) {
-    this.model = options.model ?? "gpt-4o-mini";
+    this.model = options.model ?? "gpt-6-sol";
     this.#client = new OpenAI({ apiKey: options.apiKey });
   }
 
   async complete(messages: readonly ChatMessage[]): Promise<unknown> {
     const response = await this.#client.responses.create({
       model: this.model,
-      max_output_tokens: 2_000,
+      max_output_tokens: 16_000,
       input: messages.map((message) => ({ role: message.role, content: message.content })),
       text: { format: { type: "json_schema", name: "needl_rule", strict: true, schema: outputSchema } },
     });

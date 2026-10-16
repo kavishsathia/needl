@@ -8,11 +8,12 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
 import { choiceIssues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
-import { readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
+import { choiceText, readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
 import { confirmTranslation, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
@@ -228,6 +229,41 @@ function ChoiceChip({ segment, source, value, onChoose }: {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [typed, setTyped] = useState("");
   const [picked, setPicked] = useState<readonly (string | number | boolean)[]>(Array.isArray(value) ? value : []);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLSpanElement>(null);
+  const [position, setPosition] = useState<{ readonly top: number; readonly left: number } | null>(null);
+  // The list floats above the page (portal + fixed position), so it never pushes text around or gets clipped by a scrolling panel.
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const rect = chipRef.current?.getBoundingClientRect();
+      if (rect === undefined) return;
+      const width = Math.min(300, window.innerWidth * 0.8);
+      const height = popoverRef.current?.offsetHeight ?? 0;
+      const below = rect.bottom + 8;
+      const top = below + height > window.innerHeight - 8 && rect.top - 8 - height > 8 ? rect.top - 8 - height : below;
+      setPosition({ top, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+    };
+    place();
+    const frame = requestAnimationFrame(place);
+    const close = (event: Event) => {
+      const target = event.target as Node | null;
+      if (target !== null && (popoverRef.current?.contains(target) || chipRef.current?.contains(target))) return;
+      setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); chipRef.current?.focus(); } };
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open, suggestions]);
   useEffect(() => {
     if (!open || suggestions !== null) return;
     let active = true;
@@ -241,6 +277,7 @@ function ChoiceChip({ segment, source, value, onChoose }: {
   const choose = (next: ParamValue) => { setOpen(false); onChoose?.(next); };
   return <span className="meaning-chip-wrap">
     <button
+      ref={chipRef}
       type="button"
       className={`meaning-chip choice-chip ${segment.text === undefined ? "is-empty" : ""}`}
       aria-label={`${segment.label}: ${segment.text ?? "not chosen"}`}
@@ -249,19 +286,19 @@ function ChoiceChip({ segment, source, value, onChoose }: {
       disabled={!editable}
       onClick={(event) => { event.stopPropagation(); setOpen(!open); }}
     >{label}</button>
-    {open ? <span className="meaning-popover choice-popover" role="listbox" aria-label={`${segment.label} choices`} aria-multiselectable={suggestions?.list ? true : undefined} onClick={(event) => event.stopPropagation()}>
+    {open ? createPortal(<span ref={popoverRef} className="meaning-popover choice-popover" role="listbox" aria-label={`${segment.label} choices`} aria-multiselectable={suggestions?.list ? true : undefined} style={{ top: position?.top ?? -9999, left: position?.left ?? -9999 }} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}>
       {loadError !== null ? <small className="choice-note">{loadError}</small> : null}
       {suggestions === null && loadError === null ? <small className="choice-note">Looking at your events…</small> : null}
       {suggestions?.values.map((option) => {
         const selected = suggestions.list ? picked.includes(option.value) : value === option.value;
         const seen = option.counts.flatMap((count, place) => count > 0 ? [`${count} × ${suggestions.usages[place]!.split(".").slice(0, -1).join(".")}`] : []);
-        const evidence = seen.length === 0
+        const evidence = suggestions.type === "duration" ? undefined : seen.length === 0
           ? option.fixed ? "Allowed by the provider · no events yet" : "No events yet"
           : seen.join(" · ");
         return <button type="button" role="option" aria-selected={selected} key={String(option.value)} onClick={() => {
           if (!suggestions.list) { choose(option.value); return; }
           setPicked(selected ? picked.filter((item) => item !== option.value) : [...picked, option.value]);
-        }}><span>{option.label}</span><small>{evidence}</small></button>;
+        }}><span>{option.label}</span>{evidence === undefined ? null : <small>{evidence}</small>}</button>;
       })}
       {suggestions?.values.length === 0 ? <small className="choice-note">No {segment.label} values seen yet. Type one below.</small> : null}
       {suggestions?.freeText ? <form className="choice-free" onSubmit={(event) => {
@@ -272,7 +309,7 @@ function ChoiceChip({ segment, source, value, onChoose }: {
         else choose(next);
       }}><input aria-label={`Type a ${segment.label}`} value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={suggestions.type === "duration" ? "e.g. 2m, 45m, 3h" : `Type a ${segment.label}`}/><button type="submit">Use</button></form> : null}
       {suggestions?.list ? <button type="button" className="choice-apply" disabled={picked.length === 0} onClick={() => choose(picked)}>Apply {picked.length} value{picked.length === 1 ? "" : "s"}</button> : null}
-    </span> : null}
+    </span>, document.body) : null}
   </span>;
 }
 
@@ -529,7 +566,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
         </div>
       </header>
       <div className="detail-meta">
-        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{draft.rule?.values[param.name] === undefined ? "Not chosen" : [draft.rule.values[param.name]].flat().join(", ")}</span>)}
+        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{choiceText(param, draft.rule?.values[param.name]) ?? "Not chosen"}</span>)}
         <span><small>Rule version</small>v{draft.definition.version}</span>
         <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} inputs</span>
       </div>

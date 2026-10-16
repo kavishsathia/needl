@@ -170,7 +170,7 @@ h1, h2, h3, p { margin-top: 0; }
 .choice-chip:disabled { cursor: default; }
 .choice-chip.is-empty { border-bottom-style: dashed; color: var(--amber-soft); background: #e9b94922; }
 .detail .choice-chip.is-empty { color: var(--amber-soft); background: #2c2614; }
-.choice-popover { width: min(300px, 80vw); }
+.choice-popover { position: fixed; z-index: 300; width: min(300px, 80vw); max-height: min(360px, 60vh); overflow-y: auto; line-height: 1.4; }
 .choice-note { padding: 6px 9px; color: var(--muted); font-size: 11px; }
 .choice-free { display: flex; gap: 5px; padding: 5px 4px 3px; border-top: 1px solid #2e2c27; }
 .choice-free input { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #3a3832; border-radius: 4px; color: var(--ink); background: #10100f; font-size: 12px; }

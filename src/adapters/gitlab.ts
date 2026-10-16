@@ -99,6 +99,16 @@ function relation(type: string, id: unknown, evidencePath: string, name?: unknow
   }];
 }
 
+/** Deployment hooks carry the full commit SHA only inside `commit_url` (`…/-/commit/<sha>`). */
+function commitRelation(payload: Record<string, unknown>): RelationshipEvidence[] {
+  if (payload.checkout_sha !== undefined && payload.checkout_sha !== null) return relation("commit", payload.checkout_sha, "/checkout_sha");
+  if (payload.after !== undefined) return relation("commit", payload.after, "/after");
+  const commit = objectValue(payload.commit)?.id;
+  if (commit !== undefined) return relation("commit", commit, "/commit/id");
+  const fromUrl = /\/-\/commit\/([0-9a-f]{7,64})\/?$/i.exec(stringValue(payload.commit_url) ?? "")?.[1];
+  return relation("commit", fromUrl, "/commit_url");
+}
+
 export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
   readonly provider = "gitlab" as const;
 
@@ -156,7 +166,7 @@ export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
     const relationships = [
       ...relation("project", projectId, "/project/id", projectPath, projectUrl),
       ...relation("repository", projectPath, "/project/path_with_namespace", projectPath, projectUrl),
-      ...relation("commit", payload.checkout_sha ?? payload.after ?? objectValue(payload.commit)?.id, "/checkout_sha"),
+      ...commitRelation(payload),
       ...relation("ref", payload.ref, "/ref"),
       ...relation("environment", payload.environment ?? attributes.environment, "/environment"),
     ];

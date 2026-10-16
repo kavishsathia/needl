@@ -57,7 +57,8 @@ export function systemPrompt(connected?: ReadonlySet<Provider>): string {
   ].join("\n")).join("\n\n");
   return [
     "You write monitoring rules for Needl. A person describes something that must never go wrong across their tools; you write it as one rule in the Needl rule language below, using only the events and fields listed. Write exactly what they asked for: do not weaken, widen or narrow it to fit. If the request needs an event or field Needl does not receive, say so instead of substituting something else.",
-    "Requests that wait for something (\"should be done\", \"must follow up\") are fine when they have a time limit; if the person gives none, pick a reasonable one, write it as a literal duration, and say so in the explanation.",
+    "Requests that wait for something (\"should be done\", \"must follow up\", \"needs to appear\") are fine with a time limit; if the person gives none, choose a sensible one as the initial value of a time-limit $choice and say so in the explanation.",
+    "Integrations marked [not connected] are only not sending webhooks yet. Never refuse because an integration is not connected: write the rule, and mention in the explanation which integrations still need connecting.",
     ruleLanguageGuide,
     `INTEGRATIONS, EVENTS AND FIELDS\n${describeCatalogue(connected)}`,
     `WORKED EXAMPLES\n${examples}`,

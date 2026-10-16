@@ -2,6 +2,10 @@ import { extractValue } from "../ltl/assertion.js";
 import type { NormalizedEvent } from "../core/types.js";
 import type { CatalogueEvent, CatalogueField, FieldOption } from "./catalogue.js";
 import type { CheckedRule, ParamInfo } from "./check.js";
+import { durationText } from "./render.js";
+
+/** Common time limits offered for `within $choice`; any other duration can be typed. */
+const durationSuggestions = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
 
 export interface SuggestedValue {
   readonly value: string | number | boolean;
@@ -44,6 +48,13 @@ export function readField(field: CatalogueField, observed: NormalizedEvent): str
  */
 export function suggestChoices(rule: CheckedRule, events: readonly NormalizedEvent[]): ParamSuggestions[] {
   return rule.params.map((param) => {
+    if (param.type === "duration") {
+      return {
+        param,
+        freeText: true,
+        values: durationSuggestions.map((value) => ({ value, label: durationText(Number.parseInt(value, 10) * (value.endsWith("m") ? 60_000 : value.endsWith("h") ? 3_600_000 : 86_400_000)), counts: [], seenEverywhere: true, fixed: false })),
+      };
+    }
     const byValue = new Map<string, { value: string | number | boolean; counts: number[]; lastSeen?: string }>();
     const entry = (value: string | number | boolean) => {
       const key = JSON.stringify(value);

@@ -2,7 +2,7 @@ import type { AssertionDefinition, BindingDefinition, Predicate, PropositionDefi
 import type { LtlFormula } from "../ltl/types.js";
 import type { CatalogueEvent, CatalogueField } from "./catalogue.js";
 import { textSource, type CheckedRule, type ParamInfo, type ResolvedCondition } from "./check.js";
-import type { ComparisonOp, Expr } from "./syntax.js";
+import { parseDuration, type ComparisonOp, type Duration, type Expr } from "./syntax.js";
 
 /** Values chosen for a rule's `$` bindings: a scalar, or a list for bindings used with `in`. */
 export type ParamValue = string | number | boolean | readonly (string | number | boolean)[];
@@ -28,6 +28,12 @@ export function choiceIssues(rule: CheckedRule, values: ParamValues): { readonly
       continue;
     }
     for (const item of items) {
+      if (param.type === "duration") {
+        const ms = typeof item === "string" ? parseDuration(item) : undefined;
+        if (ms === undefined) issues.push({ param: param.name, message: `${JSON.stringify(item)} is not a time limit; write it like 30s, 15m, 2h or 1d` });
+        else if (ms > 365 * 86_400_000) issues.push({ param: param.name, message: "Time limits can be at most 365d" });
+        break;
+      }
       if (typeof item !== param.type) { issues.push({ param: param.name, message: `${JSON.stringify(item)} is not a ${param.type}` }); break; }
       if (param.options !== undefined && !param.options.some((option) => option.value === item)) {
         issues.push({ param: param.name, message: `${JSON.stringify(item)} is not an allowed ${param.label}` });
@@ -98,6 +104,8 @@ export function compileRule(
   const bindings: BindingDefinition[] = [];
   const atomFor = new Map<Expr, string>();
 
+  const windowMs = (within: Duration): number => within.ms ?? parseDuration(String(values[within.param!]))!;
+
   const translate = (expr: Expr): LtlFormula => {
     switch (expr.type) {
       case "event": {
@@ -127,7 +135,7 @@ export function compileRule(
       case "eventually": {
         const operand = translate(expr.operand);
         if (expr.within === undefined) return { kind: expr.type, operand };
-        return { kind: expr.type === "always" ? "alwaysWithin" : "eventuallyWithin", operand, withinMs: expr.within.ms };
+        return { kind: expr.type === "always" ? "alwaysWithin" : "eventuallyWithin", operand, withinMs: windowMs(expr.within) };
       }
       case "and":
       case "or": return { kind: expr.type, operands: expr.operands.map(translate) };
@@ -141,7 +149,7 @@ export function compileRule(
       case "until": {
         const left = translate(expr.left);
         const right = translate(expr.right);
-        return expr.within === undefined ? { kind: "until", left, right } : { kind: "untilWithin", left, right, withinMs: expr.within.ms };
+        return expr.within === undefined ? { kind: "until", left, right } : { kind: "untilWithin", left, right, withinMs: windowMs(expr.within) };
       }
       case "unless": return { kind: "weakUntil", left: translate(expr.left), right: translate(expr.right) };
       case "bind": {

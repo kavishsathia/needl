@@ -11,7 +11,7 @@
  *              | ("always" | "eventually") within? unary
  *              | "bind" NAME "=" PROVIDER "." EVENT "." FIELD "in" expr
  *              | primary
- *   within    := "within" DURATION                       e.g. 30s, 15m, 2h, 1d
+ *   within    := "within" (DURATION | "$"NAME)            e.g. 30s, 15m, 2h, 1d, or a time-limit choice
  *   primary   := "(" expr ")" | "true" | "false" | event
  *   event     := PROVIDER "." EVENT ("(" condition ("," condition)* ")")? ("bind" NAME "=" FIELD)*
  *   condition := FIELD op value
@@ -35,9 +35,20 @@ export interface Note {
 }
 
 export interface Duration {
-  readonly ms: number;
+  /** Fixed length; absent when the length is a `$` choice. */
+  readonly ms?: number;
+  /** Name of the `$` choice that sets the length, e.g. `within $deadline`. */
+  readonly param?: string;
   readonly text: string;
   readonly span: Span;
+}
+
+const durationPattern = /^([1-9]\d*)(ms|s|m|h|d)$/;
+
+/** Milliseconds for a duration such as `30m`; undefined when the text is not one. */
+export function parseDuration(text: string): number | undefined {
+  const match = durationPattern.exec(text.trim());
+  return match === null ? undefined : Number(match[1]) * durationUnits[match[2]!]!;
 }
 
 export type Value =
@@ -232,7 +243,8 @@ export function parseRule(source: string): Expr {
     if (!isWord(peek(), "within")) return undefined;
     const keyword = take();
     const token = take();
-    if (token.type !== "duration") throw new RuleSyntaxError(`Expected a duration after "within", such as 30m or 2h, found ${describe(token)}`, token.span);
+    if (token.type === "param") return { param: token.value as string, text: token.text, span: join(keyword.span, token.span) };
+    if (token.type !== "duration") throw new RuleSyntaxError(`Expected a duration after "within", such as 30m or 2h, or a $choice, found ${describe(token)}`, token.span);
     return { ms: token.value as number, text: token.text, span: join(keyword.span, token.span) };
   };
 

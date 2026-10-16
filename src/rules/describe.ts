@@ -46,6 +46,8 @@ CHOICES ($name)
   choice applies (e.g. the deploy environment and the error environment). Use \`field in $name\` for several values.
   Use a $choice for anything the user might reasonably want to change (environments, projects, teams, amounts);
   use a literal for what defines the rule itself (e.g. status = "success" for a successful deploy).
+  Time limits can be choices too: \`eventually within $time_limit …\`. Make every time limit a choice, with the
+  value from the request (or a sensible default) as its initial value, e.g. "1h", so the user can adjust it.
 
 NOTES (#"…" before any part)
   A note is the English reading of the part right after it. {1}, {2}, … stand for that part's own parts, in the

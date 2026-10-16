@@ -10,7 +10,7 @@ import {
   type FieldOption,
   type FieldType,
 } from "./catalogue.js";
-import { parseRule, parts, RuleSyntaxError, subExpressions, type ComparisonOp, type Condition, type Expr, type Span, type Value } from "./syntax.js";
+import { parseRule, parts, RuleSyntaxError, subExpressions, type ComparisonOp, type Condition, type Duration, type Expr, type Span, type Value } from "./syntax.js";
 
 export interface RuleIssue {
   readonly message: string;
@@ -52,7 +52,8 @@ export interface ParamUsage {
 /** An external binding (`$name`): chosen when the rule is set up; its type and options come from where it is used. */
 export interface ParamInfo {
   readonly name: string;
-  readonly type: FieldType;
+  /** `duration` for time-limit choices (`within $name`), chosen as text such as "30m". */
+  readonly type: FieldType | "duration";
   /** Used with `in`, so it takes several values. */
   readonly list: boolean;
   /** Noun for the picker, from the first field it is compared with. */
@@ -143,6 +144,7 @@ export function checkRule(source: string, options: CheckOptions = {}): CheckResu
   const bindings = new Map<string, BindingInfo>();
   const usedBindings = new Set<string>();
   const paramUsages = new Map<string, { usage: ParamUsage; list: boolean }[]>();
+  const durationParams = new Map<string, Span>();
   let hasNext = false;
   const fail = (message: string, span: Span): void => { errors.push({ message, span }); };
 
@@ -225,8 +227,10 @@ export function checkRule(source: string, options: CheckOptions = {}): CheckResu
     return { condition, field };
   };
 
-  const checkWithin = (within: { ms: number; span: Span } | undefined): void => {
-    if (within !== undefined && within.ms > maximumWindowMs) fail("Time windows can be at most 365d", within.span);
+  const checkWithin = (within: Duration | undefined): void => {
+    if (within === undefined) return;
+    if (within.param !== undefined) { if (!durationParams.has(within.param)) durationParams.set(within.param, within.span); return; }
+    if ((within.ms ?? 0) > maximumWindowMs) fail("Time windows can be at most 365d", within.span);
   };
 
   const addBinding = (info: BindingInfo, scope: Map<string, BindingInfo>): void => {
@@ -337,6 +341,10 @@ export function checkRule(source: string, options: CheckOptions = {}): CheckResu
   }
 
   const params: ParamInfo[] = [];
+  for (const [name, span] of durationParams) {
+    if (paramUsages.has(name)) { fail(`$${name} is used both as a time limit and as a field value; use two choices`, span); continue; }
+    params.push({ name, type: "duration", list: false, label: "time limit", usages: [] });
+  }
   for (const [name, entries] of paramUsages) {
     const [first] = entries;
     const types = new Set(entries.map((entry) => entry.usage.field.type));

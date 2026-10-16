@@ -126,7 +126,7 @@ export interface TranslationProposalResponse {
 export interface ChoiceSuggestions {
   readonly param: string;
   readonly label: string;
-  readonly type: "string" | "number" | "boolean";
+  readonly type: "string" | "number" | "boolean" | "duration";
   readonly list: boolean;
   readonly freeText: boolean;
   /** Where the choice is used, e.g. `gitlab.deployment.environment`. */

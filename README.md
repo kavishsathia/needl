@@ -88,14 +88,14 @@ The runtime package has one portable dependency, Zod. SQLite is an optional subp
 
 ## Demo with the webhook simulator
 
-`apps/simulator` is a local control panel that sends provider-shaped, correctly signed GitLab, Sentry, and Stripe webhooks to Needl's `/api/hooks/<integration-id>` route, so the example rules fire through the real ingestion path. Secrets and routing are generated into `.simulator/` (git-ignored).
+`apps/simulator` is a local control panel that sends provider-shaped, correctly signed GitLab, Sentry, Stripe, and Linear webhooks to Needl's `/api/hooks/<integration-id>` route, so the example rules fire through the real ingestion path. Secrets and routing are generated into `.simulator/` (git-ignored).
 
 ```bash
 npm run sim:setup                  # generate signing secrets
 npm run sim:web                    # start Needl holding those secrets
 # sign up, then read your tenantId from GET /api/workspace
 npm run sim:setup -- <tenantId>    # optional: --needl http://127.0.0.1:4174
-npm run sim:register               # add the three integrations to Needl's database
+npm run sim:register               # add the four integrations to Needl's database
 npm run sim                        # http://127.0.0.1:4180
 ```
 

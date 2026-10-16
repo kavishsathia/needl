@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, randomInt, randomUUID } from "node:crypto";
 
-export type SimulatedProvider = "gitlab" | "sentry" | "stripe";
+export type SimulatedProvider = "gitlab" | "sentry" | "stripe" | "linear";
 
 export interface FieldSpec {
   readonly id: string;
@@ -54,6 +54,29 @@ function stripeHeaders(secret: string, body: string, at: Date): Record<string, s
   return { "content-type": "application/json", "stripe-signature": `t=${timestamp},v1=${signature}` };
 }
 
+/** Linear: hex HMAC-SHA256 of the raw body; the payload's webhookTimestamp must be recent. */
+function linearHeaders(secret: string, body: string): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    "linear-delivery": randomUUID(),
+    "linear-event": "Issue",
+    "linear-signature": createHmac("sha256", secret).update(body).digest("hex"),
+  };
+}
+
+/** Linear ids are UUIDs; derive stable ones from a readable key so repeated sends refer to the same issue. */
+function linearUuid(seed: string): string {
+  const hex = createHmac("sha256", "needl-simulator").update(seed).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+function commitSha(fields: Readonly<Record<string, string>>): string {
+  const given = fields.commit?.trim();
+  if (given === undefined || given.length === 0) return randomBytes(20).toString("hex");
+  if (!/^[0-9a-f]{7,64}$/i.test(given)) throw new Error("Commit must be a hex SHA");
+  return given.toLowerCase();
+}
+
 /** GitLab formats hook times as `2026-10-15 10:00:00 +0000`. */
 function gitlabTime(at: Date): string {
   return `${at.toISOString().slice(0, 19).replace("T", " ")} +0000`;
@@ -101,11 +124,12 @@ export const events: readonly EventSpec[] = [
     fields: [
       { id: "branch", label: "Branch", placeholder: "eng-42-fix-retry-loop" },
       { id: "environment", label: "Environment", placeholder: "production" },
+      { id: "commit", label: "Commit SHA (blank = random)", placeholder: "4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b" },
     ],
     build(fields, at, secret) {
       const ref = required(fields, "branch");
       const environment = required(fields, "environment");
-      const sha = randomBytes(20).toString("hex");
+      const sha = commitSha(fields);
       const deploymentId = randomInt(100_000, 999_999);
       const body = JSON.stringify({
         object_kind: "deployment",
@@ -129,6 +153,73 @@ export const events: readonly EventSpec[] = [
         body,
         headers: { "content-type": "application/json", "x-gitlab-event": "Deployment Hook", ...standardWebhookHeaders(secret, body, at) },
       };
+    },
+  },
+  {
+    id: "gitlab.push",
+    provider: "gitlab",
+    label: "Push commits",
+    description: "Push Hook to a branch.",
+    fields: [
+      { id: "branch", label: "Branch", placeholder: "main" },
+      { id: "commit", label: "Commit SHA (blank = random)", placeholder: "4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b" },
+    ],
+    build(fields, at, secret) {
+      const branch = required(fields, "branch");
+      const sha = commitSha(fields);
+      const body = JSON.stringify({
+        object_kind: "push",
+        event_name: "push",
+        before: randomBytes(20).toString("hex"),
+        after: sha,
+        ref: `refs/heads/${branch}`,
+        checkout_sha: sha,
+        user_username: "needl-simulator",
+        project,
+        repository: { name: project.name, homepage: project.web_url },
+        commits: [{ id: sha, message: "Simulated commit", timestamp: at.toISOString(), url: `${project.web_url}/-/commit/${sha}` }],
+        total_commits_count: 1,
+      });
+      return {
+        provider: "gitlab",
+        body,
+        headers: { "content-type": "application/json", "x-gitlab-event": "Push Hook", ...standardWebhookHeaders(secret, body, at) },
+      };
+    },
+  },
+  {
+    id: "linear.issue",
+    provider: "linear",
+    label: "Update a Linear issue",
+    description: "Issue webhook (create or update) with its title.",
+    fields: [
+      { id: "identifier", label: "Issue key", placeholder: "ENG-42" },
+      { id: "title", label: "Title", placeholder: "Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b" },
+      { id: "action", label: "Action (create/update)", placeholder: "update" },
+    ],
+    build(fields, at, secret) {
+      const identifier = required(fields, "identifier").toUpperCase();
+      const action = fields.action?.trim() || "update";
+      if (action !== "create" && action !== "update") throw new Error("Action must be create or update");
+      const body = JSON.stringify({
+        action,
+        type: "Issue",
+        createdAt: at.toISOString(),
+        webhookTimestamp: at.getTime(),
+        webhookId: randomUUID(),
+        organizationId: linearUuid("org"),
+        url: `https://linear.app/acme/issue/${identifier}`,
+        data: {
+          id: linearUuid(`issue:${identifier}`),
+          identifier,
+          title: required(fields, "title"),
+          teamId: linearUuid(`team:${identifier.split("-")[0]}`),
+          stateId: linearUuid("state:in-progress"),
+          priority: 2,
+          url: `https://linear.app/acme/issue/${identifier}`,
+        },
+      });
+      return { provider: "linear", body, headers: linearHeaders(secret, body) };
     },
   },
   {
@@ -374,5 +465,6 @@ export function generateSecrets(): Readonly<Record<SimulatedProvider, string>> {
     gitlab: `whsec_${randomBytes(32).toString("base64")}`,
     sentry: randomBytes(32).toString("hex"),
     stripe: `whsec_${randomBytes(24).toString("hex")}`,
+    linear: randomBytes(32).toString("hex"),
   };
 }

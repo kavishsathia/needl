@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { SimulatedProvider } from "./events.js";
 
-export const providers: readonly SimulatedProvider[] = ["gitlab", "sentry", "stripe"];
+export const providers: readonly SimulatedProvider[] = ["gitlab", "sentry", "stripe", "linear"];
 
 /** Generated secrets and routing live outside the repository's tracked files. */
 export const stateDirectory = resolve(process.env.SIMULATOR_STATE_DIR ?? join(fileURLToPath(new URL(".", import.meta.url)), "../../.simulator"));

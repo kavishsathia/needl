@@ -212,6 +212,23 @@ describe("compiling and running rules", () => {
   });
 });
 
+describe("time-limit choices", () => {
+  const source = "always (stripe.invoice.payment_failed bind customer = customer -> eventually within $time_limit stripe.invoice.paid(customer = customer))";
+
+  it("are typed as durations, validated, compiled and read back as choices", () => {
+    const rule = ok(source);
+    expect(rule.params).toEqual([{ name: "time_limit", type: "duration", list: false, label: "time limit", usages: [] }]);
+    expect(choiceIssues(rule, { time_limit: "soon" })[0]?.message).toMatch(/not a time limit/);
+    const definition = compileRule(rule, { time_limit: "2m" }, { id: "r", version: 1, tenantId, name: "r" });
+    expect(JSON.stringify(definition.formula)).toContain('"withinMs":120000');
+    expect(readRule(rule, { time_limit: "2m" }, "mechanical")).toContainEqual({ kind: "choice", param: "time_limit", label: "time limit", text: "2 minutes" });
+    const [suggestions] = suggestChoices(rule, []);
+    expect(suggestions?.freeText).toBe(true);
+    expect(suggestions?.values.map((value) => value.value)).toContain("1h");
+    expect(errors("always (stripe.invoice.payment_failed -> eventually within $x stripe.charge.succeeded(amount = $x))")[0]).toMatch(/both as a time limit and as a field value/);
+  });
+});
+
 describe("choice suggestions", () => {
   it("ranks values seen everywhere a choice is used, with counts", () => {
     const rule = ok(ghost);

@@ -1,7 +1,7 @@
 import type { CatalogueField } from "./catalogue.js";
 import type { CheckedRule, ParamInfo } from "./check.js";
 import type { ParamValue, ParamValues } from "./compile.js";
-import { parts, type Condition, type Expr, type Part, type Value } from "./syntax.js";
+import { parseDuration, parts, type Condition, type Duration, type Expr, type Part, type Value } from "./syntax.js";
 
 /**
  * A rule read back as English. Values and time limits are always their own segments, so a reading can never show a
@@ -48,6 +48,10 @@ function optionLabel(field: CatalogueField | undefined, value: string | number |
 
 export function choiceText(param: ParamInfo, value: ParamValue | undefined): string | undefined {
   if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0)) return undefined;
+  if (param.type === "duration") {
+    const ms = typeof value === "string" ? parseDuration(value) : undefined;
+    return ms === undefined ? String(value) : durationText(ms);
+  }
   const label = (item: string | number | boolean): string => {
     const option = param.options?.find((candidate) => candidate.value === item);
     return option?.label ?? String(item);
@@ -78,6 +82,13 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
     }
   };
 
+  const durationSegment = (within: Duration): ReadingSegment => {
+    if (within.ms !== undefined) return { kind: "duration", text: durationText(within.ms) };
+    const param = rule.params.find((candidate) => candidate.name === within.param)!;
+    const chosen = choiceText(param, values[param.name]);
+    return { kind: "choice", param: param.name, label: param.label, ...(chosen === undefined ? {} : { text: chosen }) };
+  };
+
   const fieldOf = (expr: Extract<Expr, { type: "event" }>, condition: Condition): CatalogueField | undefined =>
     rule.events.get(expr)?.conditions.find((entry) => entry.condition === condition)?.field;
 
@@ -102,7 +113,7 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
         const host = findHost(rule.ast, part.condition);
         return valueSegments(part.value, host === undefined ? undefined : fieldOf(host, part.condition));
       }
-      case "duration": return [{ kind: "duration", text: durationText(part.duration.ms) }];
+      case "duration": return [durationSegment(part.duration)];
       case "bindField": {
         const field = [...rule.events.values()].flatMap((resolved) => resolved.binds).find((bind) => bind.name === part.bind.name)?.field;
         return [text(`its ${field?.label ?? part.bind.field} as `), { kind: "bound", name: part.bind.name, text: `“${humanize(part.bind.name)}”` }];
@@ -140,7 +151,7 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
         ? [text("the very next event must be "), ...read(expr.operand)]
         : [text("at the next event, "), ...read(expr.operand)];
       case "always": {
-        if (expr.within !== undefined) return [text("for "), { kind: "duration", text: durationText(expr.within.ms) }, text(", at every event, "), ...read(expr.operand)];
+        if (expr.within !== undefined) return [text("for "), durationSegment(expr.within), text(", at every event, "), ...read(expr.operand)];
         if (expr.operand.type === "implies") {
           // A noted "once …, …" or "whenever …, …" already says it applies every time.
           if (mode === "notes" && expr.operand.note !== undefined) return read(expr.operand);
@@ -152,7 +163,7 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
         const subject = expr.operand.type === "event" ? [text("there must be "), ...read(expr.operand)] : read(expr.operand);
         return expr.within === undefined
           ? [text("eventually "), ...subject]
-          : [text("within "), { kind: "duration", text: durationText(expr.within.ms) }, text(", "), ...subject];
+          : [text("within "), durationSegment(expr.within), text(", "), ...subject];
       }
       case "and":
       case "or": return expr.operands.flatMap((operand, index) => [
@@ -163,7 +174,7 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
       case "until":
         return expr.within === undefined
           ? [...read(expr.left), text(" until there is "), ...read(expr.right)]
-          : [...read(expr.left), text(" until there is "), ...read(expr.right), text(", which must happen within "), { kind: "duration", text: durationText(expr.within.ms) }];
+          : [...read(expr.left), text(" until there is "), ...read(expr.right), text(", which must happen within "), durationSegment(expr.within)];
       case "unless": return [...read(expr.left), text(", until there is "), ...read(expr.right), text(" (which never has to happen)")];
       case "bind": {
         const info = rule.prefixBinds.get(expr);

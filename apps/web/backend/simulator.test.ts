@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { generateSecrets, stories } from "../../simulator/events.js";
+import { events, generateSecrets, stories } from "../../simulator/events.js";
 import { integrationId, providers, secretEnvName, type SimulatorConfig } from "../../simulator/config.js";
 import { playStory } from "../../simulator/server.js";
 import { exampleRules } from "../src/examples.js";
@@ -62,6 +62,21 @@ describe("simulator stories through signed ingestion", () => {
     }
     const counterexamples = (await repository.loadMonitorSnapshot(tenantId)).counterexamples as { assertionId: string }[];
     expect(counterexamples.map((record) => record.assertionId).sort()).toEqual(["boomerang", "clean-break", "no-ghosts"]);
+  });
+
+  it("delivers every single event, including Linear issues and GitLab pushes, with the commit SHA extracted", async () => {
+    const { repository, tenantId, config, secrets, fetcher } = await workspace();
+    for (const spec of events) {
+      const fields = Object.fromEntries(spec.fields.map((field) => [field.id, field.placeholder]));
+      const delivery = spec.build(fields, new Date(), secrets[spec.provider]);
+      const response = await fetcher(`${config.needlUrl}/api/hooks/${config.integrations[spec.provider].id}`, { method: "POST", body: delivery.body, headers: delivery.headers });
+      expect({ event: spec.id, status: response.status, body: await response.json() }).toMatchObject({ event: spec.id, status: 200, body: { outcome: "stored" } });
+    }
+    const stored = (await repository.loadMonitorSnapshot(tenantId)).events as { provider: string; providerEventType: string; relationships: { type: string; id: string }[]; subject: { name?: string } }[];
+    const commitOf = (type: string) => stored.find((event) => event.providerEventType.startsWith(type))?.relationships.find((item) => item.type === "commit")?.id;
+    expect(commitOf("deployment")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
+    expect(commitOf("push")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
+    expect(stored.find((event) => event.provider === "linear")?.subject.name).toBe("Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
   });
 
   it("produces a fresh violation every time a violation story is replayed", async () => {

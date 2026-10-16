@@ -13,6 +13,7 @@ import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/ru
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
 import { choiceIssues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
 import { readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
+import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
 import { confirmTranslation, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
@@ -211,6 +212,7 @@ function choiceValueFromText(type: ChoiceSuggestions["type"], text: string): Par
   if (trimmed.length === 0) return undefined;
   if (type === "number") return Number.isFinite(Number(trimmed)) ? Number(trimmed) : undefined;
   if (type === "boolean") return trimmed === "true" ? true : trimmed === "false" ? false : undefined;
+  if (type === "duration") return parseDuration(trimmed) === undefined ? undefined : trimmed;
   return trimmed;
 }
 
@@ -268,7 +270,7 @@ function ChoiceChip({ segment, source, value, onChoose }: {
         if (next === undefined) return;
         if (suggestions.list) { setPicked([...picked, next as string | number | boolean]); setTyped(""); }
         else choose(next);
-      }}><input aria-label={`Type a ${segment.label}`} value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={`Type a ${segment.label}`}/><button type="submit">Use</button></form> : null}
+      }}><input aria-label={`Type a ${segment.label}`} value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={suggestions.type === "duration" ? "e.g. 2m, 45m, 3h" : `Type a ${segment.label}`}/><button type="submit">Use</button></form> : null}
       {suggestions?.list ? <button type="button" className="choice-apply" disabled={picked.length === 0} onClick={() => choose(picked)}>Apply {picked.length} value{picked.length === 1 ? "" : "s"}</button> : null}
     </span> : null}
   </span>;

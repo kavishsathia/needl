@@ -71,6 +71,17 @@ export class LaunchDarklyAdapter implements WebhookAdapter<LaunchDarklyAdapterCo
     if (payload.relatedFlag !== undefined) {
       relationships.push({ type: "feature_flag", id: payload.relatedFlag.key, evidencePath: "/relatedFlag/key" });
     }
+    // Resource specifiers such as proj/default:env/production:flag/new-checkout name the flag and environment explicitly.
+    payload.accesses.forEach((access, index) => {
+      const flag = /(?:^|:)flag\/([^:;]+)/.exec(access.resource)?.[1];
+      const environment = /(?:^|:)env\/([^:;]+)/.exec(access.resource)?.[1];
+      if (flag !== undefined && !relationships.some((item) => item.type === "feature_flag" && item.id === flag)) {
+        relationships.push({ type: "feature_flag", id: flag, evidencePath: `/accesses/${index}/resource` });
+      }
+      if (environment !== undefined && !relationships.some((item) => item.type === "environment" && item.id === environment)) {
+        relationships.push({ type: "environment", id: environment, evidencePath: `/accesses/${index}/resource` });
+      }
+    });
     const sitePath = linkHref(payload._links, "site");
     const canonicalPath = linkHref(payload._links, "canonical");
     const links = absoluteLinks([
@@ -100,6 +111,7 @@ export class LaunchDarklyAdapter implements WebhookAdapter<LaunchDarklyAdapterCo
           providerPayload: {
             kind: payload.kind,
             actions,
+            actionList: actions.join("+"),
             resources: payload.accesses.map((access) => access.resource),
             ...(payload.titleVerb === undefined ? {} : { titleVerb: payload.titleVerb }),
             ...(payload.relatedFlag === undefined ? {} : { relatedFlag: payload.relatedFlag }),

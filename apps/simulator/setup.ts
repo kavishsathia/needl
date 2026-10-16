@@ -1,8 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { parseEnv } from "node:util";
-import { generateSecrets } from "./events.js";
 import {
   configPath,
+  generateSecrets,
+  integrationConfig,
   integrationId,
   integrationsPath,
   providers,
@@ -46,7 +47,7 @@ const integrations = providers.map((provider) => ({
   provider,
   enabled: true,
   secretEnvName: secretEnvName(provider),
-  config: provider === "gitlab" ? { purpose: "ingestion", authMode: "signing-token" } : { purpose: "ingestion" },
+  config: integrationConfig(provider),
 }));
 writeFileSync(integrationsPath, `${JSON.stringify(integrations, null, 2)}\n`, { mode: 0o600 });
 

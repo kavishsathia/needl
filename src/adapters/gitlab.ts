@@ -167,7 +167,8 @@ export class GitLabAdapter implements WebhookAdapter<GitLabAdapterConfig> {
       ...relation("project", projectId, "/project/id", projectPath, projectUrl),
       ...relation("repository", projectPath, "/project/path_with_namespace", projectPath, projectUrl),
       ...commitRelation(payload),
-      ...relation("ref", payload.ref, "/ref"),
+      // Pipeline hooks carry the branch only in object_attributes.ref.
+      ...(payload.ref !== undefined ? relation("ref", payload.ref, "/ref") : relation("ref", attributes.ref, "/object_attributes/ref")),
       ...relation("environment", payload.environment ?? attributes.environment, "/environment"),
     ];
     const evidencePayload = {

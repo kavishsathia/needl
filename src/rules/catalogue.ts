@@ -235,7 +235,6 @@ const sentry: ProviderCatalogue = {
         field("action", "state", "string", payload("action"), fixed(["critical", "critical"], ["warning", "warning"], ["resolved", "resolved"]), "Alert state."),
         field("alert_rule", "alert rule", "string", relationship("alert-rule"), identifier, "Alert rule id."),
         field("title", "title", "string", subjectName, observed, "Alert title."),
-        ...sentryCommon,
       ],
     },
   ],
@@ -302,8 +301,7 @@ const linear: ProviderCatalogue = {
       types: { prefixes: ["Comment."] },
       fields: [
         field("action", "action", "string", payload("action"), fixed(["create", "created"], ["update", "updated"], ["remove", "removed"]), "What happened to the comment."),
-        field("issue", "issue id", "string", relationship("issue"), identifier, "Linear issue UUID the comment belongs to."),
-        field("team", "team", "string", relationship("team"), identifier, "Linear team id."),
+        field("issue", "issue id", "string", relationship("issue"), identifier, "Linear issue UUID the comment belongs to.", uuid),
       ],
     },
     {
@@ -327,9 +325,10 @@ const launchdarkly: ProviderCatalogue = {
     description: `An audit-log entry for a ${kind}.`,
     types: { prefixes: [`${kind}.`] },
     fields: [
-      field("actions", "actions", "string", { from: "path", segments: ["providerEventType"] }, observed, `The ${kind} kind and actions joined with "+", e.g. flag.updateOn; match with contains.`),
+      field("actions", "actions", "string", payload("actionList"), observed, `Audit actions joined with "+", e.g. updateOn or updateRules+updateOn; match one with contains.`),
       field("resource", "resource", "string", relationship("launchdarkly-resource"), observed, "First LaunchDarkly resource specifier, e.g. proj/default:env/production:flag/new-checkout."),
-      ...(kind === "flag" ? [field("flag", "flag", "string", relationship("feature_flag"), observed, "Flag key.")] : []),
+      ...(kind === "flag" ? [field("flag", "flag", "string", relationship("feature_flag"), observed, "Flag key, from the resource specifier.")] : []),
+      ...(kind === "project" ? [] : [field("environment", "environment", "string", relationship("environment"), observed, "Environment key, from the resource specifier.")]),
       field("title", "title", "string", subjectName, observed, "Audit entry name."),
     ],
   })),
@@ -354,7 +353,6 @@ const posthog: ProviderCatalogue = {
 const intercomTopic = (topic: string, phrase: string, description: string, fields: readonly CatalogueField[]): CatalogueEvent =>
   ({ provider: "intercom", name: topic, phrase, description, types: { exact: [topic] }, fields });
 const intercomRelations = [
-  field("conversation", "conversation", "string", relationship("conversation"), identifier, "Conversation id."),
   field("contact", "contact", "string", relationship("contact"), identifier, "Contact id."),
 ];
 

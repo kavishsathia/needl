@@ -2,8 +2,12 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { events, generateSecrets, stories } from "../../simulator/events.js";
-import { integrationId, providers, secretEnvName, type SimulatorConfig } from "../../simulator/config.js";
+import { stories } from "../../simulator/events.js";
+import { encodeEvent, sampleValue, settableFields, type SimulatedValue } from "../../simulator/encoders.js";
+import { generateSecrets, integrationConfig, integrationId, providers, secretEnvName, type SimulatorConfig } from "../../simulator/config.js";
+import { catalogue, resolveField } from "../../../src/rules/catalogue.js";
+import { readField } from "../../../src/rules/suggest.js";
+import type { NormalizedEvent } from "../../../src/core/types.js";
 import { playStory } from "../../simulator/server.js";
 import { exampleRules } from "../src/examples.js";
 import { exampleDraft } from "../src/ruleDrafts.js";
@@ -32,7 +36,7 @@ async function workspace() {
       provider,
       enabled: true,
       secretEnvName: secretEnvName(provider),
-      config: provider === "gitlab" ? { purpose: "ingestion", authMode: "signing-token" } : { purpose: "ingestion" },
+      config: integrationConfig(provider),
     });
   }
   const config: SimulatorConfig = {
@@ -64,21 +68,38 @@ describe("simulator stories through signed ingestion", () => {
     expect(counterexamples.map((record) => record.assertionId).sort()).toEqual(["boomerang", "clean-break", "no-ghosts"]);
   });
 
-  it("delivers every single event, including Linear issues and GitLab pushes, with the commit SHA extracted", async () => {
+  it("sends every catalogue event as a real signed webhook that the adapters read back field for field", async () => {
     const { repository, tenantId, config, secrets, fetcher } = await workspace();
-    for (const spec of events) {
-      const fields = Object.fromEntries(spec.fields.map((field) => [field.id, field.placeholder]));
-      const delivery = spec.build(fields, new Date(), secrets[spec.provider]);
-      const response = await fetcher(`${config.needlUrl}/api/hooks/${config.integrations[spec.provider].id}`, { method: "POST", body: delivery.body, headers: delivery.headers });
-      expect({ event: spec.id, status: response.status, body: await response.json() }).toMatchObject({ event: spec.id, status: 200, body: { outcome: "stored" } });
+    let sent = 0;
+    for (const entry of catalogue) {
+      for (const event of entry.events) {
+        const key = `${event.provider}.${event.name}`;
+        const values: Record<string, SimulatedValue> = Object.fromEntries(settableFields(event).map((field) => [field.name, sampleValue(event, field)]));
+        if ((event.families ?? []).length > 0) values["tags.linear_issue"] = "ENG-42";
+        const delivery = encodeEvent(key, values, new Date(), secrets[event.provider]);
+        const response = await fetcher(`${config.needlUrl}/api/hooks/${config.integrations[event.provider].id}`, { method: "POST", body: delivery.body, headers: delivery.headers });
+        const body = await response.json() as { outcome?: string };
+        expect({ key, status: response.status, outcome: body.outcome }).toEqual({ key, status: 200, outcome: "stored" });
+        sent += 1;
+        const stored = (await repository.loadMonitorSnapshot(tenantId)).events as NormalizedEvent[];
+        const received = stored.at(-1)!;
+        for (const [name, value] of Object.entries(values)) {
+          const field = resolveField(event, name)!;
+          expect({ key, field: name, value: readField(field, received) }).toEqual({ key, field: name, value: field.read.from === "source" ? String(value) : value });
+        }
+      }
     }
-    const stored = (await repository.loadMonitorSnapshot(tenantId)).events as { provider: string; providerEventType: string; relationships: { type: string; id: string }[]; subject: { name?: string } }[];
-    const commitOf = (type: string) => stored.find((event) => event.providerEventType.startsWith(type))?.relationships.find((item) => item.type === "commit")?.id;
-    expect(commitOf("deployment")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
-    expect(commitOf("push")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
-    const linear = stored.find((event) => event.provider === "linear") as unknown as { subject: { name: string }; evidence: { providerPayload: Record<string, unknown> } };
-    expect(linear.subject.name).toBe("Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
-    expect(linear.evidence.providerPayload).toMatchObject({ stateName: "Done", stateType: "completed", stateChanged: true });
+    expect(sent).toBeGreaterThan(30);
+  });
+
+  it("derives fields such as the issue key in a deployed branch", async () => {
+    const { repository, tenantId, config, secrets, fetcher } = await workspace();
+    const delivery = encodeEvent("gitlab.deployment", { ref: "eng-77-fix", commit: "4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b" }, new Date(), secrets.gitlab);
+    await fetcher(`${config.needlUrl}/api/hooks/${config.integrations.gitlab.id}`, { method: "POST", body: delivery.body, headers: delivery.headers });
+    const received = ((await repository.loadMonitorSnapshot(tenantId)).events as NormalizedEvent[]).at(-1)!;
+    const event = catalogue.find((entry) => entry.provider === "gitlab")!.events.find((item) => item.name === "deployment")!;
+    expect(readField(resolveField(event, "ref.issue_key")!, received)).toBe("ENG-77");
+    expect(readField(resolveField(event, "commit")!, received)).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
   });
 
   it("produces a fresh violation every time a violation story is replayed", async () => {

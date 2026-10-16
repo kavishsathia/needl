@@ -68,14 +68,16 @@ export class IntercomAdapter implements WebhookAdapter<IntercomAdapterConfig> {
     const item = payload.data.item;
     const subjectId = stringValue(item.id) ?? stringValue(item.ticket_id);
     if (subjectId === undefined) return rejected(this.provider, "malformed", "Supported Intercom event is missing its subject identifier");
-    const contact = objectValue(item.contact);
+    // Conversations and tickets list contacts under contacts.contacts; other topics carry contact or contact_id.
+    const listed = objectValue(item.contacts)?.contacts;
+    const contact = objectValue(item.contact) ?? (Array.isArray(listed) ? objectValue(listed[0]) : undefined);
     const url = stringValue(item.url) ?? stringValue(item.link);
     const occurredAt = unixSeconds(payload.created_at);
     const subjectName = stringValue(item.title);
     const relationships = [
       ...relation("conversation", item.conversation_id, "/data/item/conversation_id"),
       ...relation("ticket", item.ticket_id, "/data/item/ticket_id"),
-      ...relation("contact", item.contact_id ?? contact?.id, contact === undefined ? "/data/item/contact_id" : "/data/item/contact/id"),
+      ...relation("contact", item.contact_id ?? contact?.id, item.contact_id !== undefined ? "/data/item/contact_id" : objectValue(item.contact) !== undefined ? "/data/item/contact/id" : "/data/item/contacts/contacts/0/id"),
     ];
     return {
       status: "accepted",
@@ -97,7 +99,8 @@ export class IntercomAdapter implements WebhookAdapter<IntercomAdapterConfig> {
             topic: payload.topic,
             itemType: item.type,
             ...(item.state === undefined ? {} : { state: item.state }),
-            ...(item.ticket_state === undefined ? {} : { ticketState: item.ticket_state }),
+            // ticket_state is an object ({ category, internal_label }) in current payloads and a string in older ones.
+            ...(item.ticket_state === undefined ? {} : { ticketState: stringValue(item.ticket_state) ?? stringValue(objectValue(item.ticket_state)?.category) ?? item.ticket_state }),
             ...(payload.delivery_attempts === undefined ? {} : { deliveryAttempts: payload.delivery_attempts }),
           },
           links: absoluteLinks([{ rel: "subject", url }]),

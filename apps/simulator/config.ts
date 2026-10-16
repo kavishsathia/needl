@@ -1,9 +1,31 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { SimulatedProvider } from "./events.js";
+import { randomBytes } from "node:crypto";
+import { providers as allProviders, type Provider } from "../../src/core/types.js";
 
-export const providers: readonly SimulatedProvider[] = ["gitlab", "sentry", "stripe", "linear"];
+export type SimulatedProvider = Provider;
+
+/** Every integration Needl has an adapter for. */
+export const providers: readonly SimulatedProvider[] = allProviders;
+
+/** Adapter settings Needl needs for each simulated integration. */
+export function integrationConfig(provider: SimulatedProvider): Readonly<Record<string, unknown>> {
+  if (provider === "gitlab") return { purpose: "ingestion", authMode: "signing-token" };
+  if (provider === "posthog") return { purpose: "ingestion", authentication: { mode: "standard-webhooks" } };
+  return { purpose: "ingestion" };
+}
+
+/** A signing secret in the format each provider issues: Standard Webhooks senders use whsec_ keys. */
+export function generateSecret(provider: SimulatedProvider): string {
+  if (provider === "gitlab" || provider === "posthog") return `whsec_${randomBytes(32).toString("base64")}`;
+  if (provider === "stripe") return `whsec_${randomBytes(24).toString("hex")}`;
+  return randomBytes(32).toString("hex");
+}
+
+export function generateSecrets(): Readonly<Record<SimulatedProvider, string>> {
+  return Object.fromEntries(providers.map((provider) => [provider, generateSecret(provider)])) as Record<SimulatedProvider, string>;
+}
 
 /** Generated secrets and routing live outside the repository's tracked files. */
 export const stateDirectory = resolve(process.env.SIMULATOR_STATE_DIR ?? join(fileURLToPath(new URL(".", import.meta.url)), "../../.simulator"));

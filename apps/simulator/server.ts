@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { events, findEvent, findStory, stories, type SignedDelivery } from "./events.js";
+import { catalogueEvents } from "../../src/rules/catalogue.js";
+import { encodeEvent, type SimulatedValues } from "./encoders.js";
+import { eventSpecs, findStory, stories, typedValues } from "./events.js";
 import { loadConfig, loadSecrets, providers, type SimulatorConfig } from "./config.js";
 
 export interface DeliveryResult {
@@ -18,14 +20,16 @@ export async function deliver(
   config: SimulatorConfig,
   secrets: Readonly<Record<string, string>>,
   eventId: string,
-  fields: Readonly<Record<string, string>>,
+  values: SimulatedValues,
   at: Date,
   fetcher: typeof fetch = fetch,
 ): Promise<DeliveryResult> {
-  const spec = findEvent(eventId);
-  const delivery: SignedDelivery = spec.build(fields, at, secrets[spec.provider]!);
-  const url = `${config.needlUrl}/api/hooks/${encodeURIComponent(config.integrations[spec.provider].id)}`;
-  const base = { event: spec.id, provider: spec.provider, label: spec.label, sentAt: at.toISOString(), url, request: { headers: delivery.headers, body: JSON.parse(delivery.body) as unknown } };
+  const event = catalogueEvents.get(eventId);
+  if (event === undefined) throw new Error(`Unknown event ${eventId}`);
+  const delivery = encodeEvent(eventId, values, at, secrets[event.provider]!);
+  const url = `${config.needlUrl}/api/hooks/${encodeURIComponent(config.integrations[event.provider].id)}`;
+  const label = event.phrase.replace(/^an? /, "");
+  const base = { event: eventId, provider: event.provider, label, sentAt: at.toISOString(), url, request: { headers: delivery.headers, body: JSON.parse(delivery.body) as unknown } };
   try {
     const response = await fetcher(url, { method: "POST", headers: delivery.headers, body: delivery.body });
     const text = await response.text();
@@ -47,7 +51,7 @@ export async function playStory(
   const start = Date.now();
   const results: DeliveryResult[] = [];
   // One second apart so every step has a strictly later observation time than the one before.
-  for (const [index, step] of steps.entries()) results.push(await deliver(config, secrets, step.event, step.fields, new Date(start + index * 1_000), fetcher));
+  for (const [index, step] of steps.entries()) results.push(await deliver(config, secrets, step.event, step.values, new Date(start + index * 1_000), fetcher));
   return results;
 }
 
@@ -95,7 +99,7 @@ if (entrypoint !== undefined && import.meta.url === pathToFileURL(entrypoint).hr
           needlUrl: config.needlUrl,
           tenantId: config.tenantId,
           integrations: providers.map((provider) => ({ provider, id: config.integrations[provider].id })),
-          events: events.map(({ id, provider, label, description, fields }) => ({ id, provider, label, description, fields })),
+          events: eventSpecs(),
           stories: stories.map(({ id, template, variant, label }) => ({ id, template, variant, label })),
         });
         return;
@@ -108,7 +112,7 @@ if (entrypoint !== undefined && import.meta.url === pathToFileURL(entrypoint).hr
         }
         const body = await readJson(request);
         if (url.pathname === "/api/send" && typeof body.event === "string") {
-          json(response, 200, { results: [await deliver(config, secrets, body.event, stringFields(body.fields), new Date())] });
+          json(response, 200, { results: [await deliver(config, secrets, body.event, typedValues(body.event, stringFields(body.fields)), new Date())] });
           return;
         }
         if (url.pathname === "/api/story" && typeof body.story === "string") {

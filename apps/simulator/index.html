@@ -9,7 +9,7 @@
     --bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #e3e1d9;
     --accent: #2f5bd3; --bad: #c2362b; --bad-bg: #fbeae8; --good: #23804a; --good-bg: #e6f4ec;
     --warn: #8a6100; --warn-bg: #fbf1d9;
-    --gitlab: #e2432a; --sentry: #6c5fc7; --stripe: #635bff; --linear: #5e6ad2;
+    --gitlab: #e2432a; --sentry: #6c5fc7; --stripe: #635bff; --linear: #5e6ad2; --launchdarkly: #405bff; --posthog: #f54e00; --intercom: #1f8ded;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
@@ -41,7 +41,14 @@
   button.healthy { border-color: var(--good); color: var(--good); }
   button.send { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   .badge { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; color: #fff; }
-  .badge.gitlab { background: var(--gitlab); } .badge.sentry { background: var(--sentry); } .badge.stripe { background: var(--stripe); } .badge.linear { background: var(--linear); }
+  .badge.gitlab { background: var(--gitlab); } .badge.sentry { background: var(--sentry); } .badge.stripe { background: var(--stripe); } .badge.linear { background: var(--linear); } .badge.launchdarkly { background: var(--launchdarkly); } .badge.posthog { background: var(--posthog); } .badge.intercom { background: var(--intercom); }
+  .event-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .event-tools input { flex: 1 1 180px; font-family: inherit; }
+  .chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .field-hint { font-size: 11px; color: var(--muted); font-weight: 400; }
+  select { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+  .provider-group > h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
   details.event summary { cursor: pointer; list-style: none; display: flex; gap: 10px; align-items: center; }
   details.event summary::-webkit-details-marker { display: none; }
   details.event summary .desc { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
@@ -74,7 +81,9 @@
   <section>
     <h2>Stories</h2>
     <div id="stories"></div>
-    <h2>Single events</h2>
+    <h2>Any event</h2>
+    <p class="target">Every event and field Needl's rules can use, sent as the provider's real signed webhook. Empty fields get realistic values.</p>
+    <div class="event-tools"><input id="event-search" type="search" placeholder="Search events or fields" aria-label="Search events"><span id="provider-chips"></span></div>
     <div id="events"></div>
   </section>
   <section>
@@ -160,24 +169,60 @@ async function boot() {
     $("#stories").append(card);
   }
 
-  for (const event of catalog.events) {
+  const providers = [...new Set(catalog.events.map((event) => event.provider))];
+  let activeProvider = "all";
+  const chips = $("#provider-chips");
+  const chipFor = (value, label) => el("button", { class: "chip", type: "button", "aria-pressed": String(value === activeProvider), onclick: () => { activeProvider = value; renderEvents(); } }, label);
+  const inputFor = (field) => {
+    const common = { name: field.name, autocomplete: "off", spellcheck: "false" };
+    if (field.options) {
+      return el("select", common, el("option", { value: "" }, "(random)"), ...field.options.map((option) => {
+        const node = el("option", { value: String(option.value) }, `${option.label}${String(option.value) === option.label ? "" : ` (${option.value})`}`);
+        if (option.value === field.sample) node.selected = true;
+        return node;
+      }));
+    }
+    if (field.type === "boolean") {
+      return el("select", common, el("option", { value: "" }, "(random)"), el("option", { value: "true" }, "true"), el("option", { value: "false" }, "false"));
+    }
+    return el("input", { ...common, type: field.type === "number" ? "number" : "text", placeholder: String(field.sample) });
+  };
+  const eventCard = (event) => {
     const form = el("form", {});
     for (const field of event.fields) {
-      form.append(el("label", {}, field.label, el("input", { name: field.id, value: field.placeholder, autocomplete: "off", spellcheck: "false" })));
+      form.append(el("label", { title: field.description }, el("span", {}, field.name, " ", el("span", { class: "field-hint" }, field.type)), inputFor(field)));
     }
+    if (event.tags) form.append(el("label", { title: "Comma-separated key=value pairs, readable in rules as tags.<key>" }, el("span", {}, "tags ", el("span", { class: "field-hint" }, "key=value, …")), el("input", { name: "tags", placeholder: "linear_issue=ENG-42", autocomplete: "off" })));
     const send = el("button", { class: "send", type: "submit" }, "Send");
     form.append(send);
     const card = el("details", { class: "card event" },
-      el("summary", {}, el("span", { class: `badge ${event.provider}` }, event.provider), el("strong", {}, event.label), el("span", { class: "desc" }, event.description)),
+      el("summary", {}, el("span", { class: `badge ${event.provider}` }, event.provider), el("strong", {}, event.label), el("span", { class: "desc" }, event.id)),
+      el("p", { class: "storyline" }, event.description),
       form);
     form.addEventListener("submit", async (submit) => {
       submit.preventDefault();
-      const fields = Object.fromEntries(new FormData(form).entries());
+      const fields = Object.fromEntries([...new FormData(form).entries()].map(([key, value]) => [key, String(value)]));
       try { logResults(await post("/api/send", { event: event.id, fields }, send)); }
       catch (error) { showError(card, error); }
     });
-    $("#events").append(card);
+    return card;
+  };
+  const cards = new Map(catalog.events.map((event) => [event.id, eventCard(event)]));
+  function renderEvents() {
+    chips.replaceChildren(chipFor("all", "All"), ...providers.map((provider) => chipFor(provider, provider)));
+    const needle = $("#event-search").value.trim().toLowerCase();
+    const container = $("#events");
+    container.replaceChildren();
+    for (const provider of providers) {
+      if (activeProvider !== "all" && activeProvider !== provider) continue;
+      const matching = catalog.events.filter((event) => event.provider === provider && (needle === "" || `${event.id} ${event.label} ${event.description} ${event.fields.map((field) => field.name).join(" ")}`.toLowerCase().includes(needle)));
+      if (matching.length === 0) continue;
+      container.append(el("div", { class: "provider-group" }, el("h3", {}, provider), ...matching.map((event) => cards.get(event.id))));
+    }
+    if (container.children.length === 0) container.append(el("div", { class: "empty" }, "No events match."));
   }
+  $("#event-search").addEventListener("input", renderEvents);
+  renderEvents();
 }
 
 $("#clear").addEventListener("click", () => {

@@ -137,11 +137,11 @@ h1, h2, h3, p { margin-top: 0; }
 .assertion-card:focus-within { z-index: 8; }
 .assertion-card:nth-child(3n+2) { background: #e5ded0; }
 .assertion-card:nth-child(4n) { background: #f0ebdf; }
-.assertion-card--violated { border-color: #ddbd68; background: linear-gradient(142deg, #f0cf7b, #e7bd53); }
-.assertion-card--paused { color: #e7e3da; border-color: #49473f; background: #24231f; }
-.assertion-card--unavailable { color: #dad6ce; border-color: #3b3934; background: #1d1d1a; }
-.assertion-card--pending { border-color: #bda964; background: #e8e0c7; }
-.assertion-card--needs-review { color: #eadfd9; border-color: #70463d; background: #2b1c19; }
+.assertion-card.assertion-card--violated { border-color: #ddbd68; background: linear-gradient(142deg, #f0cf7b, #e7bd53); }
+.assertion-card.assertion-card--paused { color: #e7e3da; border-color: #49473f; background: #24231f; }
+.assertion-card.assertion-card--unavailable { color: #dad6ce; border-color: #3b3934; background: #1d1d1a; }
+.assertion-card.assertion-card--pending { border-color: #bda964; background: #e8e0c7; }
+.assertion-card.assertion-card--needs-review { color: #eadfd9; border-color: #70463d; background: #2b1c19; }
 .card-hit { width: 100%; padding: 16px 16px 14px; display: block; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
 .card-topline { min-height: 24px; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .card-topline svg { width: 18px; opacity: .6; }

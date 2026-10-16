@@ -408,9 +408,7 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
 }) {
   const tone = assertionTone(draft, replay);
   const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
-  // Each card keeps its own name, so cards glide to their new places when the board narrows for the detail panel.
-  const cardStyle = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}`, viewTransitionClass: "assertion-card" } as CSSProperties;
-  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""} ${selected ? "is-selected" : ""}`} style={cardStyle} data-testid={`assertion-card-${draft.localId}`}>
+  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""} ${selected ? "is-selected" : ""}`} data-testid={`assertion-card-${draft.localId}`}>
     <div className="card-hit">
       <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button></span>
       <h3>{draft.definition.name}</h3>

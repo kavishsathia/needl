@@ -402,15 +402,12 @@ h1, h2, h3, p { margin-top: 0; }
 /* Unnamed content swaps instantly; crossfading text whose layout changed shows it twice. */
 ::view-transition-old(root) { display: none; }
 ::view-transition-new(root) { animation: none; }
-::view-transition-group(*) { animation-duration: 240ms; animation-timing-function: cubic-bezier(.2, .7, .2, 1); }
-/* Cards glide to their new place showing their final content, clipped rather than crossfaded or stretched. */
-::view-transition-old(*.assertion-card) { display: none; }
-::view-transition-new(*.assertion-card) { animation: none; height: 100%; object-fit: none; object-position: left top; }
 ::view-transition-group(assertion-detail) { z-index: 10; }
-::view-transition-new(assertion-detail):only-child { animation: detail-in 240ms cubic-bezier(.2, .7, .2, 1) both; }
-::view-transition-old(assertion-detail):only-child { animation: detail-out 180ms ease-in both; }
-@keyframes detail-in { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: none; } }
-@keyframes detail-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(48px); } }
+/* The panel slides in from the right edge and back out; it is not the card morphing. */
+::view-transition-new(assertion-detail):only-child { animation: detail-in 300ms cubic-bezier(.2, .8, .2, 1) both; }
+::view-transition-old(assertion-detail):only-child { animation: detail-out 220ms cubic-bezier(.4, 0, 1, 1) both; }
+@keyframes detail-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes detail-out { from { transform: none; } to { transform: translateX(100%); } }
 .assertion-card.is-selected { outline: 2px solid var(--amber); outline-offset: 3px; }
 
 @media (max-width: 1180px) {

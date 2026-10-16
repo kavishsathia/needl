@@ -187,6 +187,13 @@ test("clicking anywhere on a card opens the rule, but its choice dropdowns do no
   await page.keyboard.press("Escape");
   await card.locator("h3").click();
   await expect(page.getByRole("complementary", { name: "No ghosts detail" })).toBeVisible();
+
+  // Opening another rule replaces the panel instead of stacking a second one or another history entry.
+  await page.getByTestId("assertion-card-boomerang").locator("h3").click();
+  await expect(page.getByRole("complementary", { name: "Boomerang detail" })).toBeVisible();
+  await expect(page.locator(".detail")).toHaveCount(1);
+  await page.getByRole("button", { name: "Back to assertion board" }).click();
+  await expect(page.locator(".detail")).toHaveCount(0);
 });
 
 test("replay switches between violating and healthy engine paths", async ({ page }) => {

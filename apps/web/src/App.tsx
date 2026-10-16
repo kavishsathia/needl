@@ -113,13 +113,17 @@ function useRoute() {
   const navigate = (nextSection: Section, nextId?: string, replace = false) => {
     const hash = `#/${nextSection}${nextId === undefined ? "" : `/${encodeURIComponent(nextId)}`}`;
     const state = { needl: true, detail: nextId !== undefined };
-    if (replace) window.history.replaceState(state, "", hash);
+    // Opening another rule while one is open swaps the panel in place: one panel, one history entry, no slide.
+    const switching = selectedId !== undefined && nextId !== undefined && nextSection === section;
+    if (replace || switching) window.history.replaceState(state, "", hash);
     else window.history.pushState(state, "", hash);
-    beginTransition(() => {
+    const update = () => {
       previousSelected.current = selectedId;
       setSection(nextSection);
       setSelectedId(nextId);
-    });
+    };
+    if (switching) update();
+    else beginTransition(update);
   };
 
   return { section, selectedId, previousSelected, navigate };
@@ -988,7 +992,7 @@ export function App() {
       {section === "activity" ? <ActivityPage replay={evidence}/> : null}
       {section === "connections" ? <ConnectionsPage replay={evidence} integrations={workspace.integrations}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} examples={examples} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
-      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(selected, param, value)}/> : null}
+      {selected !== undefined && section === "assertions" ? <AssertionDetail key={selected.localId} draft={selected} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(selected, param, value)}/> : null}
     </div>
     {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Writing and checking the rule…" : "Replaying through engine…"}</div> : null}
     {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}

@@ -434,14 +434,13 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
   </article>;
 }
 
-function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOpen, onReplay, onChoose }: {
+function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOpen, onChoose }: {
   readonly assertions: readonly AssertionDraft[];
   readonly replay: DemoReplay | null;
   readonly selectedId?: string;
   readonly search: string;
   readonly onCreate: (text: string) => string | undefined;
   readonly onOpen: (id: string) => void;
-  readonly onReplay: (scenario: DemoReplayRequest["scenario"]) => void;
   readonly onChoose: (draft: AssertionDraft, param: string, value: ParamValue) => void;
 }) {
   const [input, setInput] = useState("");
@@ -467,10 +466,6 @@ function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOp
   return <main className={`board ${selectedId === undefined ? "" : "has-detail"}`} id="main-content">
     <div className="board-heading">
       <div><span className="eyebrow">Acme / Production</span><h1>Assertions</h1><p>Catch a broken promise while it happens.</p></div>
-      <div className="replay-control">
-        <span>Sample replay</span>
-        <button onClick={() => onReplay(replay?.scenario === "healthy" ? "violating" : "healthy")} title="Switch and replay the sample scenario"><Icon name="replay"/>Replay {replay?.scenario === "healthy" ? "violations" : "healthy path"}</button>
-      </div>
     </div>
     <form className="composer" onSubmit={submit}>
       <label htmlFor="assertion-input">What should never happen?</label>
@@ -1101,7 +1096,7 @@ export function App() {
     <Sidebar section={section} replay={evidence} liveSources={workspace.integrations.filter((item) => item.purpose === "ingestion" && item.enabled).length} onNavigate={(next) => navigate(next)}/>
     <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
-      {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onChoose={changeChoice}/> : null}
+      {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onChoose={changeChoice}/> : null}
       {section === "activity" ? <ActivityPage replay={evidence}/> : null}
       {section === "connections" ? <ConnectionsPage replay={evidence}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} examples={examples} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}

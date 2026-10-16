@@ -81,7 +81,6 @@ test("complete assertion journey uses engine evidence and persists authored stat
   const consoleErrors = watchConsole(page);
   await page.goto("/#/assertions");
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
-  await expect(page.getByText("Sample replay")).toBeVisible();
   await expect(page.locator(".assertion-card")).toHaveCount(3);
 
   await page.screenshot({ path: fileURLToPath(new URL("safety-desktop-board.png", screenshotDir)), fullPage: true });
@@ -221,18 +220,6 @@ test("connecting a tool: the dialog gives the URL, checks the pasted secret, and
   await expect(dialog.getByRole("status")).toContainText("Receiving events · last: invoice.paid", { timeout: 10_000 });
   await dialog.getByRole("button", { name: "Close setup" }).click();
   await expect(page.getByTestId("connection-stripe")).toContainText("secret saved in Needl");
-});
-
-test("replay switches between violating and healthy engine paths", async ({ page }) => {
-  const consoleErrors = watchConsole(page);
-  await page.goto("/#/assertions");
-  await expect(page.locator(".assertion-card--violated")).toHaveCount(3);
-  await page.getByRole("button", { name: /Replay healthy path/ }).click();
-  await expect(page.locator(".assertion-card--violated")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Replay violations/ })).toBeVisible();
-  await page.getByRole("button", { name: /Replay violations/ }).click();
-  await expect(page.locator(".assertion-card--violated")).toHaveCount(3);
-  expect(consoleErrors).toEqual([]);
 });
 
 test("hand-written rules are checked live: liveness is refused with its location and a time limit is accepted", async ({ page }) => {

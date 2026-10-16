@@ -178,6 +178,17 @@ test("rules started from each example read back in English and produce counterex
   }
 });
 
+test("clicking anywhere on a card opens the rule, but its choice dropdowns do not", async ({ page }) => {
+  await page.goto("/#/assertions");
+  const card = page.getByTestId("assertion-card-no-ghosts");
+  await card.getByRole("button", { name: "environment: production" }).first().click();
+  await expect(page.getByRole("listbox", { name: "environment choices" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "No ghosts detail" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await card.locator("h3").click();
+  await expect(page.getByRole("complementary", { name: "No ghosts detail" })).toBeVisible();
+});
+
 test("replay switches between violating and healthy engine paths", async ({ page }) => {
   const consoleErrors = watchConsole(page);
   await page.goto("/#/assertions");

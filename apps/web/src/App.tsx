@@ -409,7 +409,12 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
   const tone = assertionTone(draft, replay);
   const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
   return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""} ${selected ? "is-selected" : ""}`} data-testid={`assertion-card-${draft.localId}`}>
-    <div className="card-hit">
+    <div className="card-hit" onClick={(event) => {
+      // The whole card opens the rule; its own controls (choice dropdowns, the arrow) and text selection keep working.
+      if ((event.target as HTMLElement).closest("button, a, input, select, textarea, [role=listbox]") !== null) return;
+      if ((window.getSelection()?.toString() ?? "").length > 0) return;
+      onOpen();
+    }}>
       <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button></span>
       <h3>{draft.definition.name}</h3>
       {!compact ? <RuleReading draft={draft} onChoose={onChoose}/> : <p className="compact-meaning">{draft.expectation}</p>}

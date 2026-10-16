@@ -76,6 +76,7 @@ describe("LinearAdapter", () => {
     expect(result.event.providerEventType).toBe("Issue.update");
     expect(result.event.relationships).toContainEqual(expect.objectContaining({ type: "issue-key", id: "NDL-42" }));
     expect(result.event.evidence.providerPayload.updatedFrom).toEqual({ stateId: "state-progress" });
+    expect(result.event.evidence.providerPayload).toMatchObject({ stateName: "Done", stateType: "completed", stateChanged: true });
     expect(result.event.evidence.originalPayload).toBe(rawBody.toString());
     expect(result.event.evidence.bodySha256).toMatch(/^[a-f0-9]{64}$/);
   });

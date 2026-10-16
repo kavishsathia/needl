@@ -76,7 +76,9 @@ describe("simulator stories through signed ingestion", () => {
     const commitOf = (type: string) => stored.find((event) => event.providerEventType.startsWith(type))?.relationships.find((item) => item.type === "commit")?.id;
     expect(commitOf("deployment")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
     expect(commitOf("push")).toBe("4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
-    expect(stored.find((event) => event.provider === "linear")?.subject.name).toBe("Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
+    const linear = stored.find((event) => event.provider === "linear") as unknown as { subject: { name: string }; evidence: { providerPayload: Record<string, unknown> } };
+    expect(linear.subject.name).toBe("Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b");
+    expect(linear.evidence.providerPayload).toMatchObject({ stateName: "Done", stateType: "completed", stateChanged: true });
   });
 
   it("produces a fresh violation every time a violation story is replayed", async () => {

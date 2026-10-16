@@ -70,6 +70,17 @@ function linearUuid(seed: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+/** Linear's fixed state categories for common state names; teams name their states freely. */
+function linearStateType(name: string): string {
+  const key = name.trim().toLowerCase();
+  if (["done", "completed", "shipped", "released"].includes(key)) return "completed";
+  if (["canceled", "cancelled", "duplicate", "won't do"].includes(key)) return "canceled";
+  if (["todo", "to do", "unstarted"].includes(key)) return "unstarted";
+  if (key === "backlog") return "backlog";
+  if (key === "triage") return "triage";
+  return "started";
+}
+
 function commitSha(fields: Readonly<Record<string, string>>): string {
   const given = fields.commit?.trim();
   if (given === undefined || given.length === 0) return randomBytes(20).toString("hex");
@@ -195,12 +206,16 @@ export const events: readonly EventSpec[] = [
     fields: [
       { id: "identifier", label: "Issue key", placeholder: "ENG-42" },
       { id: "title", label: "Title", placeholder: "Deployed 4f1c2b9e7d3a5c8b0e6f1a2d4c7b9e3f5a8d0c1b" },
+      { id: "state", label: "State", placeholder: "Done" },
+      { id: "from", label: "Moved from (blank = state unchanged)", placeholder: "In Progress" },
       { id: "action", label: "Action (create/update)", placeholder: "update" },
     ],
     build(fields, at, secret) {
       const identifier = required(fields, "identifier").toUpperCase();
       const action = fields.action?.trim() || "update";
       if (action !== "create" && action !== "update") throw new Error("Action must be create or update");
+      const state = fields.state?.trim() || "In Progress";
+      const from = fields.from?.trim();
       const body = JSON.stringify({
         action,
         type: "Issue",
@@ -214,10 +229,14 @@ export const events: readonly EventSpec[] = [
           identifier,
           title: required(fields, "title"),
           teamId: linearUuid(`team:${identifier.split("-")[0]}`),
-          stateId: linearUuid("state:in-progress"),
+          stateId: linearUuid(`state:${state.toLowerCase()}`),
+          state: { id: linearUuid(`state:${state.toLowerCase()}`), name: state, type: linearStateType(state), color: "#5e6ad2" },
           priority: 2,
           url: `https://linear.app/acme/issue/${identifier}`,
         },
+        ...(action === "update" && from !== undefined && from.length > 0 && from.toLowerCase() !== state.toLowerCase()
+          ? { updatedFrom: { stateId: linearUuid(`state:${from.toLowerCase()}`) } }
+          : {}),
       });
       return { provider: "linear", body, headers: linearHeaders(secret, body) };
     },

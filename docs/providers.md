@@ -63,7 +63,7 @@ The adapter verifies `Linear-Signature` as the hex HMAC-SHA256 of exact raw byte
 - `Comment.create`, `Comment.update`, `Comment.remove`
 - `IssueSLA.<action>` including provider actions such as `set`, `highRisk`, and `breached`
 
-Issue identifier, team, project, and comment-to-issue relationships are preserved only from explicit fields. `updatedFrom` is kept as bounded change evidence; changing a workflow state is not interpreted as a fix.
+Issue identifier, team, project, and comment-to-issue relationships are preserved only from explicit fields. Issue events also keep the workflow state's name and type (`stateName`, `stateType`, from `data.state`) and whether this update changed the state (`stateChanged`, from `updatedFrom.stateId`). `updatedFrom` is kept as bounded change evidence; changing a workflow state is not interpreted as a fix.
 
 Linear documents a five-second response deadline and up to three retries after roughly 1 minute, 1 hour, and 6 hours. Deduplicate using `Linear-Delivery`. Rotate with `[new, old]` for the shortest practical overlap.
 

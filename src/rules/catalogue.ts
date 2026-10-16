@@ -288,7 +288,10 @@ const linear: ProviderCatalogue = {
       fields: [
         field("action", "action", "string", payload("action"), fixed(["create", "created"], ["update", "updated"], ["remove", "removed"]), "What happened to the issue."),
         ...linearIssueFields,
-        field("state_id", "workflow state id", "string", payload("stateId"), observed, "UUID of the issue's workflow state. Needl does not receive state names such as Done, so rules cannot match a state by name.", uuid),
+        field("state", "state", "string", payload("stateName"), observed, "Workflow state name after the event, e.g. Done or In Review (team-specific)."),
+        field("state_type", "state type", "string", payload("stateType"), fixed(["triage", "in triage"], ["backlog", "in the backlog"], ["unstarted", "not started"], ["started", "in progress"], ["completed", "completed"], ["canceled", "canceled"]), "Linear's fixed category of the workflow state; completed covers every team's Done states."),
+        field("state_changed", "state change", "boolean", payload("stateChanged"), { kind: "fixed", options: [{ value: true, label: "a state change" }, { value: false, label: "no state change" }] }, "True when this update moved the issue to a different workflow state."),
+        field("state_id", "workflow state id", "string", payload("stateId"), observed, "UUID of the issue's workflow state.", uuid),
         field("priority", "priority", "number", payload("priority"), { kind: "fixed", options: [{ value: 0, label: "no priority" }, { value: 1, label: "urgent" }, { value: 2, label: "high" }, { value: 3, label: "medium" }, { value: 4, label: "low" }] }, "Priority, 0 (none) to 4 (low)."),
         field("title", "title", "string", subjectName, observed, "Issue title."),
       ],

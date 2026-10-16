@@ -12,10 +12,15 @@
     "title": "Fix ingestion",
     "teamId": "team-1",
     "stateId": "state-done",
-    "url": "https://linear.app/needl/issue/NDL-42/fix-ingestion"
+    "url": "https://linear.app/needl/issue/NDL-42/fix-ingestion",
+    "state": {
+      "id": "state-done",
+      "name": "Done",
+      "type": "completed",
+      "color": "#5e6ad2"
+    }
   },
   "updatedFrom": {
     "stateId": "state-progress"
   }
 }
-

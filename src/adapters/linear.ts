@@ -81,6 +81,13 @@ export class LinearAdapter implements WebhookAdapter<LinearAdapterConfig> {
       ...relation("team", data.teamId, "/data/teamId"),
       ...relation("project", data.projectId, "/data/projectId"),
     ];
+    // Issue payloads carry the workflow state as an object; its type is Linear's fixed category (completed, started, …).
+    const state = objectValue(data.state);
+    const stateName = stringValue(state?.name);
+    const stateType = stringValue(state?.type);
+    const stateChanged = payload.type === "Issue" && payload.action === "update" && payload.updatedFrom !== undefined
+      ? Object.prototype.hasOwnProperty.call(payload.updatedFrom, "stateId")
+      : undefined;
     const occurredAt = isoDate(payload.createdAt);
     const url = stringValue(data.url) ?? payload.url;
     const subjectName = stringValue(data.title);
@@ -108,6 +115,9 @@ export class LinearAdapter implements WebhookAdapter<LinearAdapterConfig> {
             type: payload.type,
             ...(identifier === undefined ? {} : { identifier }),
             ...(data.stateId === undefined ? {} : { stateId: data.stateId }),
+            ...(stateName === undefined ? {} : { stateName }),
+            ...(stateType === undefined ? {} : { stateType }),
+            ...(stateChanged === undefined ? {} : { stateChanged }),
             ...(data.priority === undefined ? {} : { priority: data.priority }),
             ...(payload.updatedFrom === undefined ? {} : { updatedFrom: payload.updatedFrom }),
           },

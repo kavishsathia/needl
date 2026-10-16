@@ -11,7 +11,7 @@ import {
   type CompiledAssertion,
   type PredicateEvaluation,
 } from "./assertion.js";
-import { containsBind, evaluateCompleteTrace, prefixVerdict, progressFormula } from "./formula.js";
+import { advanceFormulaTime, containsBind, containsTimed, evaluateCompleteTrace, nextDeadline, prefixVerdict, progressFormula } from "./formula.js";
 import type { BindingEnvironment, LtlFormula } from "./types.js";
 import type {
   CounterexampleRecord,
@@ -97,6 +97,7 @@ function progressObservation(
   event: NormalizedEvent,
   state: ReturnType<typeof applyStateUpdates>,
   valuation: Readonly<Record<string, boolean>>,
+  at: string,
 ): {
   readonly residual: LtlFormula;
   readonly valuation: Readonly<Record<string, boolean>>;
@@ -123,6 +124,7 @@ function progressObservation(
       captured[variable] = value ?? null;
       return value;
     },
+    at,
   });
   return { residual: next, valuation: boundValuation, evaluations: boundEvaluations, captured };
 }
@@ -206,6 +208,18 @@ function outbox(record: CounterexampleRecord): MonitorOutboxItem {
   };
 }
 
+function dueAt(residual: LtlFormula | undefined, pending: readonly DeadlineObligation[]): { readonly nextDueAt?: string } {
+  const candidates = [...(residual === undefined ? [] : [nextDeadline(residual)]), ...pending.map((obligation) => obligation.dueAt)]
+    .filter((value): value is string => value !== undefined)
+    .sort();
+  return candidates[0] === undefined ? {} : { nextDueAt: candidates[0] };
+}
+
+function withoutDue(checkpoint: MonitorCheckpoint): MonitorCheckpoint {
+  const { nextDueAt: _previous, ...rest } = checkpoint;
+  return rest;
+}
+
 function applied(instance: MonitorInstance, checkpoint: MonitorCheckpoint, records: readonly CounterexampleRecord[]): MonitorProcessResult {
   return {
     ...instance,
@@ -277,7 +291,7 @@ export class RuntimeMonitor {
       let progressed: ReturnType<typeof progressObservation> | undefined;
       if (assertion.formula.kind !== "deadline") {
         if (previous.residual === undefined) throw new Error("Ordinary LTL checkpoint is missing a residual formula");
-        progressed = progressObservation(assertion, previous.residual, event, state, evaluation.valuation);
+        progressed = progressObservation(assertion, previous.residual, event, state, evaluation.valuation, at);
       }
       const item: ObservationTraceItem = {
         type: "observation",
@@ -342,6 +356,7 @@ export class RuntimeMonitor {
         ...(residual === undefined ? {} : { residual }),
         pendingObligations: pending,
         lastLogicalTime: at,
+        ...dueAt(residual, pending),
         processedCount: item.position,
         ...tail,
         finalized: false,
@@ -378,6 +393,20 @@ export class RuntimeMonitor {
       const records: CounterexampleRecord[] = [];
       let pending = [...previous.pendingObligations];
       let verdict = previous.verdict;
+      let residual = previous.residual;
+      if (assertion.formula.kind !== "deadline" && residual !== undefined) {
+        const closing = nextDeadline(residual);
+        residual = advanceFormulaTime(residual, at);
+        const before = verdict;
+        verdict = prefixVerdict(residual);
+        if (before !== "violated" && verdict === "violated") {
+          records.push(violation(
+            assertion, instance, "deadline_expired", at,
+            `A time window ending ${closing ?? "earlier"} closed at ${at} without the rule being met.`,
+            fullTrace, {}, input.id,
+          ));
+        }
+      }
       if (assertion.formula.kind === "deadline") {
         const expired = pending.filter((obligation) => obligation.dueAt <= at);
         pending = pending.filter((obligation) => obligation.dueAt > at);
@@ -391,11 +420,13 @@ export class RuntimeMonitor {
         if (records.length > 0) verdict = "violated";
       }
       const checkpoint: MonitorCheckpoint = {
-        ...previous,
+        ...withoutDue(previous),
         revision: previous.revision + 1,
         verdict,
+        ...(residual === undefined ? {} : { residual }),
         pendingObligations: pending,
         lastLogicalTime: at,
+        ...dueAt(residual, pending),
         processedCount: item.position,
         ...traceTail(assertion, previous, item),
       };
@@ -438,9 +469,9 @@ export class RuntimeMonitor {
         }
         pending = [];
       } else {
-        // Bound formulas cannot be re-evaluated from stored valuations; the residual already carries every frozen value,
+        // Bound and timed formulas cannot be re-evaluated from stored valuations; the residual already carries every frozen value and opened window,
         // so the complete trace satisfies the formula exactly when the residual holds on the empty remaining suffix.
-        const complete = containsBind(assertion.formula)
+        const complete = containsBind(assertion.formula) || containsTimed(assertion.formula)
           ? evaluateCompleteTrace(previous.residual ?? assertion.formula, [], 0)
           : evaluateCompleteTrace(assertion.formula, observations.map((observation) => observation.valuation));
         verdict = complete ? "satisfied" : "violated";
@@ -453,7 +484,7 @@ export class RuntimeMonitor {
         }
       }
       const checkpoint: MonitorCheckpoint = {
-        ...previous,
+        ...withoutDue(previous),
         revision: previous.revision + 1,
         verdict,
         pendingObligations: pending,

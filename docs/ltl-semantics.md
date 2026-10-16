@@ -20,6 +20,22 @@ equivalent text syntax below.
 | `always` | `G p` | `p` now and at every future observation |
 | `eventually` | `F p` | `p` now or at a future observation |
 | `until` | `p U q` | `q` eventually, with `p` holding before it |
+| `weakUntil` | `p W q` | `p` holds until `q`; `q` is never required |
+| `eventuallyWithin` | `F[<=30m] p` | `p` at an observation no later than `withinMs` after the window opens |
+| `alwaysWithin` | `G[<=30m] p` | `p` at every observation until `withinMs` after the window opens |
+| `untilWithin` | `p U[<=30m] q` | `q` within `withinMs`, with `p` holding before it |
+
+The three timed kinds open their window at the observation where they are first progressed, and become
+`eventuallyBy`, `alwaysBy` or `untilBy` with an absolute inclusive end `by`. Progression then compares each
+observation's logical time with `by`. A clock tick (`advanceTime`) applies the passage of time without an
+observation: every future observation is later than the tick, so a window that closed before it can no longer be
+met (`eventuallyBy`/`untilBy` become false, reported as `deadline_expired`) or broken (`alwaysBy` becomes true).
+Checkpoints expose `nextDueAt`, the earliest open window end, so a host knows when to tick. Timed formulas cannot
+be evaluated from positions alone; finalization uses the residual on the empty suffix, as for bound formulas.
+
+`findLiveness` (in `src/ltl/safety.ts`) is a syntactic safety check: after pushing negations to the atoms, a
+formula using only atoms, `and`, `or`, `next`, `always`, `weakUntil`, `bind` and timed operators is a safety
+property. It reports the first unbounded `eventually`/`until` (or negated `always`/`weakUntil`) with its path.
 
 The text parser accepts identifiers matching
 `[A-Za-z_][A-Za-z0-9_.-]*`, parentheses, and the operators above. It does not

@@ -5,3 +5,4 @@ export * from "./presets.js";
 export * from "./runtime.js";
 export * from "./runtime-types.js";
 export * from "./types.js";
+export * from "./safety.js";

@@ -13,7 +13,15 @@ export type LtlFormula =
   | { readonly kind: "next" | "always" | "eventually"; readonly operand: LtlFormula }
   | { readonly kind: "until"; readonly left: LtlFormula; readonly right: LtlFormula }
   /** Freeze binding: captures `variable` from the current observation, then evaluates `operand` from that observation. */
-  | { readonly kind: "bind"; readonly variable: string; readonly operand: LtlFormula };
+  | { readonly kind: "bind"; readonly variable: string; readonly operand: LtlFormula }
+  /** Weak until: `left` holds at every observation until `right` holds; `right` is never required. */
+  | { readonly kind: "weakUntil"; readonly left: LtlFormula; readonly right: LtlFormula }
+  /** Timed operators over a window of `withinMs` that opens at the observation where the operator is first evaluated. */
+  | { readonly kind: "eventuallyWithin" | "alwaysWithin"; readonly operand: LtlFormula; readonly withinMs: number }
+  | { readonly kind: "untilWithin"; readonly left: LtlFormula; readonly right: LtlFormula; readonly withinMs: number }
+  /** An opened window; `by` is the inclusive ISO-8601 end. These appear only in progressed residuals. */
+  | { readonly kind: "eventuallyBy" | "alwaysBy"; readonly operand: LtlFormula; readonly by: string }
+  | { readonly kind: "untilBy"; readonly left: LtlFormula; readonly right: LtlFormula; readonly by: string };
 
 /** Needl timed extension: G(trigger -> F[0, withinMs] response). */
 export interface DeadlineFormula {

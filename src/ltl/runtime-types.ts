@@ -70,6 +70,8 @@ export interface MonitorCheckpoint extends MonitorInstance {
   readonly residual?: LtlFormula;
   readonly pendingObligations: readonly DeadlineObligation[];
   readonly lastLogicalTime?: string;
+  /** Earliest time a clock tick can change the verdict (an open time window or deadline obligation ends). */
+  readonly nextDueAt?: string;
   readonly processedCount: number;
   readonly traceTail: readonly MonitorTraceItem[];
   readonly traceTruncated: boolean;

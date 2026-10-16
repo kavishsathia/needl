@@ -47,7 +47,7 @@ export type Predicate =
   | { readonly op: "true" }
   | { readonly op: "false" }
   | ({ readonly op: "exists" } & Operand)
-  | ({ readonly op: "equal" | "notEqual" | "lessThan" | "lessThanOrEqual" | "greaterThan" | "greaterThanOrEqual" | "contains" } & Operand & Expected)
+  | ({ readonly op: "equal" | "notEqual" | "lessThan" | "lessThanOrEqual" | "greaterThan" | "greaterThanOrEqual" | "contains" | "startsWith" } & Operand & Expected)
   | ({ readonly op: "in"; readonly values: readonly Scalar[] } & Operand)
   | { readonly op: "not"; readonly operand: Predicate }
   | { readonly op: "and"; readonly operands: readonly Predicate[] }
@@ -201,15 +201,15 @@ function validatePredicate(predicate: unknown, label: string, depth = 0): assert
     validateOperand(candidate, label);
     return;
   }
-  if (["equal", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "contains"].includes(String(candidate.op))) {
+  if (["equal", "notEqual", "lessThan", "lessThanOrEqual", "greaterThan", "greaterThanOrEqual", "contains", "startsWith"].includes(String(candidate.op))) {
     exactKeys(candidate, ["op", "path", "source", "value", "variable"], label);
     validateOperand(candidate, label);
     if (candidate.variable !== undefined) {
       if (Object.prototype.hasOwnProperty.call(candidate, "value")) throw new Error(`${label} needs exactly one of value or variable`);
       assertName(candidate.variable, `${label}.variable`);
     } else assertScalar(candidate.value, `${label}.value`);
-    if (candidate.op === "contains" && candidate.variable === undefined && typeof candidate.value !== "string") {
-      throw new Error(`${label}.value must be a string for contains`);
+    if ((candidate.op === "contains" || candidate.op === "startsWith") && candidate.variable === undefined && typeof candidate.value !== "string") {
+      throw new Error(`${label}.value must be a string for ${candidate.op}`);
     }
     return;
   }
@@ -355,6 +355,7 @@ export function evaluatePredicate(
     if (node.op === "equal") value = Object.is(actual, expected);
     else if (node.op === "notEqual") value = !Object.is(actual, expected);
     else if (node.op === "contains") value = typeof actual === "string" && typeof expected === "string" && actual.includes(expected);
+    else if (node.op === "startsWith") value = typeof actual === "string" && typeof expected === "string" && actual.startsWith(expected);
     else {
       const comparable = (typeof actual === "number" && typeof expected === "number")
         || (typeof actual === "string" && typeof expected === "string");

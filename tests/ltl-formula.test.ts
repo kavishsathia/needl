@@ -37,7 +37,8 @@ function reference(
       }
       return false;
     }
-    case "until": {
+    case "until":
+    case "weakUntil": {
       for (let end = position; end < trace.length; end += 1) {
         if (!reference(formula.right, trace, end)) continue;
         let leftHeld = true;
@@ -46,8 +47,13 @@ function reference(
         }
         if (leftHeld) return true;
       }
-      return false;
+      if (formula.kind === "until") return false;
+      for (let index = position; index < trace.length; index += 1) {
+        if (!reference(formula.left, trace, index)) return false;
+      }
+      return true;
     }
+    default: throw new Error("The propositional reference model does not cover timed operators");
   }
 }
 
@@ -113,7 +119,7 @@ describe("LTL formula language", () => {
   it("agrees exhaustively with an independent evaluator on short traces", () => {
     const formulas = [
       "p", "!p", "p & q", "p | q", "p -> q", "X p", "G p", "F p",
-      "p U q", "G (p -> F q)", "X (p U !q)", "F (p & X q)",
+      "p U q", "G (p -> F q)", "X (p U !q)", "F (p & X q)", "p W q", "G (p -> X (!q W p))",
     ].map(parseFormula);
     for (const length of [0, 1, 2, 3]) {
       for (const trace of valuations(length)) {

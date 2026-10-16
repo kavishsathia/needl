@@ -408,8 +408,9 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
 }) {
   const tone = assertionTone(draft, replay);
   const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
-  const cardStyle = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}` } as CSSProperties;
-  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""}`} style={selected ? undefined : cardStyle} data-testid={`assertion-card-${draft.localId}`}>
+  // Each card keeps its own name, so cards glide to their new places when the board narrows for the detail panel.
+  const cardStyle = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}`, viewTransitionClass: "assertion-card" } as CSSProperties;
+  return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""} ${selected ? "is-selected" : ""}`} style={cardStyle} data-testid={`assertion-card-${draft.localId}`}>
     <div className="card-hit">
       <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button></span>
       <h3>{draft.definition.name}</h3>
@@ -553,7 +554,8 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
   const latestViolation = violations.at(-1);
   const investigation = latestViolation === undefined ? undefined : investigations.find((item) => item.violationId === latestViolation.id);
   const refreshable = investigation !== undefined && investigation.workflowId !== undefined && !["completed", "failed", "stopped"].includes(investigation.status);
-  const style = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}` } as CSSProperties;
+  // The panel is its own element that slides in and out; it is not the card morphing into a sidebar.
+  const style = { viewTransitionName: "assertion-detail" } as CSSProperties;
   return <aside className={`detail detail--${tone}`} style={style} aria-label={`${draft.definition.name} detail`}>
     <div className="detail-scroll">
       <header className="detail-header">

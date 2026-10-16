@@ -1,4 +1,4 @@
-import type { AssertionDraft, ChoiceSuggestions, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
+import type { AssertionDraft, ChoiceSuggestions, Connection, ConnectionsResponse, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { credentials: "same-origin", ...init });
@@ -73,4 +73,22 @@ export function refreshInvestigation(id: string): Promise<InvestigationRecord> {
 
 export function fetchChoiceSuggestions(source: string): Promise<{ readonly suggestions: readonly ChoiceSuggestions[] }> {
   return requestJson("/api/rules/suggestions", { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: JSON.stringify({ source }) });
+}
+
+const mutation = { "content-type": "application/json", "x-needl-csrf": "1" };
+
+export function fetchConnections(): Promise<ConnectionsResponse> {
+  return requestJson("/api/connections");
+}
+
+export function createConnection(provider: string): Promise<Connection> {
+  return requestJson("/api/connections", { method: "POST", headers: mutation, body: JSON.stringify({ provider }) });
+}
+
+export function saveConnectionSecret(id: string, secret: string, mode?: string): Promise<Connection> {
+  return requestJson(`/api/connections/${encodeURIComponent(id)}/secret`, { method: "PUT", headers: mutation, body: JSON.stringify({ secret, ...(mode === undefined ? {} : { mode }) }) });
+}
+
+export function deleteConnection(id: string): Promise<{ readonly deleted: boolean }> {
+  return requestJson(`/api/connections/${encodeURIComponent(id)}`, { method: "DELETE", headers: mutation });
 }

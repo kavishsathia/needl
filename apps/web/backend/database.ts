@@ -113,6 +113,13 @@ export interface NeedlDatabase {
     provider: string;
     configJson: string;
     secretEnvName: string;
+    /** Signing secret saved through the app, sealed with NEEDL_SECRET_KEY; null when it lives in an environment variable. */
+    secretCiphertext: string | null;
+    /** Latest webhook delivery to this route, for setup feedback. */
+    lastAttemptAt: string | null;
+    lastOutcome: string | null;
+    lastDetail: string | null;
+    lastReceivedAt: string | null;
     enabled: number;
     createdAt: string;
     updatedAt: string;
@@ -197,17 +204,25 @@ const applicationTables = [
   `CREATE TABLE IF NOT EXISTS webhook_deliveries (tenant_id TEXT NOT NULL, integration_id TEXT NOT NULL, event_id TEXT NOT NULL, received_at TEXT NOT NULL, PRIMARY KEY (tenant_id, integration_id, event_id), FOREIGN KEY (integration_id) REFERENCES integration_configs(id))`,
 ] as const;
 
+async function addColumn(runtime: DatabaseRuntime, table: string, column: string): Promise<void> {
+  if (runtime.type === "postgres") {
+    await sql.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`).execute(runtime.db);
+    return;
+  }
+  const columns = await sql.raw<{ name: string }>(`PRAGMA table_info(${table})`).execute(runtime.db);
+  if (!columns.rows.some((existing) => existing.name === column)) await sql.raw(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`).execute(runtime.db);
+}
+
 export async function migrateApplicationDatabase(runtime: DatabaseRuntime): Promise<void> {
   for (const statement of applicationTables) await sql.raw(statement).execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS assertions_tenant_updated_idx ON assertions (tenant_id, updated_at)`.execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS events_tenant_received_idx ON monitor_events (tenant_id, received_at)`.execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS investigations_tenant_status_idx ON investigations (tenant_id, status)`.execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS live_monitor_inputs_tenant_idx ON live_monitor_inputs (tenant_id, input_id)`.execute(runtime.db);
-  // Added with time-bounded rules; databases created earlier get the column here.
-  if (runtime.type === "postgres") await sql`ALTER TABLE live_monitor_state ADD COLUMN IF NOT EXISTS next_due_at TEXT`.execute(runtime.db);
-  else {
-    const columns = await sql<{ name: string }>`PRAGMA table_info(live_monitor_state)`.execute(runtime.db);
-    if (!columns.rows.some((column) => column.name === "next_due_at")) await sql`ALTER TABLE live_monitor_state ADD COLUMN next_due_at TEXT`.execute(runtime.db);
+  // Columns added after the first release; databases created earlier get them here.
+  await addColumn(runtime, "live_monitor_state", "next_due_at");
+  for (const column of ["secret_ciphertext", "last_attempt_at", "last_outcome", "last_detail", "last_received_at"]) {
+    await addColumn(runtime, "integration_configs", column);
   }
   await sql`CREATE INDEX IF NOT EXISTS live_monitor_state_due_idx ON live_monitor_state (next_due_at)`.execute(runtime.db);
 }

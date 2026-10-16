@@ -140,3 +140,24 @@ export interface ChoiceSuggestions {
     readonly lastSeen?: string;
   }[];
 }
+
+/** A webhook route of this workspace, with the outcome of its latest delivery. */
+export interface Connection {
+  readonly id: string;
+  readonly provider: string;
+  readonly enabled: boolean;
+  readonly secretSource: "workspace" | "server" | "none";
+  readonly authMode?: string;
+  readonly webhookPath: string;
+  readonly lastAttemptAt?: string;
+  readonly lastOutcome?: string;
+  readonly lastDetail?: string;
+  readonly lastReceivedAt?: string;
+  readonly createdAt: string;
+}
+
+export interface ConnectionsResponse {
+  /** NEEDL_PUBLIC_URL when the server pins it; otherwise webhook URLs use the address Needl was opened on. */
+  readonly publicUrl: string | null;
+  readonly connections: readonly Connection[];
+}

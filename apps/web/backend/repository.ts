@@ -25,9 +25,26 @@ export interface StoredIntegration {
   readonly provider: string;
   readonly config: Readonly<Record<string, unknown>>;
   readonly secretEnvName: string;
+  readonly secretCiphertext?: string;
   readonly enabled: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+/** A webhook route as shown in the Connections page. */
+export interface ConnectionSummary {
+  readonly id: string;
+  readonly provider: string;
+  readonly enabled: boolean;
+  /** Where the signing secret lives: saved through the app, or a server environment variable. */
+  readonly secretSource: "workspace" | "server" | "none";
+  readonly authMode?: string;
+  readonly webhookPath: string;
+  readonly lastAttemptAt?: string;
+  readonly lastOutcome?: string;
+  readonly lastDetail?: string;
+  readonly lastReceivedAt?: string;
+  readonly createdAt: string;
 }
 
 export type InvestigationStatus = "queued" | "launching" | "running" | "completed" | "failed" | "stopped" | "launch_unknown" | "failed_to_start" | "callback_lost";
@@ -50,9 +67,13 @@ export interface InvestigationRecord {
 
 function integrationFromRow(row: {
   id: string; tenantId: string; provider: string; configJson: string; secretEnvName: string;
-  enabled: number; createdAt: string; updatedAt: string;
+  secretCiphertext?: string | null; enabled: number; createdAt: string; updatedAt: string;
 }): StoredIntegration {
-  return { ...row, config: JSON.parse(row.configJson) as Record<string, unknown>, enabled: row.enabled === 1 };
+  return {
+    id: row.id, tenantId: row.tenantId, provider: row.provider, config: JSON.parse(row.configJson) as Record<string, unknown>,
+    secretEnvName: row.secretEnvName, ...(row.secretCiphertext === null || row.secretCiphertext === undefined ? {} : { secretCiphertext: row.secretCiphertext }),
+    enabled: row.enabled === 1, createdAt: row.createdAt, updatedAt: row.updatedAt,
+  };
 }
 
 function investigationFromRow(row: {
@@ -286,12 +307,67 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const now = new Date().toISOString();
     await this.db.insertInto("integrationConfigs").values({
       id, tenantId: input.tenantId, provider: input.provider, configJson: JSON.stringify(input.config),
-      secretEnvName: input.secretEnvName, enabled: input.enabled ? 1 : 0, createdAt: now, updatedAt: now,
+      secretEnvName: input.secretEnvName, secretCiphertext: null, lastAttemptAt: null, lastOutcome: null, lastDetail: null, lastReceivedAt: null,
+      enabled: input.enabled ? 1 : 0, createdAt: now, updatedAt: now,
     }).onConflict((conflict) => conflict.column("id").doUpdateSet({
       provider: input.provider, configJson: JSON.stringify(input.config), secretEnvName: input.secretEnvName,
       enabled: input.enabled ? 1 : 0, updatedAt: now,
     })).execute();
     return this.getIntegration(id);
+  }
+
+  /** Creates a webhook route whose secret will be saved through the app; it stays disabled until then. */
+  async createConnection(tenantId: string, provider: string, config: Readonly<Record<string, unknown>>): Promise<StoredIntegration> {
+    const id = `int_${provider}_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const now = new Date().toISOString();
+    await this.db.insertInto("integrationConfigs").values({
+      id, tenantId, provider, configJson: JSON.stringify({ purpose: "ingestion", ...config }), secretEnvName: "",
+      secretCiphertext: null, lastAttemptAt: null, lastOutcome: null, lastDetail: null, lastReceivedAt: null,
+      enabled: 0, createdAt: now, updatedAt: now,
+    }).execute();
+    return this.getIntegration(id);
+  }
+
+  /** Saves a sealed signing secret (and adapter settings such as GitLab's auth mode) and enables the route. */
+  async saveConnectionSecret(tenantId: string, id: string, sealed: string, config: Readonly<Record<string, unknown>>): Promise<void> {
+    const current = await this.getIntegration(id);
+    if (current.tenantId !== tenantId) throw Object.assign(new Error("Integration was not found in this workspace"), { statusCode: 404 });
+    const result = await this.db.updateTable("integrationConfigs").set({
+      secretCiphertext: sealed, configJson: JSON.stringify({ ...current.config, ...config }), enabled: 1, updatedAt: new Date().toISOString(),
+    }).where("tenantId", "=", tenantId).where("id", "=", id).executeTakeFirst();
+    if (Number(result.numUpdatedRows) !== 1) throw Object.assign(new Error("Integration was not found in this workspace"), { statusCode: 404 });
+  }
+
+  async deleteConnection(tenantId: string, id: string): Promise<boolean> {
+    const result = await this.db.deleteFrom("integrationConfigs").where("tenantId", "=", tenantId).where("id", "=", id).executeTakeFirst();
+    return Number(result.numDeletedRows) > 0;
+  }
+
+  /** Records the outcome of the latest delivery to a route, so setup can show whether webhooks arrive and verify. */
+  async recordDeliveryAttempt(id: string, outcome: string, detail: string | undefined, at: Date): Promise<void> {
+    await this.db.updateTable("integrationConfigs").set({
+      lastAttemptAt: at.toISOString(), lastOutcome: outcome, lastDetail: detail ?? null,
+      ...(outcome === "stored" || outcome === "duplicate" || outcome === "ignored" ? { lastReceivedAt: at.toISOString() } : {}),
+    }).where("id", "=", id).execute();
+  }
+
+  async listConnections(tenantId: string): Promise<ConnectionSummary[]> {
+    const rows = await this.db.selectFrom("integrationConfigs").selectAll().where("tenantId", "=", tenantId).orderBy("createdAt").execute();
+    return rows.flatMap((row): ConnectionSummary[] => {
+      const config = JSON.parse(row.configJson) as Record<string, unknown>;
+      if ((typeof config.purpose === "string" ? config.purpose : "ingestion") !== "ingestion") return [];
+      return [{
+        id: row.id, provider: row.provider, enabled: row.enabled === 1,
+        secretSource: row.secretCiphertext !== null ? "workspace" : row.secretEnvName !== "" ? "server" : "none",
+        ...(typeof config.authMode === "string" ? { authMode: config.authMode } : {}),
+        webhookPath: `/api/hooks/${encodeURIComponent(row.id)}`,
+        ...(row.lastAttemptAt === null ? {} : { lastAttemptAt: row.lastAttemptAt }),
+        ...(row.lastOutcome === null ? {} : { lastOutcome: row.lastOutcome }),
+        ...(row.lastDetail === null ? {} : { lastDetail: row.lastDetail }),
+        ...(row.lastReceivedAt === null ? {} : { lastReceivedAt: row.lastReceivedAt }),
+        createdAt: row.createdAt,
+      }];
+    });
   }
 
   async getIntegration(id: string): Promise<StoredIntegration> {

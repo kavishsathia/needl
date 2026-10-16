@@ -16,11 +16,13 @@ import { choiceIssues, type ParamValue, type ParamValues } from "../../../src/ru
 import { choiceText, readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
-import { confirmTranslation, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
+import { confirmTranslation, createConnection, deleteConnection, fetchConnections, saveConnectionSecret, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
   ChoiceSuggestions,
+  Connection,
+  ConnectionsResponse,
   DemoReplay,
   DemoReplayRequest,
   InvestigationRecord,
@@ -32,6 +34,7 @@ import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
 import { Icon } from "./icons.js";
 import { parseStoredAssertions, serializeAssertions, storageKeyForTenant } from "./storage.js";
 import type { ExampleRule } from "./examples.js";
+import { connectionGuides, deliveryExplanation } from "./connectionGuides.js";
 import { checkedRule, createDraftFromRule, exampleDraft, ruleProviders, updateRuleChoice, updateRuleSource } from "./ruleDrafts.js";
 
 type Section = "assertions" | "activity" | "connections" | "settings";
@@ -623,12 +626,122 @@ function ActivityPage({ replay }: { readonly replay: DemoReplay | null }) {
   </main>;
 }
 
-function ConnectionsPage({ replay, integrations }: { readonly replay: DemoReplay | null; readonly integrations: WorkspaceBootstrap["integrations"] }) {
-  const count = (provider: Provider) => replay?.events.filter((event) => event.provider === provider).length ?? 0;
-  const connected = (provider: Provider) => integrations.find((item) => item.provider === provider && item.purpose === "ingestion" && item.enabled);
-  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Signed evidence routes</span><h1>Connections</h1><p>Enabled routes verify provider signatures on exact request bytes before durable processing.</p></div>
-    {integrations.length === 0 ? <div className="notice"><Icon name="warning"/><div><strong>Demo sources are not live connections</strong><p>No server-managed integration is configured. Activity shows sample replay data only, and no browser secret can enable a route.</p></div></div> : <div className="notice"><Icon name="check"/><div><strong>{integrations.filter((item) => item.enabled).length} server-managed integration{integrations.filter((item) => item.enabled).length === 1 ? "" : "s"}</strong><p>Credentials remain server-side; disabled routes return not found.</p></div></div>}
-    <div className="connection-grid">{providers.map((provider) => <article key={provider}><span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span><div><h2>{providerNames[provider]}</h2><p>{count(provider)} event{count(provider) === 1 ? "" : "s"} received</p></div><Pill tone={connected(provider) ? "monitoring" : count(provider) > 0 ? "fixture" : "unavailable"}>{connected(provider) ? "Signed route ready" : count(provider) > 0 ? "Sample only" : "No event"}</Pill><dl><div><dt>Mode</dt><dd>{connected(provider) ? "Durable signed ingestion" : "Sample replay"}</dd></div><div><dt>Credentials</dt><dd>{connected(provider) ? "Server-managed" : "Not configured"}</dd></div></dl></article>)}</div>
+function generatedSecret(kind: "whsec" | "token"): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(kind === "whsec" ? 32 : 24));
+  if (kind === "whsec") return `whsec_${btoa(String.fromCharCode(...bytes))}`;
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function CopyField({ label, value, multiline = false }: { readonly label: string; readonly value: string; readonly multiline?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(value); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); }
+  };
+  return <div className="copy-field"><span>{label}</span><div>{multiline ? <pre>{value}</pre> : <code>{value}</code>}<button type="button" onClick={() => void copy()}>{copied ? "Copied" : "Copy"}</button></div></div>;
+}
+
+function connectionStatus(connection: Connection) {
+  if (connection.secretSource === "none") return connection.lastOutcome === "no_secret" ? deliveryExplanation("no_secret", undefined) : { tone: "waiting" as const, text: "Not finished: paste the signing secret to start receiving." };
+  return deliveryExplanation(connection.lastOutcome, connection.lastDetail);
+}
+
+function ConnectDialog({ provider, connection, publicUrl, local, onClose, onSaved }: {
+  readonly provider: Provider;
+  readonly connection: Connection;
+  readonly publicUrl: string;
+  readonly local: boolean;
+  readonly onClose: () => void;
+  readonly onSaved: () => void;
+}) {
+  const guide = connectionGuides[provider];
+  const [mode, setMode] = useState(guide.modes?.[0]?.id);
+  const [secret, setSecret] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeRef.current?.focus(), []);
+  const activeMode = guide.modes?.find((item) => item.id === mode);
+  const status = connectionStatus(connection);
+  const url = `${publicUrl}${connection.webhookPath}`;
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try { await saveConnectionSecret(connection.id, secret, mode); setSecret(""); onSaved(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save the secret"); }
+    finally { setSaving(false); }
+  };
+  return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal connect-modal" role="dialog" aria-modal="true" aria-labelledby="connect-title">
+      <header><div><span className="eyebrow">Connect</span><h2 id="connect-title">{providerNames[provider]}</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close setup"><Icon name="close"/></button></header>
+      <div className={`connect-status connect-status--${status.tone}`} role="status"><span className="live-dot"/>{status.text}</div>
+      <div className="connect-body">
+        <CopyField label="Webhook URL" value={url}/>
+        {local ? <p className="connect-warning"><Icon name="warning"/><span>This address only works on this machine, so {providerNames[provider]} can't reach it. Deploy Needl, or run a tunnel (for example <code>cloudflared tunnel --url {window.location.origin}</code>) and open Needl through the tunnel's address so this URL updates. Set NEEDL_PUBLIC_URL to pin it.</span></p> : null}
+        <ol className="connect-steps">{guide.steps.map((step) => <li key={step}>{step}</li>)}</ol>
+        {guide.template !== undefined ? <CopyField label={guide.template.label} value={guide.template.text} multiline/> : null}
+        <form className="connect-secret" onSubmit={(event) => void save(event)}>
+          {guide.modes !== undefined ? <div className="connect-modes" role="radiogroup" aria-label="How webhooks are verified">{guide.modes.map((item) => <label key={item.id} className={item.id === mode ? "is-active" : ""}><input type="radio" name="mode" value={item.id} checked={item.id === mode} onChange={() => setMode(item.id)}/><strong>{item.label}</strong><span>{item.hint}</span></label>)}</div> : null}
+          <label>{guide.secretLabel}<div><input aria-label={guide.secretLabel} type="password" autoComplete="off" spellCheck={false} value={secret} onChange={(event) => setSecret(event.target.value)} placeholder={connection.secretSource === "none" ? "Paste it here" : "Saved — paste a new one to replace it"}/>{activeMode?.generate !== undefined ? <button type="button" onClick={() => setSecret(generatedSecret(activeMode.generate!))}>Generate</button> : null}</div></label>
+          {activeMode?.generate !== undefined && secret.length > 0 ? <CopyField label="Paste this into the provider too" value={secret}/> : null}
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <button className="primary-button" type="submit" disabled={saving || secret.trim().length === 0}>{saving ? "Saving…" : connection.secretSource === "none" ? "Save and start receiving" : "Replace secret"}</button>
+        </form>
+        {guide.test !== undefined ? <p className="connect-test"><strong>Then send a test:</strong> {guide.test}</p> : null}
+      </div>
+    </section>
+  </div>;
+}
+
+function ConnectionsPage({ replay }: { readonly replay: DemoReplay | null }) {
+  const [data, setData] = useState<ConnectionsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState<{ readonly provider: Provider; readonly id: string } | null>(null);
+  const load = async () => {
+    try { setData(await fetchConnections()); setError(null); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load connections"); }
+  };
+  useEffect(() => {
+    void load();
+    // Poll while the page is open so a first webhook shows up without reloading.
+    const interval = window.setInterval(() => void load(), 2500);
+    return () => window.clearInterval(interval);
+  }, []);
+  const connect = async (provider: Provider) => {
+    const pending = data?.connections.find((item) => item.provider === provider && item.secretSource === "none");
+    try {
+      const connection = pending ?? await createConnection(provider);
+      setOpen({ provider, id: connection.id });
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to start the connection"); }
+  };
+  const disconnect = async (connection: Connection) => {
+    if (!window.confirm(`Disconnect this ${providerNames[connection.provider as Provider] ?? connection.provider} webhook? Its URL will stop accepting deliveries.`)) return;
+    try { await deleteConnection(connection.id); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to disconnect"); }
+  };
+  const sampleCount = (provider: Provider) => replay?.events.filter((event) => event.provider === provider && event.tenantId === DEMO_TENANT_ID).length ?? 0;
+  const openConnection = open === null ? undefined : data?.connections.find((item) => item.id === open.id);
+  const publicUrl = data?.publicUrl ?? window.location.origin;
+  return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Signed webhooks</span><h1>Connections</h1><p>Connect a tool by pointing its webhooks at Needl. Every delivery is verified against the tool's signing secret before Needl reads it.</p></div>
+    {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <div className="connection-grid">{providers.map((provider) => {
+      const routes = data?.connections.filter((item) => item.provider === provider) ?? [];
+      return <article key={provider} data-testid={`connection-${provider}`}>
+        <span className={`provider-icon provider-icon--${provider}`}>{providerGlyphs[provider]}</span>
+        <div><h2>{providerNames[provider]}</h2><p>{routes.length === 0 ? sampleCount(provider) > 0 ? "Sample data only" : "Not connected" : `${routes.length} webhook${routes.length === 1 ? "" : "s"}`}</p></div>
+        <button className="connect-button" onClick={() => void connect(provider)}>{routes.some((item) => item.secretSource === "none") ? "Finish setup" : routes.length === 0 ? "Connect" : "Add another"}</button>
+        {routes.length > 0 ? <ul className="connection-routes">{routes.map((route) => {
+          const status = connectionStatus(route);
+          return <li key={route.id}>
+            <span className={`connect-dot connect-dot--${status.tone}`} aria-hidden="true"/>
+            <div><strong>{status.text}</strong><small>{route.webhookPath} · {route.secretSource === "server" ? "secret in server settings" : route.secretSource === "workspace" ? "secret saved in Needl" : "no secret yet"}{route.lastReceivedAt === undefined ? "" : ` · last event ${formatDateTime(route.lastReceivedAt)} UTC`}</small></div>
+            <span className="connection-actions">{route.secretSource !== "server" ? <button onClick={() => setOpen({ provider, id: route.id })}>Setup</button> : null}<button className="danger-button" onClick={() => void disconnect(route)}>Disconnect</button></span>
+          </li>;
+        })}</ul> : null}
+      </article>;
+    })}</div>
+    {open !== null && openConnection !== undefined && data !== null ? <ConnectDialog provider={open.provider} connection={openConnection} publicUrl={publicUrl} local={/^https?:\/\/(localhost|127\.|0\.0\.0\.0|\[::1\])/.test(publicUrl)} onClose={() => setOpen(null)} onSaved={() => void load()}/> : null}
   </main>;
 }
 
@@ -990,7 +1103,7 @@ export function App() {
     <div className="workspace">
       {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onChoose={changeChoice}/> : null}
       {section === "activity" ? <ActivityPage replay={evidence}/> : null}
-      {section === "connections" ? <ConnectionsPage replay={evidence} integrations={workspace.integrations}/> : null}
+      {section === "connections" ? <ConnectionsPage replay={evidence}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} examples={examples} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
       {selected !== undefined && section === "assertions" ? <AssertionDetail key={selected.localId} draft={selected} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(selected, param, value)}/> : null}
     </div>

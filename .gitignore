@@ -15,3 +15,4 @@ apps/web/artifacts/report/
 !.env.example
 .simulator/
 test-results/
+.needl/

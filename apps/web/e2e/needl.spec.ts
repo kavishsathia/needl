@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { encodeEvent } from "../../simulator/encoders.js";
 
 const screenshotDir = new URL("../artifacts/screenshots/", import.meta.url);
 mkdirSync(screenshotDir, { recursive: true });
@@ -136,7 +137,7 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(page.locator(".page-summary > div").filter({ hasText: "Counterexamples" }).getByText("4", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Connections" }).click();
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
-  await expect(page.getByText("Demo sources are not live connections")).toBeVisible();
+  await expect(page.getByTestId("connection-stripe")).toContainText("Sample data only");
   expect(consoleErrors).toEqual([]);
 });
 
@@ -194,6 +195,32 @@ test("clicking anywhere on a card opens the rule, but its choice dropdowns do no
   await expect(page.locator(".detail")).toHaveCount(1);
   await page.getByRole("button", { name: "Back to assertion board" }).click();
   await expect(page.locator(".detail")).toHaveCount(0);
+});
+
+test("connecting a tool: the dialog gives the URL, checks the pasted secret, and turns green on a signed webhook", async ({ page, request }) => {
+  await page.goto("/#/connections");
+  await page.getByTestId("connection-stripe").getByRole("button", { name: "Connect" }).click();
+  const dialog = page.getByRole("dialog", { name: "Stripe" });
+  await expect(dialog.getByRole("status")).toContainText("paste the signing secret");
+  const url = await dialog.locator(".copy-field code").first().innerText();
+  expect(url).toMatch(/^http:\/\/127\.0\.0\.1:4173\/api\/hooks\/int_stripe_[a-f0-9]{12}$/);
+  await expect(dialog.getByText("This address only works on this machine")).toBeVisible();
+
+  await dialog.getByLabel("Signing secret").fill("sk_test_not_a_webhook_secret");
+  await dialog.getByRole("button", { name: "Save and start receiving" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("not the sk_ or pk_ API keys");
+
+  const secret = "whsec_e2e_signing_secret_value";
+  await dialog.getByLabel("Signing secret").fill(secret);
+  await dialog.getByRole("button", { name: "Save and start receiving" }).click();
+  await expect(dialog.getByRole("status")).toContainText("Waiting for the first webhook");
+
+  const delivery = encodeEvent("stripe.invoice.paid", { customer: "cus_e2e" }, new Date(), secret);
+  const response = await request.post(url, { headers: delivery.headers, data: delivery.body });
+  expect(response.status()).toBe(200);
+  await expect(dialog.getByRole("status")).toContainText("Receiving events · last: invoice.paid", { timeout: 10_000 });
+  await dialog.getByRole("button", { name: "Close setup" }).click();
+  await expect(page.getByTestId("connection-stripe")).toContainText("secret saved in Needl");
 });
 
 test("replay switches between violating and healthy engine paths", async ({ page }) => {

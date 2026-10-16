@@ -17,6 +17,9 @@ import { SignedIngestionService } from "./backend/ingestion.js";
 import { GitLabCallbackService, GitLabInvestigationService } from "./backend/investigations.js";
 import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./backend/repository.js";
 import { OpenAITranslationModel, translateToRule } from "./backend/translator.js";
+import { SecretBox } from "./backend/secrets.js";
+import { connectionSettings } from "./backend/connections.js";
+import { providers as allProviders } from "../../src/core/types.js";
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const distRoot = join(appRoot, "dist");
@@ -29,7 +32,8 @@ await migrateApplicationDatabase(runtime);
 if (process.env.NODE_ENV !== "production" || process.env.NEEDL_AUTO_MIGRATE === "true") await migrateAuthDatabase(authOptions);
 const auth = betterAuth(authOptions);
 const repository = new NeedlRepository(runtime, Number(process.env.NEEDL_TRANSLATION_DAILY_LIMIT ?? 5));
-const ingestion = new SignedIngestionService(repository);
+const secretBox = SecretBox.fromEnvironment();
+const ingestion = new SignedIngestionService(repository, process.env, secretBox);
 const investigations = new GitLabInvestigationService(repository);
 const callbacks = new GitLabCallbackService(repository);
 const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
@@ -178,6 +182,34 @@ const server = createServer(async (request, response) => {
         translator: openAIModel === undefined ? "unavailable" : "available",
         integrations: await repository.listIntegrationSummaries(tenantId),
       }); return;
+    }
+    if (url.pathname === "/api/connections" || url.pathname.startsWith("/api/connections/")) {
+      const { tenantId } = await requireWorkspace(request);
+      // Where providers should send webhooks, when pinned; otherwise the page uses the address it was opened on.
+      const publicUrl = process.env.NEEDL_PUBLIC_URL?.replace(/\/$/, "") ?? null;
+      const connectionId = url.pathname.match(/^\/api\/connections\/([^/]+)(\/secret)?$/);
+      if (request.method === "GET" && url.pathname === "/api/connections") {
+        json(response, 200, { publicUrl, connections: await repository.listConnections(tenantId) }); return;
+      }
+      assertMutationOrigin(request);
+      if (request.method === "POST" && url.pathname === "/api/connections") {
+        const body = await readJson(request) as { provider?: unknown };
+        if (typeof body.provider !== "string" || !allProviders.includes(body.provider as never)) throw new Error("Choose a supported integration");
+        const created = await repository.createConnection(tenantId, body.provider, {});
+        json(response, 201, (await repository.listConnections(tenantId)).find((item) => item.id === created.id)); return;
+      }
+      if (request.method === "PUT" && connectionId?.[2] === "/secret") {
+        const id = decodeURIComponent(connectionId[1]!);
+        const existing = (await repository.listConnections(tenantId)).find((item) => item.id === id);
+        if (existing === undefined) throw Object.assign(new Error("Integration was not found in this workspace"), { statusCode: 404 });
+        const body = await readJson(request) as { secret?: unknown; mode?: unknown };
+        const settings = connectionSettings(existing.provider, typeof body.secret === "string" ? body.secret : "", typeof body.mode === "string" ? body.mode : undefined);
+        await repository.saveConnectionSecret(tenantId, id, secretBox.seal(settings.secret), settings.config);
+        json(response, 200, (await repository.listConnections(tenantId)).find((item) => item.id === id)); return;
+      }
+      if (request.method === "DELETE" && connectionId !== null && connectionId[2] === undefined) {
+        json(response, 200, { deleted: await repository.deleteConnection(tenantId, decodeURIComponent(connectionId[1]!)) }); return;
+      }
     }
     if (request.method === "GET" && url.pathname === "/api/monitor") {
       const { tenantId } = await requireWorkspace(request);

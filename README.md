@@ -2,7 +2,7 @@
 
 `@needl/integrations` is a strict TypeScript package for authenticating webhook requests, turning selected provider events into evidence-bearing normalized observations, and monitoring those observations with a durable LTL runtime. It covers GitLab, Linear, LaunchDarkly, Sentry, PostHog, Intercom, and Stripe.
 
-The published library package does not translate natural language or execute agents; assertions remain trusted validated JSON AST. The separate application in `apps/web` adds authenticated tenant workspaces, PostgreSQL/SQLite persistence, bounded server-side OpenAI translation, signed webhook ingestion, and an explicitly launched read-only GitLab investigation lifecycle. None of those application integrations silently fall back to a demo or launch without server-managed credentials. The product accepts only a conservative safety subset even though the underlying library retains its general LTL and deadline capabilities; see [the safety product policy](docs/safety-product-policy.md).
+The published library package does not translate natural language or execute agents; assertions remain trusted validated JSON AST. The separate application in `apps/web` adds authenticated tenant workspaces, PostgreSQL/SQLite persistence, a [rule language](docs/rule-language.md) over each integration's native events with an OpenAI authoring agent whose output is checked before use, signed webhook ingestion, and an explicitly launched read-only GitLab investigation lifecycle. None of those application integrations silently fall back to a demo or launch without server-managed credentials. The product runs only safety properties (including time-bounded ones) even though the underlying library retains general LTL; see [the safety product policy](docs/safety-product-policy.md).
 
 ## Design
 
@@ -75,7 +75,7 @@ npm --prefix apps/web ci --legacy-peer-deps
 npm run web:dev
 ```
 
-Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in local SQLite; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable bounded translation. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
+Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in local SQLite; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable the rule-authoring agent (`OPENAI_TRANSLATION_MODEL` picks the model; `NEEDL_TRANSLATION_DAILY_LIMIT` caps requests per workspace, default 5). `npm run sim:web` also loads a git-ignored `.env` at the repository root. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
 
 ```bash
 npm run web:build
@@ -88,7 +88,7 @@ The runtime package has one portable dependency, Zod. SQLite is an optional subp
 
 ## Demo with the webhook simulator
 
-`apps/simulator` is a local control panel that sends provider-shaped, correctly signed GitLab, Sentry, and Stripe webhooks to Needl's `/api/hooks/<integration-id>` route, so the reviewed templates fire through the real ingestion path. Secrets and routing are generated into `.simulator/` (git-ignored).
+`apps/simulator` is a local control panel that sends provider-shaped, correctly signed GitLab, Sentry, and Stripe webhooks to Needl's `/api/hooks/<integration-id>` route, so the example rules fire through the real ingestion path. Secrets and routing are generated into `.simulator/` (git-ignored).
 
 ```bash
 npm run sim:setup                  # generate signing secrets

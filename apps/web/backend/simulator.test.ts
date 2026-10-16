@@ -5,9 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { generateSecrets, stories } from "../../simulator/events.js";
 import { integrationId, providers, secretEnvName, type SimulatorConfig } from "../../simulator/config.js";
 import { playStory } from "../../simulator/server.js";
-import { getDemoBootstrap } from "../demo.js";
-import type { AssertionDraft } from "../src/domain.js";
-import { defaultMeaningValues } from "../src/meaning.js";
+import { exampleRules } from "../src/examples.js";
+import { exampleDraft } from "../src/ruleDrafts.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { SignedIngestionService } from "./ingestion.js";
 import { NeedlRepository } from "./repository.js";
@@ -22,19 +21,7 @@ async function workspace() {
   await migrateApplicationDatabase(runtime);
   const repository = new NeedlRepository(runtime, 2);
   const tenantId = await repository.tenantForUser("simulator-user");
-  for (const template of getDemoBootstrap().templates) {
-    const draft: AssertionDraft = {
-      localId: template.definition.id,
-      expectation: template.prompt,
-      definition: template.definition,
-      status: "monitoring",
-      templateId: template.id,
-      meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
-      createdAt: "2026-10-15T00:00:00.000Z",
-      updatedAt: "2026-10-15T00:00:00.000Z",
-    };
-    await repository.saveAssertion(tenantId, draft);
-  }
+  for (const example of exampleRules) await repository.saveAssertion(tenantId, exampleDraft(example));
   const secrets = generateSecrets();
   const environment: NodeJS.ProcessEnv = {};
   for (const provider of providers) {

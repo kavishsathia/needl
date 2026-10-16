@@ -10,12 +10,15 @@ import {
 } from "react";
 import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
-import { createDraftFromTemplate, formulaText, updateDraft, updateMeaningChoice } from "./authoring.js";
-import { confirmTranslation, fetchBootstrap, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
+import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
+import { choiceIssues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
+import { readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
+import { formulaText } from "./authoring.js";
+import { confirmTranslation, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
-  AuthoringTemplate,
+  ChoiceSuggestions,
   DemoReplay,
   DemoReplayRequest,
   InvestigationRecord,
@@ -26,15 +29,8 @@ import type {
 import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
 import { Icon } from "./icons.js";
 import { parseStoredAssertions, serializeAssertions, storageKeyForTenant } from "./storage.js";
-import {
-  defaultMeaningValues,
-  eventKindsForField,
-  fieldForEventKind,
-  meaningOption,
-  meaningTemplates,
-  meaningViolationText,
-} from "./meaning.js";
-import { EVENTUALITY_EXPLANATION, unsupportedAuthoringIntent } from "./safety.js";
+import type { ExampleRule } from "./examples.js";
+import { checkedRule, createDraftFromRule, exampleDraft, ruleProviders, updateRuleChoice, updateRuleSource } from "./ruleDrafts.js";
 
 type Section = "assertions" | "activity" | "connections" | "settings";
 type Filter = "all" | "attention" | "monitoring" | "paused";
@@ -69,17 +65,8 @@ function beginTransition(update: () => void): void {
   } else update();
 }
 
-function defaultDrafts(templates: readonly AuthoringTemplate[]): AssertionDraft[] {
-  return templates.map((template) => ({
-    localId: template.definition.id,
-    expectation: template.prompt,
-    definition: template.definition,
-    status: "monitoring",
-    templateId: template.id,
-    meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
-    createdAt: "2026-02-18T10:39:00.000Z",
-    updatedAt: "2026-02-18T10:39:00.000Z",
-  }));
+function defaultDrafts(examples: readonly ExampleRule[]): AssertionDraft[] {
+  return examples.map((example) => exampleDraft(example));
 }
 
 function mergeRestored(defaults: readonly AssertionDraft[], restored: readonly AssertionDraft[]): AssertionDraft[] {
@@ -146,8 +133,8 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function providersFor(draft: AssertionDraft, templates: readonly AuthoringTemplate[]): readonly Provider[] {
-  return templates.find((template) => template.id === draft.templateId)?.providers ?? [];
+function providersFor(draft: AssertionDraft): readonly Provider[] {
+  return ruleProviders(draft);
 }
 
 function ProviderBadge({ provider }: { readonly provider: Provider }) {
@@ -219,51 +206,110 @@ function statusLabel(tone: string): string {
   return ({ violated: "Needs attention", monitoring: "Watching · No violations observed", paused: "Paused", "needs-review": "Needs review", pending: "Pending response", unavailable: "No matching evidence" })[tone] ?? tone;
 }
 
-function MeaningRule({ draft, activeField, onActiveField, onChange }: {
-  readonly draft: AssertionDraft;
-  readonly activeField?: string;
-  readonly onActiveField?: (fieldId: string) => void;
-  readonly onChange?: (fieldId: string, value: string) => void;
+function choiceValueFromText(type: ChoiceSuggestions["type"], text: string): ParamValue | undefined {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return undefined;
+  if (type === "number") return Number.isFinite(Number(trimmed)) ? Number(trimmed) : undefined;
+  if (type === "boolean") return trimmed === "true" ? true : trimmed === "false" ? false : undefined;
+  return trimmed;
+}
+
+/** One `$` choice inside a reading: a dropdown of suggestions from this workspace's events, plus free text when allowed. */
+function ChoiceChip({ segment, source, value, onChoose }: {
+  readonly segment: Extract<ReadingSegment, { kind: "choice" }>;
+  readonly source: string;
+  readonly value: ParamValue | undefined;
+  readonly onChoose?: (value: ParamValue) => void;
 }) {
-  const [openField, setOpenField] = useState<string | null>(null);
-  if (draft.meaning === undefined) return <p className="meaning-sentence meaning-sentence--plain">{draft.expectation}</p>;
-  const template = meaningTemplates[draft.meaning.templateId];
-  return <p className="meaning-sentence" data-testid={`meaning-${draft.localId}`}>
-    {template.sentence.map((segment, index) => {
-      if (typeof segment === "string") return <Fragment key={`${segment}-${index}`}>{segment}</Fragment>;
-      const field = template.fields.find((item) => item.id === segment.field)!;
-      const selected = meaningOption(template.id, field.id, draft.meaning!.values[field.id] ?? "")!;
-      const isOpen = openField === field.id;
-      return <span className="meaning-chip-wrap" key={field.id}>
-        <button
-          type="button"
-          className={`meaning-chip ${activeField === field.id ? "is-linked" : ""}`}
-          aria-label={`${field.accessibleLabel}: ${selected.label}`}
-          aria-haspopup="listbox"
-          aria-expanded={isOpen}
-          onFocus={() => onActiveField?.(field.id)}
-          onClick={(event) => {
-            event.stopPropagation();
-            onActiveField?.(field.id);
-            setOpenField(isOpen ? null : field.id);
-          }}
-        >{selected.label}</button>
-        {isOpen ? <span className="meaning-popover" role="listbox" aria-label={`${field.accessibleLabel} choices`}>
-          {field.options.map((option) => <button
-            type="button"
-            role="option"
-            aria-selected={option.value === selected.value}
-            key={option.value}
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpenField(null);
-              if (option.value !== selected.value) onChange?.(field.id, option.value);
-            }}
-          ><span>{option.label}</span><small>{option.evidence === "matched" ? "Sample evidence available" : "No matching sample evidence"}</small></button>)}
-        </span> : null}
-      </span>;
-    })}
+  const [open, setOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<ChoiceSuggestions | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [picked, setPicked] = useState<readonly (string | number | boolean)[]>(Array.isArray(value) ? value : []);
+  useEffect(() => {
+    if (!open || suggestions !== null) return;
+    let active = true;
+    void fetchChoiceSuggestions(source)
+      .then((result) => { if (active) setSuggestions(result.suggestions.find((item) => item.param === segment.param) ?? null); })
+      .catch((cause) => { if (active) setLoadError(cause instanceof Error ? cause.message : "Suggestions unavailable"); });
+    return () => { active = false; };
+  }, [open, suggestions, source, segment.param]);
+  const label = segment.text ?? `choose ${segment.label}`;
+  const editable = onChoose !== undefined;
+  const choose = (next: ParamValue) => { setOpen(false); onChoose?.(next); };
+  return <span className="meaning-chip-wrap">
+    <button
+      type="button"
+      className={`meaning-chip choice-chip ${segment.text === undefined ? "is-empty" : ""}`}
+      aria-label={`${segment.label}: ${segment.text ?? "not chosen"}`}
+      aria-haspopup={editable ? "listbox" : undefined}
+      aria-expanded={editable ? open : undefined}
+      disabled={!editable}
+      onClick={(event) => { event.stopPropagation(); setOpen(!open); }}
+    >{label}</button>
+    {open ? <span className="meaning-popover choice-popover" role="listbox" aria-label={`${segment.label} choices`} aria-multiselectable={suggestions?.list ? true : undefined} onClick={(event) => event.stopPropagation()}>
+      {loadError !== null ? <small className="choice-note">{loadError}</small> : null}
+      {suggestions === null && loadError === null ? <small className="choice-note">Looking at your events…</small> : null}
+      {suggestions?.values.map((option) => {
+        const selected = suggestions.list ? picked.includes(option.value) : value === option.value;
+        const seen = option.counts.flatMap((count, place) => count > 0 ? [`${count} × ${suggestions.usages[place]!.split(".").slice(0, -1).join(".")}`] : []);
+        const evidence = seen.length === 0
+          ? option.fixed ? "Allowed by the provider · no events yet" : "No events yet"
+          : seen.join(" · ");
+        return <button type="button" role="option" aria-selected={selected} key={String(option.value)} onClick={() => {
+          if (!suggestions.list) { choose(option.value); return; }
+          setPicked(selected ? picked.filter((item) => item !== option.value) : [...picked, option.value]);
+        }}><span>{option.label}</span><small>{evidence}</small></button>;
+      })}
+      {suggestions?.values.length === 0 ? <small className="choice-note">No {segment.label} values seen yet. Type one below.</small> : null}
+      {suggestions?.freeText ? <form className="choice-free" onSubmit={(event) => {
+        event.preventDefault();
+        const next = choiceValueFromText(suggestions.type, typed);
+        if (next === undefined) return;
+        if (suggestions.list) { setPicked([...picked, next as string | number | boolean]); setTyped(""); }
+        else choose(next);
+      }}><input aria-label={`Type a ${segment.label}`} value={typed} onChange={(event) => setTyped(event.target.value)} placeholder={`Type a ${segment.label}`}/><button type="submit">Use</button></form> : null}
+      {suggestions?.list ? <button type="button" className="choice-apply" disabled={picked.length === 0} onClick={() => choose(picked)}>Apply {picked.length} value{picked.length === 1 ? "" : "s"}</button> : null}
+    </span> : null}
+  </span>;
+}
+
+function ReadingView({ segments, source, values, onChoose }: {
+  readonly segments: readonly ReadingSegment[];
+  readonly source: string;
+  readonly values: ParamValues;
+  readonly onChoose?: (param: string, value: ParamValue) => void;
+}) {
+  return <>{segments.map((segment, index) => {
+    switch (segment.kind) {
+      case "text": return <Fragment key={index}>{segment.text}</Fragment>;
+      case "value": return <span className="rule-value" key={index}>{segment.text}</span>;
+      case "duration": return <span className="rule-duration" key={index}>{segment.text}</span>;
+      case "bound": return <span className="rule-bound" key={index}>{segment.text}</span>;
+      case "choice": return <ChoiceChip key={index} segment={segment} source={source} value={values[segment.param]} onChoose={onChoose === undefined ? undefined : (value) => onChoose(segment.param, value)}/>;
+    }
+  })}</>;
+}
+
+/** The assertion's rule read back as English; `$` choices are dropdowns when `onChoose` is given. */
+function RuleReading({ draft, mode = "notes", onChoose }: {
+  readonly draft: AssertionDraft;
+  readonly mode?: ReadingMode;
+  readonly onChoose?: (param: string, value: ParamValue) => void;
+}) {
+  const reading = useMemo(() => {
+    if (draft.rule === undefined) return undefined;
+    try { return readRule(checkedRule(draft.rule.source), draft.rule.values, mode); } catch { return undefined; }
+  }, [draft.rule, mode]);
+  if (draft.rule === undefined || reading === undefined) return <p className="meaning-sentence meaning-sentence--plain">{draft.expectation}</p>;
+  return <p className="meaning-sentence" data-testid={`reading-${draft.localId}`}>
+    <ReadingView segments={reading} source={draft.rule.source} values={draft.rule.values} onChoose={onChoose}/>
   </p>;
+}
+
+function ruleReadingText(draft: AssertionDraft): string {
+  if (draft.rule === undefined) return draft.expectation;
+  try { return readingText(readRule(checkedRule(draft.rule.source), draft.rule.values, "notes")); } catch { return draft.expectation; }
 }
 
 function Sidebar({ section, replay, liveSources, onNavigate }: {
@@ -313,43 +359,40 @@ function Topbar({ search, onSearch, onConnections, onSettings }: {
   </header>;
 }
 
-function AssertionCard({ draft, templates, replay, compact, selected, onOpen, onMeaningChange }: {
+function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
   readonly draft: AssertionDraft;
-  readonly templates: readonly AuthoringTemplate[];
   readonly replay: DemoReplay | null;
   readonly compact: boolean;
   readonly selected?: boolean;
   readonly onOpen: () => void;
-  readonly onMeaningChange?: (fieldId: string, value: string) => void;
+  readonly onChoose?: (param: string, value: ParamValue) => void;
 }) {
   const tone = assertionTone(draft, replay);
   const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
   const cardStyle = { viewTransitionName: `assertion-${draft.localId.replace(/[^a-z0-9-]/gi, "-")}` } as CSSProperties;
-  const template = templates.find((item) => item.id === draft.templateId);
   return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""}`} style={selected ? undefined : cardStyle} data-testid={`assertion-card-${draft.localId}`}>
     <div className="card-hit">
       <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button></span>
       <h3>{draft.definition.name}</h3>
-      {!compact ? <MeaningRule draft={draft} onChange={onMeaningChange}/> : <p className="compact-meaning">{draft.expectation}</p>}
+      {!compact ? <RuleReading draft={draft} onChoose={onChoose}/> : <p className="compact-meaning">{draft.expectation}</p>}
       {draft.status === "needs-review" ? <p className="review-note">Preserved but disabled · {draft.reviewReason}</p> : null}
       <div className="card-footer">
-        <span className="provider-list">{providersFor(draft, templates).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</span>
-        {violationCount > 0 ? <span className="violation-count">{violationCount} counterexample{violationCount === 1 ? "" : "s"}</span> : template === undefined ? <span className="custom-label">Custom</span> : null}
+        <span className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</span>
+        {violationCount > 0 ? <span className="violation-count">{violationCount} counterexample{violationCount === 1 ? "" : "s"}</span> : draft.exampleId === undefined ? <span className="custom-label">Custom</span> : null}
       </div>
     </div>
   </article>;
 }
 
-function AssertionBoard({ assertions, templates, replay, selectedId, search, onCreate, onOpen, onReplay, onMeaningChange }: {
+function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOpen, onReplay, onChoose }: {
   readonly assertions: readonly AssertionDraft[];
-  readonly templates: readonly AuthoringTemplate[];
   readonly replay: DemoReplay | null;
   readonly selectedId?: string;
   readonly search: string;
   readonly onCreate: (text: string) => string | undefined;
   readonly onOpen: (id: string) => void;
   readonly onReplay: (scenario: DemoReplayRequest["scenario"]) => void;
-  readonly onMeaningChange: (draft: AssertionDraft, fieldId: string, value: string) => void;
+  readonly onChoose: (draft: AssertionDraft, param: string, value: ParamValue) => void;
 }) {
   const [input, setInput] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -360,7 +403,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
     const needle = search.trim().toLowerCase();
     const score = (draft: AssertionDraft) => ({ violated: 0, "needs-review": 1, pending: 2, unavailable: 3, monitoring: 4, paused: 5 })[assertionTone(draft, replay)] ?? 6;
     return assertions
-      .filter((draft) => needle.length === 0 || `${draft.definition.name} ${draft.expectation} ${formulaText(draft)}`.toLowerCase().includes(needle))
+      .filter((draft) => needle.length === 0 || `${draft.definition.name} ${draft.expectation} ${ruleReadingText(draft)} ${draft.rule?.source ?? ""} ${formulaText(draft)}`.toLowerCase().includes(needle))
       .filter((draft) => filter === "all" || (filter === "attention" ? ["violated", "needs-review", "pending", "unavailable"].includes(assertionTone(draft, replay)) : assertionTone(draft, replay) === filter))
       .sort((a, b) => sort === "name" ? a.definition.name.localeCompare(b.definition.name) : sort === "recent" ? b.updatedAt.localeCompare(a.updatedAt) : score(a) - score(b));
   }, [assertions, filter, replay, search, sort]);
@@ -385,7 +428,7 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
       <div className="composer-suggestions" aria-label="Safety rule suggestions">
         {["A shipped fix must not come back as the same error", "A resolved issue must never come back", "A canceled customer must never be charged again"].map((suggestion) => <button type="button" key={suggestion} onClick={() => setInput(suggestion)}>{suggestion}</button>)}
       </div>
-      <span>Template-assisted interpretation · safety conditions only</span>
+      <span>Written as a checked Needl rule · safety conditions only</span>
       {authoringError ? <p className="form-error" role="alert">{authoringError}</p> : null}
     </form>
     <div className="board-tools">
@@ -397,72 +440,56 @@ function AssertionBoard({ assertions, templates, replay, selectedId, search, onC
         <button className="icon-button" onClick={() => setCompact(!compact)} aria-pressed={compact} title={compact ? "Comfortable cards" : "Compact cards"}><Icon name="menu"/></button>
       </div>
     </div>
-    {list.length > 0 ? <div className={`card-grid ${compact ? "is-compact" : ""}`}>{list.map((draft) => <AssertionCard key={draft.localId} draft={draft} templates={templates} replay={replay} compact={compact} selected={selectedId === draft.localId} onOpen={() => onOpen(draft.localId)} onMeaningChange={(fieldId, value) => onMeaningChange(draft, fieldId, value)}/>)}</div> : <EmptyState title="Nothing in this view">Try another filter or clear the search.</EmptyState>}
+    {list.length > 0 ? <div className={`card-grid ${compact ? "is-compact" : ""}`}>{list.map((draft) => <AssertionCard key={draft.localId} draft={draft} replay={replay} compact={compact} selected={selectedId === draft.localId} onOpen={() => onOpen(draft.localId)} onChoose={(param, value) => onChoose(draft, param, value)}/>)}</div> : <EmptyState title="Nothing in this view">Try another filter or clear the search.</EmptyState>}
   </main>;
 }
 
-function TraceTimeline({ trace, sample, draft, activeField, onActiveField }: {
+function TraceTimeline({ trace, sample }: {
   readonly trace: readonly MonitorTraceItem[];
   readonly sample: boolean;
-  readonly draft: AssertionDraft;
-  readonly activeField?: string;
-  readonly onActiveField: (fieldId: string) => void;
 }) {
-  const linkedKinds = draft.meaning === undefined || activeField === undefined
-    ? []
-    : eventKindsForField(draft.meaning.templateId, activeField);
   return <ol className="trace-timeline">
-    {trace.map((item) => {
-      const eventField = item.type === "observation" && draft.meaning !== undefined
-        ? fieldForEventKind(draft.meaning.templateId, item.source.kind)
-        : undefined;
-      const eventFieldLabel = eventField === undefined || draft.meaning === undefined
-        ? undefined
-        : meaningTemplates[draft.meaning.templateId].fields.find((field) => field.id === eventField)?.accessibleLabel;
-      const highlighted = item.type === "observation" && linkedKinds.includes(item.source.kind);
-      return <li key={`${item.type}-${item.inputId}`} className={highlighted ? "is-meaning-linked" : ""}>
+    {trace.map((item) => <li key={`${item.type}-${item.inputId}`}>
       <span className={`timeline-mark timeline-mark--${item.type}`}>{item.position}</span>
       <div className="trace-main">
         <div><strong>{item.type === "observation" ? providerNames[item.source.provider] : item.type === "tick" ? "Clock tick" : "Finalization"}</strong><time dateTime={item.at}>{formatDateTime(item.at)} UTC</time></div>
         {item.type === "observation" ? <>
           <p>{item.source.subject.name ?? item.source.subject.id}</p>
           <div className="trace-links">
-            {eventField !== undefined ? <button type="button" onClick={() => onActiveField(eventField)}>Highlight {eventFieldLabel?.toLowerCase() ?? "its role"} in the rule</button> : null}
+            {item.captured !== undefined ? <span className="trace-captured">{Object.entries(item.captured).map(([name, value]) => `${name.replaceAll("_", " ")} = ${value ?? "not found"}`).join(" · ")}</span> : null}
             {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">{sample ? "Sample source" : "Source"} ↗</a> : null}
           </div>
           <details className="advanced-evidence"><summary>Advanced event details</summary>
-            <code>{item.source.kind}</code>
+            <code>{item.source.providerEventType}</code>
             <div className="valuation">{Object.entries(item.valuation).map(([name, value]) => <span className={value ? "is-true" : "is-false"} key={name}>{name}: {String(value)}</span>)}</div>
             <div className="predicate-explanations">{Object.entries(item.evaluations).map(([name, evaluation]) => <p key={name}><b>{name}</b> — {evaluation.explanation}</p>)}</div>
           </details>
-        </> : <p>Explicit demo clock input; silence alone never advances deadlines.</p>}
+        </> : <p>{item.type === "tick" ? "Time passed with no event; a time limit in the rule ran out." : "The trace was explicitly completed."}</p>}
       </div>
-    </li>})}
+    </li>)}
   </ol>;
 }
 
-function CounterexampleView({ violation, draft, activeField, onActiveField }: {
+function CounterexampleView({ violation, draft }: {
   readonly violation: CounterexampleRecord;
   readonly draft: AssertionDraft;
-  readonly activeField?: string;
-  readonly onActiveField: (fieldId: string) => void;
 }) {
   return <article className="counterexample">
-    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{meaningViolationText(draft) ?? "The observed event sequence broke this rule."}</h3></div>{violation.tenantId === DEMO_TENANT_ID ? null : <Pill tone="monitoring">Live</Pill>}<Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
-    <div className="binding-row">{Object.entries(violation.scope).map(([key, value]) => <span key={key}><small>{key}</small>{value}</span>)}</div>
-    <TraceTimeline trace={violation.trace} sample={violation.tenantId === DEMO_TENANT_ID} draft={draft} activeField={activeField} onActiveField={onActiveField}/>
+    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{violationSummary(draft, violation)}</h3></div>{violation.tenantId === DEMO_TENANT_ID ? null : <Pill tone="monitoring">Live</Pill>}<Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
+    <div className="binding-row">{Object.entries(violation.scope).filter(([key]) => key !== "rule").map(([key, value]) => <span key={key}><small>{key.replaceAll("_", " ")}</small>{value}</span>)}</div>
+    <TraceTimeline trace={violation.trace} sample={violation.tenantId === DEMO_TENANT_ID}/>
     <details className="advanced-evidence counterexample-engine-details"><summary>Advanced engine details</summary><dl><div><dt>Technical cause</dt><dd><code>{violation.cause}</code></dd></div><div><dt>Engine explanation</dt><dd>{violation.explanation}</dd></div></dl></details>
     <p className="evidence-note">This is a sufficient engine trace, not a minimality claim. {violation.tenantId === DEMO_TENANT_ID ? "Source references are sample evidence." : "Built from signed webhooks received by this workspace."}</p>
   </article>;
 }
 
-function violationSummary(draft: AssertionDraft): string {
-  return meaningViolationText(draft) ?? "The observed event sequence broke this rule.";
+function violationSummary(draft: AssertionDraft, violation?: CounterexampleRecord): string {
+  if (violation?.cause === "deadline_expired") return `${draft.definition.name}: a time limit ran out`;
+  return `${draft.definition.name} was broken`;
 }
 
-function AssertionDetail({ draft, templates, replay, investigations, investigationReady, onLaunchInvestigation, onRefreshInvestigation, onClose, onToggle, onEdit, onCopy, onMeaningChange }: {
+function AssertionDetail({ draft, replay, investigations, investigationReady, onLaunchInvestigation, onRefreshInvestigation, onClose, onToggle, onEdit, onCopy, onChoose }: {
   readonly draft: AssertionDraft;
-  readonly templates: readonly AuthoringTemplate[];
   readonly replay: DemoReplay | null;
   readonly investigations: readonly InvestigationRecord[];
   readonly investigationReady: boolean;
@@ -472,14 +499,17 @@ function AssertionDetail({ draft, templates, replay, investigations, investigati
   readonly onToggle: () => void;
   readonly onEdit: () => void;
   readonly onCopy: () => void;
-  readonly onMeaningChange: (fieldId: string, value: string) => void;
+  readonly onChoose: (param: string, value: ParamValue) => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("overview");
-  const [activeField, setActiveField] = useState<string | undefined>(draft.meaning === undefined ? undefined : meaningTemplates[draft.meaning.templateId].fields[0]?.id);
+  const [exact, setExact] = useState(false);
   const tone = assertionTone(draft, replay);
   const violations = replay?.violations.filter((item) => item.assertionId === draft.definition.id) ?? [];
   const checkpoint = replay?.checkpoints.find((item) => item.assertionId === draft.definition.id);
-  const relatedEvents = replay?.events.filter((item) => providersFor(draft, templates).includes(item.provider)) ?? [];
+  const relatedEvents = replay?.events.filter((item) => providersFor(draft).includes(item.provider)) ?? [];
+  const choices = draft.rule === undefined ? [] : (() => {
+    try { return checkedRule(draft.rule.source).params; } catch { return []; }
+  })();
   const outbox = replay?.outbox.find((item) => item.assertionId === draft.definition.id);
   const latestViolation = violations.at(-1);
   const investigation = latestViolation === undefined ? undefined : investigations.find((item) => item.violationId === latestViolation.id);
@@ -489,15 +519,15 @@ function AssertionDetail({ draft, templates, replay, investigations, investigati
     <div className="detail-scroll">
       <header className="detail-header">
         <button className="icon-button detail-back" onClick={onClose} aria-label="Back to assertion board"><Icon name="back"/></button>
-        <div className="detail-title"><span className="eyebrow">Assertion · v{draft.definition.version}</span><h2>{draft.definition.name}</h2><MeaningRule draft={draft} activeField={activeField} onActiveField={setActiveField} onChange={onMeaningChange}/></div>
+        <div className="detail-title"><span className="eyebrow">Assertion · v{draft.definition.version}</span><h2>{draft.definition.name}</h2><p className="detail-expectation">“{draft.expectation}”</p></div>
         <Pill tone={tone}>{statusLabel(tone)}</Pill>
         <div className="detail-actions">
           <button onClick={onToggle} disabled={draft.status === "needs-review"} title={draft.status === "needs-review" ? "Choose a supported safety rule before enabling" : undefined}><Icon name={draft.status === "paused" ? "play" : "pause"}/>{draft.status === "paused" ? "Enable" : draft.status === "needs-review" ? "Review required" : "Pause"}</button>
-          <button onClick={onEdit}><Icon name="edit"/>Edit wording</button>
+          <button onClick={onEdit}><Icon name="edit"/>Edit rule</button>
         </div>
       </header>
       <div className="detail-meta">
-        <span><small>Environment</small>Production</span>
+        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{draft.rule?.values[param.name] === undefined ? "Not chosen" : [draft.rule.values[param.name]].flat().join(", ")}</span>)}
         <span><small>Rule version</small>v{draft.definition.version}</span>
         <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} inputs</span>
       </div>
@@ -506,13 +536,18 @@ function AssertionDetail({ draft, templates, replay, investigations, investigati
       </nav>
       <div className="detail-content">
         {tab === "overview" ? <>
-          <section className="detail-section expectation-section"><span className="section-index">01</span><div><h3>What Needl watches</h3><MeaningRule draft={draft} activeField={activeField} onActiveField={setActiveField} onChange={onMeaningChange}/><p>Each underlined phrase is part of the stored monitor. Change one to create a new version and replay the evidence.</p></div></section>
-          <section className="detail-section"><span className="section-index">02</span><div><h3>Observed scope</h3><p>Events are correlated by {draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")}.</p><div className="provider-list">{providersFor(draft, templates).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div></div></section>
+          <section className="detail-section expectation-section"><span className="section-index">01</span><div>
+            <div className="reading-heading"><h3>What Needl watches</h3>{draft.rule !== undefined ? <button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => setExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button> : null}</div>
+            <RuleReading draft={draft} mode={exact ? "mechanical" : "notes"} onChoose={onChoose}/>
+            <p>{exact ? "The exact reading is generated from the rule itself, word for word." : "Underlined phrases are your choices; changing one saves a new version."}{draft.rule !== undefined && !exact ? " The exact reading shows precisely what the rule checks." : ""}</p>
+            {draft.rule !== undefined ? <details className="rule-source"><summary>Rule</summary><pre>{draft.rule.source}</pre></details> : null}
+          </div></section>
+          <section className="detail-section"><span className="section-index">02</span><div><h3>Observed scope</h3><p>{draft.definition.scope.keys.some((key) => key.name !== "rule") ? `Each ${draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")} is watched separately.` : "One shared monitor watches every matching event."}</p><div className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div></div></section>
           <section className="detail-section"><span className="section-index">03</span><div><h3>Investigation state</h3><div className="investigation-card"><span className="simulated-mark">{investigation?.status.toUpperCase() ?? (outbox === undefined ? "NOT REQUESTED" : "READY")}</span><div><strong>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Counterexample ready for review") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</strong><p>{investigation === undefined ? (outbox === undefined ? "Needl only offers an investigation after a counterexample." : investigationReady ? "A configured, read-only GitLab flow can be started explicitly. Needl never retries an ambiguous launch." : "The durable outbox is ready, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>{investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab</a> : null}</div><button disabled={investigation === undefined ? latestViolation === undefined || !investigationReady : !refreshable} onClick={() => investigation !== undefined ? onRefreshInvestigation(investigation.id) : latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined && !refreshable ? "This attempt has no refreshable workflow" : undefined}>{investigation === undefined ? "Start investigation" : refreshable ? "Refresh status" : "Attempt recorded"}</button></div></div></section>
           {draft.status === "needs-review" ? <section className="review-panel"><Icon name="warning"/><div><h3>Preserved for review</h3><p>{draft.reviewReason} Your wording and advanced specification remain stored, but this rule cannot be enabled.</p></div></section> : null}
-          {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>{violationSummary(draft)}</h3><p>Select a phrase above or an evidence link below to see how the trace supports that part of the rule.</p><CounterexampleView violation={violations.at(-1)!} draft={draft} activeField={activeField} onActiveField={setActiveField}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching evidence yet. This is unavailable evidence, not proof that the rule holds." : "No breaking event has been observed for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
+          {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>Latest counterexample</h3><p>The events below are the evidence: in this order, they break the rule above.</p><CounterexampleView violation={violations.at(-1)!} draft={draft}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching evidence yet. This is unavailable evidence, not proof that the rule holds." : "No breaking event has been observed for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
         </> : null}
-        {tab === "counterexamples" ? violations.length > 0 ? violations.map((violation) => <CounterexampleView key={violation.id} violation={violation} draft={draft} activeField={activeField} onActiveField={setActiveField}/>) : <EmptyState title="No counterexamples">Replay the violating sample, send a breaking event through a connected source, or inspect the current evidence in Activity.</EmptyState> : null}
+        {tab === "counterexamples" ? violations.length > 0 ? violations.map((violation) => <CounterexampleView key={violation.id} violation={violation} draft={draft}/>) : <EmptyState title="No counterexamples">Replay the violating sample, send a breaking event through a connected source, or inspect the current evidence in Activity.</EmptyState> : null}
         {tab === "activity" ? <EventTable events={relatedEvents}/> : null}
       </div>
     </div>
@@ -549,15 +584,15 @@ function ConnectionsPage({ replay, integrations }: { readonly replay: DemoReplay
   </main>;
 }
 
-function SettingsPage({ assertions, templates, user, onRestore, onClear, onSignOut }: {
+function SettingsPage({ assertions, examples, user, onRestore, onClear, onSignOut }: {
   readonly assertions: readonly AssertionDraft[];
-  readonly templates: readonly AuthoringTemplate[];
+  readonly examples: readonly ExampleRule[];
   readonly user: WorkspaceBootstrap["user"];
   readonly onRestore: () => void;
   readonly onClear: () => void;
   readonly onSignOut: () => void;
 }) {
-  const localCount = assertions.filter((draft) => !templates.some((template) => template.definition.id === draft.localId)).length;
+  const localCount = assertions.filter((draft) => !examples.some((example) => example.id === draft.localId)).length;
   return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Workspace preferences</span><h1>Settings</h1><p>Signed in as {user.email}. Assertion changes are stored server-side and cached in this browser.</p></div>
     <section className="settings-panel"><div><h2>Account session</h2><p>Signing out revokes this browser session without deleting workspace data.</p></div><button onClick={onSignOut}>Sign out</button></section>
     <section className="settings-panel"><div><h2>Demo workspace</h2><p>Restore the three reviewed sample assertions. Your {localCount} locally authored assertion{localCount === 1 ? "" : "s"} will be preserved.</p></div><button onClick={onRestore}>Restore sample rules</button></section>
@@ -566,38 +601,81 @@ function SettingsPage({ assertions, templates, user, onRestore, onClear, onSignO
   </main>;
 }
 
-function AuthoringDialog({ expectation, templates, translation, onClose, onChoose }: {
-  readonly expectation: string;
-  readonly templates: readonly AuthoringTemplate[];
-  readonly translation: TranslationProposalResponse | null;
-  readonly onClose: () => void;
-  readonly onChoose: (template: AuthoringTemplate) => void;
+function RuleIssues({ issues }: { readonly issues: readonly RuleIssue[] }) {
+  if (issues.length === 0) return null;
+  return <ul className="rule-errors" role="alert">{issues.map((issue, index) => <li key={index}><code>{issue.span.line}:{issue.span.column}</code>{issue.message}</li>)}</ul>;
+}
+
+/** Live check of rule text being edited: errors, or the checked rule with its choices. */
+function useRuleDraft(source: string): { readonly rule?: CheckedRule; readonly issues: readonly RuleIssue[] } {
+  return useMemo(() => {
+    if (source.trim().length === 0) return { issues: [] };
+    const result = checkRule(source);
+    return result.ok ? { rule: result.rule, issues: [] } : { issues: result.errors };
+  }, [source]);
+}
+
+function RuleEditor({ source, values, onSource, onChoose, exact, onExact }: {
+  readonly source: string;
+  readonly values: ParamValues;
+  readonly onSource: (source: string) => void;
+  readonly onChoose: (param: string, value: ParamValue) => void;
+  readonly exact: boolean;
+  readonly onExact: (exact: boolean) => void;
 }) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => closeRef.current?.focus(), []);
-  return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className="modal authoring-modal" role="dialog" aria-modal="true" aria-labelledby="authoring-title">
-      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Choose an interpretation template</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
-      <div className="honesty-note"><Icon name="warning"/><p><strong>{translation === null ? "Reviewed interpretation" : "OpenAI proposal — confirmation required"}</strong>{translation === null ? <span>Natural-language AI translation is not configured.</span> : translation.proposal.explanation}{translation === null ? " Your text stays as the expectation; choose one reviewed safety meaning below." : null}</p></div>
-      <blockquote>{expectation}</blockquote>
-      <div className="template-list">{templates.map((template, index) => <button className={translation?.proposal.templateId === template.id ? "is-suggested" : ""} key={template.id} onClick={() => onChoose(template)}>
-        <span className="template-index">0{index + 1}</span><div><strong>{template.shortLabel}</strong><p>{template.description}</p><span>{template.providers.map((provider) => providerNames[provider]).join(" · ")}</span></div><Icon name="arrow"/>
-      </button>)}</div>
-    </section>
+  const { rule, issues } = useRuleDraft(source);
+  const missing = rule === undefined ? [] : choiceIssues(rule, values).filter((issue) => rule.params.some((param) => param.name === issue.param));
+  return <div className="rule-editor">
+    {rule !== undefined ? <div className="rule-preview">
+      <div className="reading-heading"><span className="eyebrow">Needl will watch</span><button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => onExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button></div>
+      <p className="meaning-sentence" data-testid="rule-preview"><ReadingView segments={readRule(rule, values, exact ? "mechanical" : "notes")} source={source} values={values} onChoose={onChoose}/></p>
+      {missing.length > 0 ? <p className="choice-missing">{missing.map((issue) => issue.message).join(" · ")}</p> : null}
+    </div> : null}
+    <RuleIssues issues={issues}/>
+    <details className="advanced-editor" open={rule === undefined && source.trim().length > 0 ? true : undefined}>
+      <summary>Rule</summary>
+      <p>Rules name each integration’s own events, such as <code>gitlab.deployment</code>, and combine them with <code>and</code>, <code>or</code>, <code>-&gt;</code>, <code>never</code>, <code>always</code>, <code>unless</code> and time limits like <code>eventually within 30m</code>. <code>bind</code> keeps a value from one event for later parts; <code>$name</code> is a choice you make. Only rules that can be caught breaking are accepted.</p>
+      <label>Rule source<textarea aria-label="Rule source" className="code-input rule-input" rows={10} value={source} onChange={(event) => onSource(event.target.value)} spellCheck={false}/></label>
+    </details>
   </div>;
 }
 
-function UnsupportedIntentDialog({ expectation, onClose, onAcceptAlternative }: {
+function AuthoringDialog({ expectation, examples, translation, translatorAvailable, onClose, onCreate }: {
   readonly expectation: string;
+  readonly examples: readonly ExampleRule[];
+  readonly translation: TranslationProposalResponse | null;
+  readonly translatorAvailable: boolean;
   readonly onClose: () => void;
-  readonly onAcceptAlternative: () => void;
+  readonly onCreate: (input: { readonly source: string; readonly values: ParamValues; readonly name?: string; readonly exampleId?: ExampleRule["id"] }) => void;
 }) {
-  return <div className="modal-layer">
-    <section className="modal unsupported-modal" role="dialog" aria-modal="true" aria-labelledby="unsupported-title">
-      <header><div><span className="eyebrow">Not supported as written</span><h2 id="unsupported-title">Need a breakable condition</h2></div><button className="icon-button" onClick={onClose} aria-label="Close unsupported feedback"><Icon name="close"/></button></header>
-      <div className="unsupported-copy"><blockquote>{expectation}</blockquote><h3>{EVENTUALITY_EXPLANATION}</h3><p>Needl will not silently rewrite this intent. You can explicitly choose a safety alternative, or go back and describe an event that must never occur.</p></div>
-      <div className="alternative-card"><span>Suggested safety alternative</span><strong>Once a customer cancels, they must never be charged again.</strong><p>This can be broken by one observed charge for that customer after their cancellation.</p></div>
-      <footer><button type="button" onClick={onClose}>Go back</button><button type="button" className="primary-button" onClick={onAcceptAlternative}>Use this alternative</button></footer>
+  const proposal = translation?.proposal;
+  const [source, setSource] = useState(proposal?.supported ? proposal.source ?? "" : "");
+  const [values, setValues] = useState<ParamValues>(proposal?.supported ? proposal.values ?? {} : {});
+  const [name, setName] = useState<string | undefined>(proposal?.supported ? proposal.name : undefined);
+  const [exampleId, setExampleId] = useState<ExampleRule["id"] | undefined>(undefined);
+  const [exact, setExact] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeRef.current?.focus(), []);
+  const { rule } = useRuleDraft(source);
+  const ready = rule !== undefined && choiceIssues(rule, values).length === 0;
+  // Starting from an example keeps the person's own sentence as the rule's name.
+  const startFrom = (example: ExampleRule) => { setSource(example.source); setValues(example.values); setName(undefined); setExampleId(example.id); };
+  const note = translation === null
+    ? { title: translatorAvailable ? "Write the rule" : "AI authoring is not configured", body: "Start from an example below or write the rule yourself; Needl checks it before anything runs." }
+    : proposal?.supported
+      ? { title: "OpenAI wrote this rule — check it before it runs", body: proposal.explanation }
+      : { title: "OpenAI could not write this as a rule", body: `${proposal?.rejectionReason ?? proposal?.explanation ?? ""} Rephrase it, start from an example, or write the rule yourself.` };
+  return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal authoring-modal" role="dialog" aria-modal="true" aria-labelledby="authoring-title">
+      <header><div><span className="eyebrow">New assertion</span><h2 id="authoring-title">Review the rule</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close authoring"><Icon name="close"/></button></header>
+      <div className="honesty-note"><Icon name="warning"/><p><strong>{note.title}</strong><span>{note.body}</span></p></div>
+      <blockquote>{expectation}</blockquote>
+      <RuleEditor source={source} values={values} onSource={(next) => { setSource(next); setExampleId(undefined); }} onChoose={(param, value) => setValues({ ...values, [param]: value })} exact={exact} onExact={setExact}/>
+      <div className="example-heading"><span className="eyebrow">Start from an example</span></div>
+      <div className="template-list">{examples.map((example, index) => <button className={exampleId === example.id ? "is-suggested" : ""} key={example.id} onClick={() => startFrom(example)}>
+        <span className="template-index">0{index + 1}</span><div><strong>{example.name}</strong><p>{example.prompt}</p><span>{example.providers.map((provider) => providerNames[provider]).join(" · ")}</span></div><Icon name="arrow"/>
+      </button>)}</div>
+      <footer className="authoring-footer"><button type="button" onClick={onClose}>Cancel</button><button type="button" className="primary-button" disabled={!ready} onClick={() => onCreate({ source, values, ...(name === undefined ? {} : { name }), ...(exampleId === undefined ? {} : { exampleId }) })}>Create paused rule</button></footer>
     </section>
   </div>;
 }
@@ -608,30 +686,24 @@ function EditDialog({ draft, onClose, onSave }: {
   readonly onSave: (draft: AssertionDraft) => void;
 }) {
   const [expectation, setExpectation] = useState(draft.expectation);
-  const [formula, setFormula] = useState(formulaText(draft));
-  const [definitionJson, setDefinitionJson] = useState(JSON.stringify(draft.definition, null, 2));
+  const [name, setName] = useState(draft.definition.name);
+  const [source, setSource] = useState(draft.rule?.source ?? "");
+  const [values, setValues] = useState<ParamValues>(draft.rule?.values ?? {});
+  const [exact, setExact] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    try { onSave(updateDraft(draft, { expectation, formula, definitionJson })); }
-    catch (cause) {
-      const message = cause instanceof Error ? cause.message : "";
-      setError(/eventually happen|deadline|supported safety shape/i.test(message)
-        ? message
-        : "Needl couldn’t validate this advanced specification. Check its structure and use one of the supported safety shapes.");
-    }
+    try { onSave(updateRuleSource(draft, { expectation, name, source, values })); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Needl couldn’t check this rule."); }
   };
   return <div className="modal-layer"><form className="modal edit-modal" role="dialog" aria-modal="true" aria-labelledby="edit-title" onSubmit={submit}>
-    <header><div><span className="eyebrow">Structured editor</span><h2 id="edit-title">Edit assertion v{draft.definition.version}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close editor"><Icon name="close"/></button></header>
+    <header><div><span className="eyebrow">Rule editor</span><h2 id="edit-title">Edit assertion v{draft.definition.version}</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close editor"><Icon name="close"/></button></header>
+    <label>Name<input aria-label="Name" value={name} onChange={(event) => setName(event.target.value)} maxLength={120}/></label>
     <label>Wording<textarea aria-label="Expectation" rows={2} value={expectation} onChange={(event) => setExpectation(event.target.value)}/></label>
-    <details className="advanced-editor">
-      <summary>Advanced specification</summary>
-      <p>Expert inspection only. Product rules support global “must not” conditions and reviewed “after this, never again” conditions. Eventuality and deadline formulas are rejected.</p>
-      <label>Safety formula<textarea aria-label="Formula" className="code-input" rows={3} value={formula} onChange={(event) => setFormula(event.target.value)} spellCheck={false}/></label>
-      <label>Structured assertion JSON <span>Predicates use the engine’s closed JSON language; executable JavaScript is rejected.</span><textarea aria-label="Structured assertion JSON" className="code-input json-input" rows={12} value={definitionJson} onChange={(event) => setDefinitionJson(event.target.value)} spellCheck={false}/></label>
-    </details>
+    {draft.rule === undefined ? <p className="edit-legacy">This older assertion was saved before rules existed. Write a rule below to replace it.</p> : null}
+    <RuleEditor source={source} values={values} onSource={setSource} onChoose={(param, value) => setValues({ ...values, [param]: value })} exact={exact} onExact={setExact}/>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
-    <footer><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Validate & save v{draft.definition.version + 1}</button></footer>
+    <footer><button type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit">Check & save v{draft.definition.version + 1}</button></footer>
   </form></div>;
 }
 
@@ -641,7 +713,7 @@ export function App() {
   const [signupAllowed, setSignupAllowed] = useState(false);
   const [durableMonitor, setDurableMonitor] = useState<MonitorSnapshot | null>(null);
   const [authGeneration, setAuthGeneration] = useState(0);
-  const [templates, setTemplates] = useState<readonly AuthoringTemplate[]>([]);
+  const [examples, setExamples] = useState<readonly ExampleRule[]>([]);
   const [assertions, setAssertions] = useState<AssertionDraft[]>([]);
   const [replay, setReplay] = useState<DemoReplay | null>(null);
   const [loading, setLoading] = useState(true);
@@ -651,7 +723,6 @@ export function App() {
   const [authoringText, setAuthoringText] = useState<string | null>(null);
   const [translation, setTranslation] = useState<TranslationProposalResponse | null>(null);
   const [translating, setTranslating] = useState(false);
-  const [unsupportedText, setUnsupportedText] = useState<string | null>(null);
   const [editing, setEditing] = useState<AssertionDraft | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const boardScroll = useRef(0);
@@ -682,8 +753,8 @@ export function App() {
       setDurableMonitor(monitor);
       const storageKey = storageKeyForTenant(nextWorkspace.tenantId);
       const cached = parseStoredAssertions(localStorage.getItem(storageKey) ?? localStorage.getItem("needl.assertions.v1"));
-      const initial = nextWorkspace.assertions.length > 0 ? [...nextWorkspace.assertions] : mergeRestored(defaultDrafts(bootstrap.templates), cached);
-      setTemplates(bootstrap.templates);
+      const initial = nextWorkspace.assertions.length > 0 ? [...nextWorkspace.assertions] : mergeRestored(defaultDrafts(bootstrap.examples), cached);
+      setExamples(bootstrap.examples);
       setAssertions(initial);
       if (nextWorkspace.assertions.length === 0) {
         await Promise.all(initial.map((draft) => saveAssertion(draft)));
@@ -750,8 +821,7 @@ export function App() {
   const beginAuthoring = (text: string): string | undefined => {
     try {
       assertAssertionCapacity(assertions.length);
-      if (unsupportedAuthoringIntent(text)) setUnsupportedText(text);
-      else if (workspace?.translator === "available") {
+      if (workspace?.translator === "available") {
         setTranslating(true);
         void translateAssertion(text).then((proposal) => { setTranslation(proposal); setAuthoringText(text); }).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to translate assertion")).finally(() => setTranslating(false));
       } else { setTranslation(null); setAuthoringText(text); }
@@ -760,19 +830,22 @@ export function App() {
       return cause instanceof Error ? cause.message : "Assertion capacity reached";
     }
   };
-  const chooseTemplate = async (template: AuthoringTemplate) => {
+  const createRule = async (input: { readonly source: string; readonly values: ParamValues; readonly name?: string; readonly exampleId?: ExampleRule["id"] }) => {
     if (authoringText === null) return;
-    if (translation?.proposal.templateId === template.id) {
+    if (translation?.proposal.supported && translation.proposal.source === input.source) {
       try { await confirmTranslation(translation.proposalId); }
       catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to confirm translation"); return; }
     }
-    const draft = createDraftFromTemplate(authoringText, template, assertions.map((item) => item.localId));
+    let draft: AssertionDraft;
+    try {
+      draft = createDraftFromRule({ expectation: authoringText, ...(input.name === undefined ? {} : { name: input.name }), rule: { source: input.source, values: input.values }, ...(input.exampleId === undefined ? {} : { exampleId: input.exampleId }), existingIds: assertions.map((item) => item.localId) });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to create the rule"); return; }
     const next = [...assertions, draft];
     setAuthoringText(null);
     setTranslation(null);
     updateAssertions(next);
     openDetail(draft.localId);
-    setToast("Draft created paused — inspect it, then enable monitoring");
+    setToast("Rule created paused — check it, then enable monitoring");
   };
   const endSession = async () => {
     try { await signOut(); }
@@ -798,13 +871,13 @@ export function App() {
       setToast(`Saved and replayed assertion v${draft.definition.version}`);
     }
   };
-  const changeMeaning = (draft: AssertionDraft, fieldId: string, value: string) => {
+  const changeChoice = (draft: AssertionDraft, param: string, value: ParamValue) => {
     try {
-      const edited = updateMeaningChoice(draft, fieldId, value);
+      const edited = updateRuleChoice(draft, param, value);
       const next = assertions.map((item) => item.localId === edited.localId ? edited : item);
-      if (updateAssertions(next)) setToast(`Meaning updated · now v${edited.definition.version}`);
-    } catch {
-      setError("That meaning choice could not be applied to the monitor.");
+      if (updateAssertions(next)) setToast(`Choice updated · now v${edited.definition.version}`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "That choice could not be applied to the monitor.");
     }
   };
   const copyLink = async () => {
@@ -812,15 +885,15 @@ export function App() {
     catch { setToast("Copy unavailable — use the address bar"); }
   };
   const restoreSamples = () => {
-    const custom = assertions.filter((draft) => !templates.some((template) => template.definition.id === draft.localId));
-    const next = [...defaultDrafts(templates), ...custom];
+    const custom = assertions.filter((draft) => !examples.some((example) => example.id === draft.localId));
+    const next = [...defaultDrafts(examples), ...custom];
     updateAssertions(next);
     setToast("Sample assertions restored; local assertions preserved");
   };
   const clearLocal = () => {
-    const localCount = assertions.filter((draft) => !templates.some((template) => template.definition.id === draft.localId)).length;
+    const localCount = assertions.filter((draft) => !examples.some((example) => example.id === draft.localId)).length;
     if (localCount === 0 || !window.confirm(`Remove ${localCount} locally authored assertion${localCount === 1 ? "" : "s"}? Sample assertions will remain.`)) return;
-    const next = assertions.filter((draft) => templates.some((template) => template.definition.id === draft.localId));
+    const next = assertions.filter((draft) => examples.some((example) => example.id === draft.localId));
     updateAssertions(next);
     navigate("settings");
     setToast("Locally authored assertions removed");
@@ -867,17 +940,16 @@ export function App() {
     <Sidebar section={section} replay={evidence} liveSources={workspace.integrations.filter((item) => item.purpose === "ingestion" && item.enabled).length} onNavigate={(next) => navigate(next)}/>
     <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
-      {section === "assertions" ? <AssertionBoard assertions={assertions} templates={templates} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onMeaningChange={changeMeaning}/> : null}
+      {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onReplay={(scenario) => void runReplay(assertions, scenario)} onChoose={changeChoice}/> : null}
       {section === "activity" ? <ActivityPage replay={evidence}/> : null}
       {section === "connections" ? <ConnectionsPage replay={evidence} integrations={workspace.integrations}/> : null}
-      {section === "settings" ? <SettingsPage assertions={assertions} templates={templates} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
-      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} templates={templates} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onMeaningChange={(fieldId, value) => changeMeaning(selected, fieldId, value)}/> : null}
+      {section === "settings" ? <SettingsPage assertions={assertions} examples={examples} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
+      {selected !== undefined && section === "assertions" ? <AssertionDetail draft={selected} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(selected, param, value)}/> : null}
     </div>
-    {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Translating into a reviewed safety shape…" : "Replaying through engine…"}</div> : null}
+    {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Writing and checking the rule…" : "Replaying through engine…"}</div> : null}
     {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}
     {toast ? <div className="toast" role="status">{toast}</div> : null}
-    {authoringText !== null ? <AuthoringDialog expectation={authoringText} templates={templates} translation={translation} onClose={() => { setAuthoringText(null); setTranslation(null); }} onChoose={(template) => void chooseTemplate(template)}/> : null}
-    {unsupportedText !== null ? <UnsupportedIntentDialog expectation={unsupportedText} onClose={() => setUnsupportedText(null)} onAcceptAlternative={() => { setUnsupportedText(null); setAuthoringText("Once a customer cancels, they must never be charged again"); }}/> : null}
+    {authoringText !== null ? <AuthoringDialog key={translation?.proposalId ?? authoringText} expectation={authoringText} examples={examples} translation={translation} translatorAvailable={workspace.translator === "available"} onClose={() => { setAuthoringText(null); setTranslation(null); }} onCreate={(input) => void createRule(input)}/> : null}
     {editing !== null ? <EditDialog draft={editing} onClose={() => setEditing(null)} onSave={saveEdit}/> : null}
   </div>;
 }

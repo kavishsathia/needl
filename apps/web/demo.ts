@@ -7,61 +7,26 @@ import {
 import type { AssertionDefinition } from "../../src/ltl/assertion.js";
 import type {
   AssertionDraft,
-  AuthoringTemplate,
   DemoBootstrap,
   DemoReplay,
   DemoReplayRequest,
 } from "./src/domain.js";
 import { validateAssertionCollection } from "./src/collection.js";
 import { DEMO_TENANT_ID } from "./src/domain.js";
-import { buildTemplateDefinition, defaultMeaningValues, meaningHasFixtureEvidence } from "./src/meaning.js";
+import { exampleRules } from "./src/examples.js";
 
 export const TENANT_ID = DEMO_TENANT_ID;
 export const DEMO_ANCHOR = "2026-02-18T10:40:00.000Z";
 export const DEMO_REPLAY_HORIZON = "2026-02-18T12:11:00.000Z";
 
-const definitions = {
-  ghost: buildTemplateDefinition("ghost", defaultMeaningValues("ghost"), { id: "no-ghosts", name: "No ghosts", version: 1, tenantId: TENANT_ID }),
-  boomerang: buildTemplateDefinition("boomerang", defaultMeaningValues("boomerang"), { id: "boomerang", name: "Boomerang", version: 1, tenantId: TENANT_ID }),
-  cleanBreak: buildTemplateDefinition("clean-break", defaultMeaningValues("clean-break"), { id: "clean-break", name: "Clean break", version: 1, tenantId: TENANT_ID }),
-  provisioning: provisioningSupportDeadlineAssertion(TENANT_ID, 600_000),
-} as const;
-
 /** Internal-only fixture retained to verify generic deadline replay behavior. */
-export const legacyProvisioningDefinition = definitions.provisioning;
-
-export const authoringTemplates: readonly AuthoringTemplate[] = [
-  {
-    id: "ghost",
-    prompt: "Once a fix for an issue ships to production, errors tagged with that issue must not come back",
-    shortLabel: "No ghosts",
-    description: "Binds the issue key from the deployed GitLab branch, then watches Sentry errors tagged linear_issue with that key.",
-    providers: ["gitlab", "sentry"],
-    definition: definitions.ghost,
-  },
-  {
-    id: "boomerang",
-    prompt: "Once a Sentry issue is resolved, it must never come back",
-    shortLabel: "Boomerang",
-    description: "Binds the Sentry issue at resolution and flags that same issue being unresolved later.",
-    providers: ["sentry"],
-    definition: definitions.boomerang,
-  },
-  {
-    id: "clean-break",
-    prompt: "Once a customer cancels their subscription, they must never be charged again",
-    shortLabel: "Clean break",
-    description: "Binds the Stripe customer at cancellation and flags any later paid invoice or successful charge for them.",
-    providers: ["stripe"],
-    definition: definitions.cleanBreak,
-  },
-];
+export const legacyProvisioningDefinition = provisioningSupportDeadlineAssertion(TENANT_ID, 600_000);
 
 export function getDemoBootstrap(): DemoBootstrap {
   return {
     mode: "deterministic-local-demo",
     anchorTime: DEMO_ANCHOR,
-    templates: structuredClone(authoringTemplates),
+    examples: structuredClone(exampleRules),
   };
 }
 
@@ -77,6 +42,8 @@ function event(
   at: string,
   relationships: readonly [string, string][],
   subject: { readonly type: string; readonly id: string; readonly name: string },
+  /** Fields the real adapter projects for this event type, so rules read sample events exactly like live ones. */
+  projection: Readonly<Record<string, unknown>> = {},
 ): NormalizedEvent {
   return {
     id,
@@ -90,7 +57,7 @@ function event(
     subject,
     relationships: relationships.map(([type, relationshipId], index) => relationship(type, relationshipId, index)),
     evidence: {
-      providerPayload: { synthetic: true, fixture: id, kind },
+      providerPayload: { ...projection, synthetic: true, fixture: id, kind },
       links: [{ rel: "synthetic-reference", url: `https://synthetic.needl.test/${provider}/${id}` }],
       authenticity: "clearly-labeled-synthetic-demo",
       bodySha256: `synthetic-sha256-${id}`,
@@ -104,21 +71,21 @@ function eventsFor(scenario: DemoReplayRequest["scenario"]): readonly Normalized
   const base: NormalizedEvent[] = [
     event("gitlab-deploy", "gitlab", "deployment.success", "deployment", "2026-02-18T10:40:00.000Z",
       [["project", "7"], ["repository", "acme/shop"], ["ref", "eng-42-fix-retry-loop"], ["environment", "production"]],
-      { type: "deployment", id: "241", name: "Production deploy 241" }),
+      { type: "deployment", id: "241", name: "Production deploy 241" }, { objectKind: "deployment", action: "success", status: "success", ref: "eng-42-fix-retry-loop", projectId: 7, projectPath: "acme/shop" }),
     violating
       ? event("sentry-ghost", "sentry", "event_alert.triggered", "error.event_alert", "2026-02-18T10:47:00.000Z",
         [["project", "shop"], ["environment", "production"], ["tag.linear_issue", "ENG-42"]],
-        { type: "error_event", id: "evt-ghost-42", name: "Checkout retry loop is back" })
+        { type: "error_event", id: "evt-ghost-42", name: "Checkout retry loop is back" }, { action: "triggered", resource: "event_alert", level: "error" })
       : event("sentry-unrelated", "sentry", "event_alert.triggered", "error.event_alert", "2026-02-18T10:47:00.000Z",
         [["project", "shop"], ["environment", "production"], ["tag.linear_issue", "ENG-7"]],
-        { type: "error_event", id: "evt-unrelated-7", name: "Avatar upload timeout" }),
+        { type: "error_event", id: "evt-unrelated-7", name: "Avatar upload timeout" }, { action: "triggered", resource: "event_alert", level: "error" }),
     event("sentry-resolved", "sentry", "issue.resolved", "error.issue", "2026-02-18T11:00:00.000Z",
-      [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" }),
+      [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" }, { action: "resolved", resource: "issue", status: "resolved" }),
     violating
       ? event("sentry-boomerang", "sentry", "issue.unresolved", "error.issue", "2026-02-18T11:05:00.000Z",
-        [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" })
+        [["project", "shop"]], { type: "issue", id: "4815", name: "CheckoutError: card token expired" }, { action: "unresolved", resource: "issue", status: "unresolved" })
       : event("sentry-other-unresolved", "sentry", "issue.unresolved", "error.issue", "2026-02-18T11:05:00.000Z",
-        [["project", "shop"]], { type: "issue", id: "1623", name: "SearchError: index unavailable" }),
+        [["project", "shop"]], { type: "issue", id: "1623", name: "SearchError: index unavailable" }, { action: "unresolved", resource: "issue", status: "unresolved" }),
     event("legacy-stripe-payment", "stripe", "payment.succeeded", "payment.succeeded", "2026-02-18T11:58:00.000Z", legacyProvisioning, { type: "payment", id: "pi_legacy", name: "Legacy deadline fixture payment" }),
     event("legacy-provisioning-failed", "posthog", "provisioning.failed", "provisioning.failed", "2026-02-18T11:59:00.000Z", legacyProvisioning, { type: "product_event", id: "evt_legacy", name: "Legacy deadline fixture failure" }),
     event("stripe-canceled", "stripe", "customer.subscription.deleted", "subscription.deleted", "2026-02-18T12:00:00.000Z",
@@ -143,12 +110,11 @@ export async function runDemoScenario(request: DemoReplayRequest): Promise<DemoR
   const events = eventsFor(request.scenario);
   const results = [];
   for (const item of events) results.push(...await runtime.process(item));
-  const timedDefinitions = new Map(active
-    .filter((draft) => draft.definition.formula.kind === "deadline")
-    .map((draft) => [`${draft.definition.id}@${draft.definition.version}`, draft.definition]));
-  const instantiatedTimedPartitions = (await store.listCheckpoints()).filter((checkpoint) =>
-    timedDefinitions.has(`${checkpoint.assertionId}@${checkpoint.assertionVersion}`));
-  for (const [index, checkpoint] of instantiatedTimedPartitions.entries()) {
+  // The sample ends with an explicit clock tick so time limits still open at the end can expire.
+  const timed = new Set(active.filter((draft) => draft.definition.formula.kind === "deadline").map((draft) => `${draft.definition.id}@${draft.definition.version}`));
+  const openWindows = (await store.listCheckpoints()).filter((checkpoint) =>
+    !checkpoint.finalized && (checkpoint.nextDueAt !== undefined || timed.has(`${checkpoint.assertionId}@${checkpoint.assertionVersion}`)));
+  for (const [index, checkpoint] of openWindows.entries()) {
     results.push(await runtime.advanceTime({
       id: `deadline-tick-${request.scenario}-${index}`,
       tenantId: checkpoint.tenantId,
@@ -169,6 +135,6 @@ export async function runDemoScenario(request: DemoReplayRequest): Promise<DemoR
     checkpoints,
     violations: await store.listViolations(),
     outbox: await store.listOutbox(),
-    unavailableAssertionIds: active.filter((draft) => !checkpointIds.has(draft.definition.id) || !meaningHasFixtureEvidence(draft)).map((draft) => draft.localId),
+    unavailableAssertionIds: active.filter((draft) => !checkpointIds.has(draft.definition.id)).map((draft) => draft.localId),
   };
 }

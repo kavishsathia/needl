@@ -57,6 +57,8 @@ export interface NeedlDatabase {
     checkpointJson: string;
     revision: number;
     updatedAt: string;
+    /** When a clock tick can next change this monitor (an open time window ends); null when none is pending. */
+    nextDueAt: string | null;
   };
   readonly liveMonitorTrace: {
     tenantId: string;
@@ -183,7 +185,7 @@ const applicationTables = [
   `CREATE TABLE IF NOT EXISTS assertion_versions (tenant_id TEXT NOT NULL, assertion_id TEXT NOT NULL, version INTEGER NOT NULL, draft_json TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, assertion_id, version), FOREIGN KEY (tenant_id, assertion_id) REFERENCES assertions(tenant_id, assertion_id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS monitor_events (tenant_id TEXT NOT NULL, event_id TEXT NOT NULL, provider TEXT NOT NULL, delivery_id TEXT NOT NULL, event_json TEXT NOT NULL, occurred_at TEXT, received_at TEXT NOT NULL, PRIMARY KEY (tenant_id, event_id), UNIQUE (tenant_id, provider, delivery_id), FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS monitor_state (tenant_id TEXT NOT NULL, assertion_id TEXT NOT NULL, assertion_version INTEGER NOT NULL, checkpoint_json TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, assertion_id, assertion_version), FOREIGN KEY (tenant_id, assertion_id) REFERENCES assertions(tenant_id, assertion_id) ON DELETE CASCADE)`,
-  `CREATE TABLE IF NOT EXISTS live_monitor_state (tenant_id TEXT NOT NULL, instance_key TEXT NOT NULL, assertion_id TEXT NOT NULL, assertion_version INTEGER NOT NULL, checkpoint_json TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, instance_key), FOREIGN KEY (tenant_id, assertion_id) REFERENCES assertions(tenant_id, assertion_id) ON DELETE CASCADE)`,
+  `CREATE TABLE IF NOT EXISTS live_monitor_state (tenant_id TEXT NOT NULL, instance_key TEXT NOT NULL, assertion_id TEXT NOT NULL, assertion_version INTEGER NOT NULL, checkpoint_json TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL, next_due_at TEXT, PRIMARY KEY (tenant_id, instance_key), FOREIGN KEY (tenant_id, assertion_id) REFERENCES assertions(tenant_id, assertion_id) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS live_monitor_trace (tenant_id TEXT NOT NULL, instance_key TEXT NOT NULL, position INTEGER NOT NULL, trace_json TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (tenant_id, instance_key, position), FOREIGN KEY (tenant_id, instance_key) REFERENCES live_monitor_state(tenant_id, instance_key) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS live_monitor_inputs (tenant_id TEXT NOT NULL, instance_key TEXT NOT NULL, input_id TEXT NOT NULL, processed_at TEXT NOT NULL, PRIMARY KEY (tenant_id, instance_key, input_id), FOREIGN KEY (tenant_id, instance_key) REFERENCES live_monitor_state(tenant_id, instance_key) ON DELETE CASCADE)`,
   `CREATE TABLE IF NOT EXISTS counterexamples (tenant_id TEXT NOT NULL, counterexample_id TEXT NOT NULL, assertion_id TEXT NOT NULL, assertion_version INTEGER NOT NULL, record_json TEXT NOT NULL, detected_at TEXT NOT NULL, PRIMARY KEY (tenant_id, counterexample_id), FOREIGN KEY (tenant_id, assertion_id) REFERENCES assertions(tenant_id, assertion_id) ON DELETE CASCADE)`,
@@ -201,4 +203,11 @@ export async function migrateApplicationDatabase(runtime: DatabaseRuntime): Prom
   await sql`CREATE INDEX IF NOT EXISTS events_tenant_received_idx ON monitor_events (tenant_id, received_at)`.execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS investigations_tenant_status_idx ON investigations (tenant_id, status)`.execute(runtime.db);
   await sql`CREATE INDEX IF NOT EXISTS live_monitor_inputs_tenant_idx ON live_monitor_inputs (tenant_id, input_id)`.execute(runtime.db);
+  // Added with time-bounded rules; databases created earlier get the column here.
+  if (runtime.type === "postgres") await sql`ALTER TABLE live_monitor_state ADD COLUMN IF NOT EXISTS next_due_at TEXT`.execute(runtime.db);
+  else {
+    const columns = await sql<{ name: string }>`PRAGMA table_info(live_monitor_state)`.execute(runtime.db);
+    if (!columns.rows.some((column) => column.name === "next_due_at")) await sql`ALTER TABLE live_monitor_state ADD COLUMN next_due_at TEXT`.execute(runtime.db);
+  }
+  await sql`CREATE INDEX IF NOT EXISTS live_monitor_state_due_idx ON live_monitor_state (next_due_at)`.execute(runtime.db);
 }

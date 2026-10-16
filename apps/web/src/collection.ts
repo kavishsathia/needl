@@ -2,9 +2,9 @@ import { compileAssertion } from "../../../src/ltl/assertion.js";
 import type { AssertionDraft } from "./domain.js";
 import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
 import { productSafetyIssue } from "./safety.js";
-import { assertMeaningMatchesMonitor } from "./meaning.js";
+import { assertRuleMatchesMonitor } from "./ruleDrafts.js";
 
-const templateIds = new Set<string>(["ghost", "boomerang", "clean-break", "provisioning"]);
+const exampleIds = new Set<string>(["no-ghosts", "boomerang", "clean-break"]);
 
 function validateDraft(value: unknown, index: number): asserts value is AssertionDraft {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -20,8 +20,8 @@ function validateDraft(value: unknown, index: number): asserts value is Assertio
   if (draft.status !== "monitoring" && draft.status !== "paused" && draft.status !== "needs-review") {
     throw new Error(`Assertion ${draft.localId} has an unknown status`);
   }
-  if (draft.templateId !== undefined && !templateIds.has(draft.templateId)) {
-    throw new Error(`Assertion ${draft.localId} has an unknown template`);
+  if (draft.exampleId !== undefined && !exampleIds.has(draft.exampleId)) {
+    throw new Error(`Assertion ${draft.localId} has an unknown example`);
   }
   if (typeof draft.createdAt !== "string" || Number.isNaN(Date.parse(draft.createdAt))) {
     throw new Error(`Assertion ${draft.localId} has an invalid creation time`);
@@ -34,12 +34,7 @@ function validateDraft(value: unknown, index: number): asserts value is Assertio
   if (definition.tenantId !== DEMO_TENANT_ID) {
     throw new Error(`Demo assertions must use tenant ${DEMO_TENANT_ID}`);
   }
-  if (draft.meaning !== undefined) {
-    if (typeof draft.meaning !== "object" || draft.meaning === null || !["ghost", "boomerang", "clean-break"].includes(String(draft.meaning.templateId)) || typeof draft.meaning.values !== "object" || draft.meaning.values === null) {
-      throw new Error(`Assertion ${draft.localId} has invalid meaning metadata`);
-    }
-    assertMeaningMatchesMonitor(draft as AssertionDraft);
-  }
+  if (draft.rule !== undefined) assertRuleMatchesMonitor(draft as AssertionDraft);
 }
 
 export function validateProductAssertionCollection(

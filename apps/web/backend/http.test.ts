@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getDemoBootstrap } from "../demo.js";
-import { defaultMeaningValues } from "../src/meaning.js";
+import { exampleRules } from "../src/examples.js";
+import { exampleDraft } from "../src/ruleDrafts.js";
 
 let processHandle: ChildProcess;
 let baseUrl: string;
@@ -67,13 +67,7 @@ async function signup(session: BrowserSession, email: string): Promise<void> {
 }
 
 function sampleDraft() {
-  const template = getDemoBootstrap().templates[0]!;
-  return {
-    localId: template.definition.id, expectation: template.prompt, definition: template.definition,
-    status: "monitoring", templateId: template.id,
-    meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
-    createdAt: "2026-02-18T10:39:00.000Z", updatedAt: "2026-02-18T10:39:00.000Z",
-  };
+  return exampleDraft(exampleRules[0]!);
 }
 
 beforeAll(async () => {

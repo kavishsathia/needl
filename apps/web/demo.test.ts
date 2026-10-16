@@ -1,18 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { AssertionDraft } from "./src/domain.js";
-import { authoringTemplates, legacyProvisioningDefinition, runDemoScenario } from "./demo.js";
-import { createDraftFromTemplate, updateMeaningChoice } from "./src/authoring.js";
+import { legacyProvisioningDefinition, runDemoScenario } from "./demo.js";
+import { exampleRules } from "./src/examples.js";
+import { exampleDraft, updateRuleChoice } from "./src/ruleDrafts.js";
 
 function drafts(): AssertionDraft[] {
-  return authoringTemplates.map((template) => ({
-    localId: template.definition.id,
-    expectation: template.prompt,
-    definition: template.definition,
-    status: "monitoring" as const,
-    templateId: template.id,
-    createdAt: "2026-02-18T10:39:00.000Z",
-    updatedAt: "2026-02-18T10:39:00.000Z",
-  }));
+  return exampleRules.map((example) => exampleDraft(example));
 }
 
 describe("deterministic demo replay", () => {
@@ -28,16 +21,13 @@ describe("deterministic demo replay", () => {
     expect(output.outbox.every((item) => item.status === "pending")).toBe(true);
   });
 
-  it("changes discriminating engine output when a meaning chip changes", async () => {
-    const ghost = authoringTemplates.find((template) => template.id === "ghost")!;
-    const draft = { ...createDraftFromTemplate(ghost.prompt, ghost, []), status: "monitoring" as const };
+  it("changes discriminating engine output when a $ choice changes", async () => {
+    const draft = exampleDraft(exampleRules.find((example) => example.id === "no-ghosts")!);
     const production = await runDemoScenario({ scenario: "violating", assertions: [draft] });
-    const stagingDraft = updateMeaningChoice(draft, "environment", "staging");
-    const staging = await runDemoScenario({ scenario: "violating", assertions: [{ ...stagingDraft, status: "monitoring" }] });
+    const staging = await runDemoScenario({ scenario: "violating", assertions: [updateRuleChoice(draft, "environment", "staging")] });
 
     expect(production.violations).toHaveLength(1);
     expect(staging.violations).toHaveLength(0);
-    expect(staging.unavailableAssertionIds).toContain(draft.localId);
   });
 
   it("keeps all three monitors non-violating for the healthy fixture", async () => {

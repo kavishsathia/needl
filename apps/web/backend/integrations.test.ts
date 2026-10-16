@@ -3,9 +3,10 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDemoBootstrap, runDemoScenario } from "../demo.js";
+import { runDemoScenario } from "../demo.js";
 import type { AssertionDraft } from "../src/domain.js";
-import { defaultMeaningValues } from "../src/meaning.js";
+import { exampleRules } from "../src/examples.js";
+import { exampleDraft } from "../src/ruleDrafts.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { SignedIngestionService } from "./ingestion.js";
 import { GitLabCallbackService, GitLabInvestigationService } from "./investigations.js";
@@ -23,17 +24,7 @@ async function setup() {
 }
 
 function ghostDraft(): AssertionDraft {
-  const template = getDemoBootstrap().templates[0]!;
-  return {
-    localId: template.definition.id,
-    expectation: template.prompt,
-    definition: template.definition,
-    status: "monitoring",
-    templateId: template.id,
-    meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
-    createdAt: "2026-02-18T10:39:00.000Z",
-    updatedAt: "2026-02-18T10:39:00.000Z",
-  };
+  return exampleDraft(exampleRules[0]!);
 }
 
 async function createViolation(repository: NeedlRepository, tenantId: string): Promise<string> {

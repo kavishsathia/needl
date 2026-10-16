@@ -1,41 +1,17 @@
 # Safety-only product policy
 
-This policy applies to the Needl product layer in `apps/web`. It does not narrow the reusable LTL engine exported from `src/ltl`: the library continues to parse, validate, progress, finalize, and test general LTL plus the explicit deadline extension.
+This policy applies to the Needl product layer in `apps/web`. The reusable LTL engine in `src/ltl` still parses, progresses and finalizes general LTL; the product only runs **safety properties**: rules that a single observed event, or a time limit passing, can break.
 
-## Accepted product formulas
+## Accepted formulas
 
-The product validator compiles the complete assertion first, including declared atoms, closed predicates, state updates, scope extractors, and resource bounds. It then accepts only these recognized structured shapes:
+Every stored assertion is compiled and checked with the engine's syntactic safety check (`findLiveness` in `src/ltl/safety.ts`). After pushing negations to the atoms, a formula may use atoms, `and`, `or`, `next`, `always`, weak until, `bind`, and the time-bounded operators (`eventuallyWithin`, `alwaysWithin`, `untilWithin`, and the top-level `deadline` extension). It may not use unbounded `eventually` or strong `until`, or their duals under negation (`not always`, `not … weak until …`). Every LTL-expressible safety property can be written in this fragment, so the policy loses nothing that can be caught breaking; it rejects exactly what could never be caught.
 
-```text
-G φ
-G (φ -> G ψ)
-G (φ -> bind(x) … G ψ)
-```
+Rules are written in the [Needl rule language](rule-language.md), whose checker applies the same policy at the source level and points at the offending operator.
 
-`φ` and `ψ` must be propositional formulas made from declared atoms, constants, negation, conjunction, disjunction, and implication. The first shape is a global invariant: a finite observation can break it immediately. The second is the reviewed “after this trigger, never again” shape. The third is the same shape with one or more `bind` operators between the trigger and the `G`: each trigger freezes values (an issue key, a customer) that `ψ` compares against, so “never again” applies to that value only. Binds are transparent to safety: they do not add eventualities.
+## Authoring
 
-This is deliberately a limited, sound subset. The validator does not claim to decide whether every possible LTL formula is a safety property. Formulas containing `F` (eventually), `U` (until), `X` (next), a top-level formula without `G`, unrecognized temporal nesting, or the timed `deadline` extension are rejected at product authoring, advanced editing, enablement, and replay API boundaries.
+People describe what must never go wrong; the authoring agent writes a rule, the checker verifies it (errors go back to the model for repair), and the result is shown read back in English with its choices as dropdowns, created **paused** for review. Without OpenAI, people start from a worked example or write the rule themselves with live checking. A rule's stored monitor must equal what its source compiles to with its chosen values; a mismatch is rejected, so the reading can never drift from what runs.
 
-The normal interface does not expose formulas. A collapsed **Advanced specification** section is available for expert inspection and editing, but it passes through the same compiler and product-policy validator.
+## Migration
 
-## Authoring and migration
-
-The composer is an honestly labeled template-assisted seam; no natural-language model is connected. Eventuality/deadline wording receives friendly unsupported feedback and a user-confirmed safety alternative. Needl never silently rewrites the supplied intent.
-
-An older saved rule outside the supported subset is retained with its original wording, definition, version, and any additional user-owned record fields. It migrates to `needs-review`, remains disabled, and is excluded from replay requests. It is not silently deleted or coerced into a different meaning. The local replay API independently rejects unsupported formulas even when a caller marks them paused or `needs-review`.
-
-## Editable meaning
-
-Reviewed templates store a template ID and selected meaning values alongside the canonical assertion definition. Collection validation deterministically rebuilds the expected formula, predicates, state updates, and scope from those selections and rejects a mismatch. A chip therefore cannot be cosmetic.
-
-Options identify whether the deterministic fixture has matching evidence. For example, changing the No ghosts environment from production to staging creates a new assertion version, changes the event predicates and scope, then produces **No matching evidence** instead of a quiet “safe” result.
-
-The reviewed templates read only fields the provider adapters actually emit:
-
-| Template | Formula | Binds | Reads |
-| --- | --- | --- | --- |
-| No ghosts | `G (shipped -> bind(issue) G !haunted)` | issue key from the GitLab deployment `ref` (`issue-key` pattern) | GitLab `deployment.success` + environment; Sentry events tagged `linear_issue` + environment tag |
-| Boomerang | `G (resolved -> bind(issue) G !returned)` | Sentry issue id | Sentry `issue.resolved` / `issue.unresolved` |
-| Clean break | `G (canceled -> bind(customer) G !charged)` | Stripe `customer` | `customer.subscription.deleted`; `invoice.paid`, `charge.succeeded`, `payment_intent.succeeded` |
-
-Each template also partitions by the same entity, so one violation does not end monitoring for every other issue or customer.
+Assertions saved by the earlier template-based flow are rewritten as rules from the matching worked example with a new version, keeping their wording, status and environment choice. An older saved rule outside the safety fragment is retained with its wording and definition, migrates to `needs-review`, stays disabled, and is excluded from replay. It is never silently deleted or coerced into a different meaning.

@@ -1,4 +1,4 @@
-import type { AssertionDraft, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
+import type { AssertionDraft, ChoiceSuggestions, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { credentials: "same-origin", ...init });
@@ -69,4 +69,8 @@ export function launchInvestigation(violationId: string): Promise<InvestigationR
 
 export function refreshInvestigation(id: string): Promise<InvestigationRecord> {
   return requestJson(`/api/investigations/${encodeURIComponent(id)}/refresh`, { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: "{}" });
+}
+
+export function fetchChoiceSuggestions(source: string): Promise<{ readonly suggestions: readonly ChoiceSuggestions[] }> {
+  return requestJson("/api/rules/suggestions", { method: "POST", headers: { "content-type": "application/json", "x-needl-csrf": "1" }, body: JSON.stringify({ source }) });
 }

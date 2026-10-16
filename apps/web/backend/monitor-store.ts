@@ -55,6 +55,7 @@ export class LiveMonitorStore implements MonitorStore {
           checkpointJson: JSON.stringify(request.checkpoint),
           revision: request.checkpoint.revision,
           updatedAt: now,
+          nextDueAt: request.checkpoint.finalized ? null : request.checkpoint.nextDueAt ?? null,
         }).onConflict((conflict) => conflict.columns(["tenantId", "instanceKey"]).doNothing()).executeTakeFirst();
         if (Number(inserted.numInsertedOrUpdatedRows ?? 0) !== 1) return "conflict";
       } else {
@@ -62,6 +63,7 @@ export class LiveMonitorStore implements MonitorStore {
           checkpointJson: JSON.stringify(request.checkpoint),
           revision: request.checkpoint.revision,
           updatedAt: now,
+          nextDueAt: request.checkpoint.finalized ? null : request.checkpoint.nextDueAt ?? null,
         }).where("tenantId", "=", this.tenantId).where("instanceKey", "=", request.instance.key)
           .where("revision", "=", request.expectedRevision).executeTakeFirst();
         if (Number(updated.numUpdatedRows) !== 1) return "conflict";

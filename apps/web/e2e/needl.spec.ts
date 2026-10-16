@@ -29,6 +29,27 @@ test.beforeEach(async ({ page }, testInfo) => {
   expect(response.status()).toBe(200);
 });
 
+/** A minimal valid engine-level assertion, for storage and API probes that do not need a rule. */
+function plainDefinition(id: string, name: string) {
+  return {
+    id, version: 1, tenantId: "synthetic-demo", name,
+    formula: { kind: "always", operand: { kind: "not", operand: { kind: "atom", name: "error" } } },
+    scope: { keys: [{ name: "service", extractors: [{ from: "relationship", type: "service" }] }] },
+    propositions: [
+      { name: "error", predicate: { op: "equal", path: { root: "event", segments: ["kind"] }, value: "error.recurred" } },
+      { name: "recovered", predicate: { op: "equal", path: { root: "event", segments: ["kind"] }, value: "error.recovered" } },
+    ],
+  };
+}
+
+async function authorFromExample(page: Page, expectation: string, example: RegExp): Promise<void> {
+  await page.getByLabel("What should never happen?").fill(expectation);
+  await page.getByLabel("Continue authoring").click();
+  const dialog = page.getByRole("dialog", { name: "Review the rule" });
+  await dialog.getByRole("button", { name: example }).click();
+  await dialog.getByRole("button", { name: "Create paused rule" }).click();
+}
+
 function tenantStorage() {
   const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
   return JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
@@ -66,32 +87,34 @@ test("complete assertion journey uses engine evidence and persists authored stat
 
   await page.getByLabel("What should never happen?").fill("Every checkout fix stays fixed after deployment");
   await page.getByLabel("Continue authoring").click();
-  await expect(page.getByRole("heading", { name: "Choose an interpretation template" })).toBeVisible();
-  await expect(page.getByText("Natural-language AI translation is not configured.")).toBeVisible();
-  await page.getByRole("dialog", { name: "Choose an interpretation template" }).getByRole("button", { name: /No ghosts/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Review the rule" });
+  await expect(dialog.getByText("AI authoring is not configured")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Create paused rule" })).toBeDisabled();
+  await dialog.getByRole("button", { name: /No ghosts/ }).click();
+  await expect(dialog.getByTestId("rule-preview")).toContainText("must never appear there again");
+  await dialog.getByRole("button", { name: "Create paused rule" }).click();
 
   const detail = page.locator(".detail");
-  await expect(detail.getByRole("heading", { name: "Every checkout fix stays fixed after deployment" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "Every checkout fix stays fixed after deployment", exact: true })).toBeVisible();
   await expect(detail.getByText("Paused", { exact: true })).toBeVisible();
   await detail.getByRole("button", { name: "Enable" }).click();
   await expect(detail.getByRole("button", { name: "Pause" })).toBeVisible();
   await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
   await page.waitForTimeout(2800);
 
-  await detail.getByRole("button", { name: "Edit wording" }).click();
-  const expectation = page.getByLabel("Expectation", { exact: true });
-  await expectation.fill("A checkout fix must stay fixed after deployment");
-  await page.getByRole("button", { name: /Validate & save v2/ }).click();
-  await expect(detail.getByRole("heading", { name: "A checkout fix must stay fixed after deployment" })).toBeVisible();
+  await detail.getByRole("button", { name: "Edit rule" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("A checkout fix must stay fixed after deployment");
+  await page.getByRole("button", { name: /Check & save v2/ }).click();
+  await expect(detail.getByRole("heading", { name: "A checkout fix must stay fixed after deployment", exact: true })).toBeVisible();
   await expect(page.getByText("Assertion · v2")).toBeVisible();
 
   await page.reload();
-  await expect(detail.getByRole("heading", { name: "A checkout fix must stay fixed after deployment" })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "A checkout fix must stay fixed after deployment", exact: true })).toBeVisible();
   await expect(detail.getByRole("button", { name: "Pause" })).toBeVisible();
 
   await page.getByRole("button", { name: /Counterexamples/ }).click();
   const counterexample = detail.locator(".counterexample");
-  await expect(counterexample.getByRole("heading", { name: "An error tagged with a shipped issue key came back in production." })).toBeVisible();
+  await expect(counterexample.getByRole("heading", { name: "A checkout fix must stay fixed after deployment was broken" })).toBeVisible();
   await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
   await expect(counterexample.getByText(/formula false/i)).toBeHidden();
   await expect(page.locator(".trace-timeline li")).toHaveCount(2);
@@ -117,60 +140,41 @@ test("complete assertion journey uses engine evidence and persists authored stat
   expect(consoleErrors).toEqual([]);
 });
 
-test("authored clones and wording edits keep canonical chips and meaning-first counterexamples for every template", async ({ page }) => {
+test("rules started from each example read back in English and produce counterexamples", async ({ page }) => {
   const cases = [
     {
       expectation: "A renamed checkout repair never regresses",
-      template: /No ghosts/,
-      editedName: "A renamed checkout repair stays repaired",
-      cardMeaning: "Once a branch for an issue deploys to production, errors tagged with that issue must not appear there again.",
-      violation: "An error tagged with a shipped issue key came back in production.",
-      chip: "Trigger: a branch for an issue deploys",
+      example: /No ghosts/,
+      reading: "Once a branch for an issue gets a successful deploy to production, keeping its issue key in its branch as “issue”, an error alert tagged that issue in production, or an error tagged that issue in production must never appear there again.",
+      choice: "environment: production",
     },
     {
       expectation: "A renamed resolved issue stays resolved",
-      template: /Boomerang/,
-      cardMeaning: "Once a Sentry issue is resolved, it must never come back.",
-      violation: "A resolved Sentry issue came back.",
-      chip: "Trigger: a Sentry issue is resolved",
+      example: /Boomerang/,
+      reading: "Once a Sentry issue is resolved, keeping its issue as “issue”, that issue being unresolved again must never happen.",
     },
     {
       expectation: "A renamed canceled customer stays uncharged",
-      template: /Clean break/,
-      cardMeaning: "Once a customer cancels their subscription, they must never be charged again.",
-      violation: "A customer was charged after their subscription was canceled.",
-      chip: "Trigger: a customer cancels",
+      example: /Clean break/,
+      reading: "Once a customer cancels their subscription, keeping its customer as “customer”, they must never be charged again by a paid invoice for that customer, a successful charge for that customer, or a successful payment for that customer.",
     },
   ] as const;
 
   await page.goto("/#/assertions");
   for (const item of cases) {
-    await page.getByLabel("What should never happen?").fill(item.expectation);
-    await page.getByLabel("Continue authoring").click();
-    await page.getByRole("dialog", { name: "Choose an interpretation template" }).getByRole("button", { name: item.template }).click();
+    await authorFromExample(page, item.expectation, item.example);
     const detail = page.getByRole("complementary", { name: `${item.expectation} detail` });
     await detail.getByRole("button", { name: "Enable" }).click();
     await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
-
-    let currentName: string = item.expectation;
-    if ("editedName" in item) {
-      await detail.getByRole("button", { name: "Edit wording" }).click();
-      await page.getByLabel("Expectation", { exact: true }).fill(item.editedName);
-      await page.getByRole("button", { name: /Validate & save v2/ }).click();
-      currentName = item.editedName;
-    }
-
-    const currentDetail = page.getByRole("complementary", { name: `${currentName} detail` });
-    await currentDetail.getByRole("button", { name: /Counterexamples/ }).click();
-    const counterexample = currentDetail.locator(".counterexample");
-    await expect(counterexample.getByRole("heading", { name: item.violation })).toBeVisible();
+    await detail.getByRole("button", { name: /Counterexamples/ }).click();
+    const counterexample = detail.locator(".counterexample");
+    await expect(counterexample.getByRole("heading", { name: `${item.expectation} was broken` })).toBeVisible();
     await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
-    await expect(counterexample.getByText(/formula false/i)).toBeHidden();
     await page.getByRole("button", { name: "Back to assertion board" }).click();
 
     const card = page.getByTestId(`assertion-card-local-${item.expectation.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)}`);
-    await expect(card.locator(".meaning-sentence")).toHaveText(item.cardMeaning);
-    await expect(card.getByRole("button", { name: item.chip })).toBeVisible();
+    await expect(card.locator(".meaning-sentence")).toHaveText(item.reading);
+    if ("choice" in item) await expect(card.getByRole("button", { name: item.choice }).first()).toBeVisible();
   }
 });
 
@@ -186,68 +190,64 @@ test("replay switches between violating and healthy engine paths", async ({ page
   expect(consoleErrors).toEqual([]);
 });
 
-test("eventuality authoring requires a confirmed safety alternative and keeps advanced syntax secondary", async ({ page }) => {
+test("hand-written rules are checked live: liveness is refused with its location and a time limit is accepted", async ({ page }) => {
   await page.goto("/#/assertions");
-  await page.getByLabel("What should never happen?").fill("Every paid order should eventually be fulfilled");
+  await page.getByLabel("What should never happen?").fill("A failed invoice payment must be recovered");
   await page.getByLabel("Continue authoring").click();
+  const dialog = page.getByRole("dialog", { name: "Review the rule" });
+  await dialog.getByText("Rule", { exact: true }).click();
+  const source = dialog.getByLabel("Rule source");
+  await source.fill("always (stripe.invoice.payment_failed bind customer = customer -> eventually stripe.invoice.paid(customer = customer))");
+  await expect(dialog.locator(".rule-errors")).toContainText("1:67");
+  await expect(dialog.locator(".rule-errors")).toContainText("`eventually` has no time limit");
+  await expect(dialog.getByRole("button", { name: "Create paused rule" })).toBeDisabled();
 
-  const unsupported = page.getByRole("dialog", { name: "Need a breakable condition" });
-  await expect(unsupported).toContainText("This describes something that should eventually happen. Needl needs a condition it can catch being broken.");
-  await expect(page.getByRole("dialog", { name: "Choose an interpretation template" })).toHaveCount(0);
-  await unsupported.getByRole("button", { name: "Use this alternative" }).click();
+  await source.fill("always (stripe.invoice.payment_failed bind customer = customer -> eventually within 1h stripe.invoice.paid(customer = customer))");
+  await expect(dialog.locator(".rule-errors")).toHaveCount(0);
+  await expect(dialog.getByTestId("rule-preview")).toContainText("within 1 hour, there must be a paid Stripe invoice where customer is that customer");
+  await dialog.getByRole("button", { name: "Create paused rule" }).click();
 
-  const chooser = page.getByRole("dialog", { name: "Choose an interpretation template" });
-  await expect(chooser).toContainText("Once a customer cancels, they must never be charged again");
-  await chooser.getByRole("button", { name: /Clean break/ }).click();
-  const detail = page.locator(".detail");
-  await expect(detail.getByText("Once a customer cancels, they must never be charged again", { exact: true }).first()).toBeVisible();
-  await expect(detail.locator(".formula-block")).toHaveCount(0);
-
-  await detail.getByRole("button", { name: "Edit wording" }).click();
-  await expect(page.getByLabel("Formula")).toBeHidden();
-  await page.getByText("Advanced specification", { exact: true }).click();
-  await expect(page.getByLabel("Formula")).toBeVisible();
+  const detail = page.getByRole("complementary", { name: "A failed invoice payment must be recovered detail" });
+  await expect(detail.locator(".rule-duration").first()).toHaveText("1 hour");
+  await detail.getByRole("button", { name: "Show exact reading" }).click();
+  await expect(detail.locator(".expectation-section .meaning-sentence")).toContainText("Whenever there is a failed Stripe invoice payment");
+  await expect(detail.getByText("Each customer is watched separately.")).toBeVisible();
 });
 
-test("meaning chips update canonical semantics and link phrases to trace evidence by keyboard and mouse", async ({ page }) => {
+test("$ choices are dropdowns that version the monitor and accept typed values", async ({ page }) => {
   await page.goto("/#/assertions");
   await page.getByRole("button", { name: "Open No ghosts" }).click();
   const detail = page.getByRole("complementary", { name: "No ghosts detail" });
   const rule = detail.locator(".expectation-section");
-  const environment = rule.getByRole("button", { name: "Environment: production" });
+  const environment = rule.getByRole("button", { name: "environment: production" }).first();
   await environment.focus();
   await environment.press("Enter");
-  await page.getByRole("option", { name: /staging/ }).press("Enter");
+  const listbox = page.getByRole("listbox", { name: "environment choices" });
+  await expect(listbox).toContainText("No environment values seen yet");
+  await listbox.getByLabel("Type a environment").fill("staging");
+  await listbox.getByRole("button", { name: "Use" }).click();
 
-  await expect(detail.getByRole("heading", { name: "No matching evidence" })).toBeVisible();
+  await expect(rule.getByRole("button", { name: "environment: staging" })).toHaveCount(3);
   const changed = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
     const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
     const draft = saved.assertions.find((item: { localId: string }) => item.localId === "no-ghosts");
-    return { version: draft.definition.version, formula: draft.definition.formula, propositions: draft.definition.propositions, scope: draft.definition.scope };
+    return { version: draft.definition.version, values: draft.rule.values, formula: draft.definition.formula, propositions: draft.definition.propositions };
   });
   expect(changed.version).toBe(2);
-  // The environment lives in the predicates and scope; the bound formula itself is environment-independent.
-  expect(JSON.stringify(changed.formula)).not.toContain("production");
+  expect(changed.values).toEqual({ environment: "staging" });
+  // The environment lives in the predicates; the bound formula itself is environment-independent.
+  expect(JSON.stringify(changed.formula)).not.toContain("staging");
   expect(JSON.stringify(changed.propositions)).toContain("staging");
-  expect(JSON.stringify(changed.scope)).toContain("staging");
+  await expect(detail.getByText("Needs attention", { exact: true })).toHaveCount(0);
 
-  await rule.getByRole("button", { name: "Environment: staging" }).click();
-  await page.getByRole("option", { name: /production/ }).click();
+  await rule.getByRole("button", { name: "environment: staging" }).first().click();
+  await page.getByRole("listbox", { name: "environment choices" }).getByLabel("Type a environment").fill("production");
+  await page.getByRole("listbox", { name: "environment choices" }).getByRole("button", { name: "Use" }).click();
   await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
-  const outcome = rule.getByRole("button", { name: "Forbidden outcome: errors tagged with that issue" });
-  await outcome.focus();
-  await outcome.press("Enter");
-  await expect(detail.locator(".trace-timeline li.is-meaning-linked").filter({ hasText: "Sentry" })).toBeVisible();
-
-  const gitlabEvidence = detail.locator(".trace-timeline li").filter({ hasText: "GitLab" });
-  await gitlabEvidence.getByRole("button", { name: "Highlight trigger in the rule" }).click();
-  await expect(rule.getByRole("button", { name: "Trigger: a branch for an issue deploys" })).toHaveClass(/is-linked/);
 });
 
-test("unsupported saved rules are preserved disabled and excluded from replay", async ({ page, request }) => {
-  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
-  const template = bootstrap.templates[0];
+test("unsupported saved rules are preserved disabled and excluded from replay", async ({ page }) => {
   const localId = "local-eventual-preserved";
   await page.addInitScript(({ definition, localId }) => {
     const saved = [{
@@ -264,7 +264,7 @@ test("unsupported saved rules are preserved disabled and excluded from replay", 
       updatedAt: "2026-02-18T10:39:00.000Z",
     }];
     localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions: saved }));
-  }, { definition: template.definition, localId });
+  }, { definition: plainDefinition(localId, "Every paid order should eventually be fulfilled"), localId });
 
   await page.goto("/#/assertions");
   await expect(page.getByRole("button", { name: "Open Every paid order should eventually be fulfilled" })).toBeVisible();
@@ -279,35 +279,35 @@ test("unsupported saved rules are preserved disabled and excluded from replay", 
   expect(stored.definition.formula.kind).toBe("eventually");
 });
 
-test("migration restores canonical chips and business evidence for a legacy authored clone with a renamed ID", async ({ page, request }) => {
-  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
-  const template = bootstrap.templates.find((item: { id: string }) => item.id === "ghost");
+test("a cached template-based assertion is rewritten as a rule with its choices and evidence", async ({ page }) => {
   const localId = "local-legacy-renamed-ghost";
   await page.addInitScript(({ definition, localId }) => {
     const saved = [{
       localId,
       expectation: "A legacy renamed repair stays repaired",
-      definition: { ...definition, id: localId, name: "A legacy renamed repair stays repaired", version: 7 },
+      definition,
       status: "monitoring",
       templateId: "ghost",
+      meaning: { templateId: "ghost", values: { trigger: "fix-branch-deployed", outcome: "tagged-errors", environment: "production" } },
       createdAt: "2026-02-18T10:39:00.000Z",
       updatedAt: "2026-02-18T10:39:00.000Z",
     }];
     localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions: saved }));
-  }, { definition: template.definition, localId });
+  }, { definition: { ...plainDefinition(localId, "A legacy renamed repair stays repaired"), version: 7 }, localId });
 
   await page.goto("/#/assertions");
   const card = page.getByTestId(`assertion-card-${localId}`);
-  await expect(card.getByRole("button", { name: "Trigger: a branch for an issue deploys" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "environment: production" }).first()).toBeVisible();
   await card.getByRole("button", { name: "Open A legacy renamed repair stays repaired" }).click();
   const detail = page.getByRole("complementary", { name: "A legacy renamed repair stays repaired detail" });
+  await expect(detail.getByText("Assertion · v8")).toBeVisible();
   await detail.getByRole("button", { name: /Counterexamples/ }).click();
-  await expect(detail.locator(".counterexample").getByRole("heading", { name: "An error tagged with a shipped issue key came back in production." })).toBeVisible();
+  await expect(detail.locator(".counterexample").getByRole("heading", { name: "A legacy renamed repair stays repaired was broken" })).toBeVisible();
   await expect.poll(async () => page.evaluate((id) => {
     const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
     const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");
-    return saved.assertions.find((item: { localId: string }) => item.localId === id)?.meaning?.templateId;
-  }, localId)).toBe("ghost");
+    return saved.assertions.find((item: { localId: string }) => item.localId === id)?.exampleId;
+  }, localId)).toBe("no-ghosts");
 });
 
 test("a delayed pause replay cannot overwrite the newer enabled result", async ({ page }) => {
@@ -396,16 +396,13 @@ test("invalid restored data is rejected and replaced with safe defaults", async 
   await expect(page.getByText("bad", { exact: true })).toHaveCount(0);
 });
 
-test("a malformed encoded assertion route falls back safely and preserves local data", async ({ page, request }) => {
-  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
-  const template = bootstrap.templates[0];
+test("a malformed encoded assertion route falls back safely and preserves local data", async ({ page }) => {
   const localId = "local-preserved-route-probe";
   const saved = [{
     localId,
     expectation: "Preserve me across a malformed route",
-    definition: { ...structuredClone(template.definition), id: localId, name: "Preserve me across a malformed route" },
+    definition: plainDefinition(localId, "Preserve me across a malformed route"),
     status: "paused",
-    templateId: template.id,
     createdAt: "2026-02-18T10:39:00.000Z",
     updatedAt: "2026-02-18T10:39:00.000Z",
   }];
@@ -420,14 +417,11 @@ test("a malformed encoded assertion route falls back safely and preserves local 
 });
 
 test("replay API returns controlled 400 responses for malformed inactive drafts", async ({ request }) => {
-  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
-  const template = bootstrap.templates[0];
   const base = {
-    localId: template.definition.id,
-    expectation: template.prompt,
-    definition: template.definition,
+    localId: "local-api-probe",
+    expectation: "A recovered error never recurs",
+    definition: plainDefinition("local-api-probe", "A recovered error never recurs"),
     status: "paused",
-    templateId: template.id,
     createdAt: "2026-02-18T10:39:00.000Z",
     updatedAt: "2026-02-18T10:39:00.000Z",
   };
@@ -466,7 +460,7 @@ test("replay API returns controlled 400 responses for malformed inactive drafts"
     },
   });
   expect(eventualPaused.status()).toBe(400);
-  expect((await eventualPaused.json()).error).toMatch(/eventually happen/i);
+  expect((await eventualPaused.json()).error).toMatch(/no time limit/i);
 
   const deadlineNeedsReview = await request.post("/api/demo/replay", {
     data: {
@@ -487,8 +481,9 @@ test("replay API returns controlled 400 responses for malformed inactive drafts"
       }],
     },
   });
+  // A deadline is a safety property now, so a needs-review deadline is only held back until it is reviewed.
   expect(deadlineNeedsReview.status()).toBe(400);
-  expect((await deadlineNeedsReview.json()).error).toMatch(/deadline/i);
+  expect((await deadlineNeedsReview.json()).error).toMatch(/reviewed before replay/i);
 
   const safeNeedsReview = await request.post("/api/demo/replay", {
     data: {
@@ -500,30 +495,15 @@ test("replay API returns controlled 400 responses for malformed inactive drafts"
   expect((await safeNeedsReview.json()).error).toMatch(/reviewed before replay/i);
 });
 
-test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page, request }) => {
-  const bootstrap = await (await request.get("/api/demo/bootstrap")).json();
-  const assertions = [...bootstrap.templates.map((template: { prompt: string; id: string; definition: object }) => ({
-    localId: (template.definition as { id: string }).id,
-    expectation: template.prompt,
-    definition: template.definition,
-    status: "monitoring",
-    templateId: template.id,
+test("manual authoring stops at the shared 25 assertion capacity without changing storage", async ({ page }) => {
+  const assertions = Array.from({ length: 25 }, (_, index) => ({
+    localId: `local-cap-${index}`,
+    expectation: `Capacity rule ${index}`,
+    definition: plainDefinition(`local-cap-${index}`, `Capacity rule ${index}`),
+    status: "paused",
     createdAt: "2026-02-18T10:39:00.000Z",
     updatedAt: "2026-02-18T10:39:00.000Z",
-  }))];
-  const template = bootstrap.templates[0];
-  for (let index = assertions.length; index < 25; index += 1) {
-    const localId = `local-cap-${index}`;
-    assertions.push({
-      localId,
-      expectation: `Capacity rule ${index}`,
-      definition: { ...structuredClone(template.definition), id: localId, name: `Capacity rule ${index}` },
-      status: "paused",
-      templateId: template.id,
-      createdAt: "2026-02-18T10:39:00.000Z",
-      updatedAt: "2026-02-18T10:39:00.000Z",
-    });
-  }
+  }));
   await page.evaluate((saved) => {
     localStorage.setItem("needl.assertions.v1", JSON.stringify({ version: 1, assertions: saved }));
   }, assertions);
@@ -533,7 +513,7 @@ test("manual authoring stops at the shared 25 assertion capacity without changin
   await page.getByLabel("What should never happen?").fill("One assertion too many");
   await page.getByLabel("Continue authoring").click();
   await expect(page.getByRole("alert")).toContainText("at most 25 assertions");
-  await expect(page.getByRole("dialog", { name: "Choose an interpretation template" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Review the rule" })).toHaveCount(0);
   await expect.poll(async () => page.evaluate(tenantStorage).then((saved) => saved.assertions?.length)).toBe(25);
 });
 
@@ -545,7 +525,7 @@ test("mobile layout has no horizontal overflow and supports detail navigation", 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: fileURLToPath(new URL("safety-mobile-board.png", screenshotDir)) });
   await page.getByRole("button", { name: "Open No ghosts" }).click();
-  await expect(page.getByRole("complementary", { name: "No ghosts detail" }).getByRole("heading", { name: "No ghosts" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "No ghosts detail" }).getByRole("heading", { name: "No ghosts", exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.waitForTimeout(350);
   await page.screenshot({ path: fileURLToPath(new URL("safety-mobile-detail.png", screenshotDir)) });
@@ -562,7 +542,7 @@ test("reduced motion and missing View Transitions API use the fallback", async (
   });
   await page.goto("/#/assertions");
   await page.getByRole("button", { name: "Open No ghosts" }).click();
-  await expect(page.getByRole("complementary", { name: "No ghosts detail" }).getByRole("heading", { name: "No ghosts" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "No ghosts detail" }).getByRole("heading", { name: "No ghosts", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Back to assertion board" }).click();
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
   expect(consoleErrors).toEqual([]);

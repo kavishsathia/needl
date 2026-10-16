@@ -7,13 +7,16 @@ import type { WebhookHeaders } from "../../src/core/types.js";
 import { getDemoBootstrap, runDemoScenario } from "./demo.js";
 import type { DemoReplayRequest } from "./src/domain.js";
 import { validateProductAssertionCollection } from "./src/collection.js";
-import { unsupportedAuthoringIntent } from "./src/safety.js";
+import type { ChoiceSuggestions } from "./src/domain.js";
+import type { Provider } from "../../src/core/types.js";
+import { checkRule } from "../../src/rules/check.js";
+import { suggestChoices } from "../../src/rules/suggest.js";
 import { createAuthOptions, migrateAuthDatabase, signupEnabled } from "./backend/auth.js";
 import { createDatabaseRuntime, migrateApplicationDatabase } from "./backend/database.js";
 import { SignedIngestionService } from "./backend/ingestion.js";
 import { GitLabCallbackService, GitLabInvestigationService } from "./backend/investigations.js";
 import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./backend/repository.js";
-import { OpenAITranslationModel, translateSafetyAssertion } from "./backend/translator.js";
+import { OpenAITranslationModel, translateToRule } from "./backend/translator.js";
 
 const appRoot = fileURLToPath(new URL(".", import.meta.url));
 const distRoot = join(appRoot, "dist");
@@ -30,6 +33,22 @@ const ingestion = new SignedIngestionService(repository);
 const investigations = new GitLabInvestigationService(repository);
 const callbacks = new GitLabCallbackService(repository);
 const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
+const upgraded = await repository.upgradeLegacyAssertions();
+if (upgraded > 0) process.stdout.write(`Rewrote ${upgraded} template-based assertion(s) as rules\n`);
+
+// Time-bounded rules need ticks: a missing event is only noticed when time passes, not when something arrives.
+const tickIntervalMs = Number(process.env.NEEDL_TICK_INTERVAL_MS ?? 5_000);
+const tickGraceMs = Number(process.env.NEEDL_TICK_GRACE_MS ?? 5_000);
+let ticking = false;
+const ticker = setInterval(() => {
+  if (ticking) return;
+  ticking = true;
+  void repository.advanceDueMonitors(new Date(), tickGraceMs)
+    .catch((error: unknown) => process.stderr.write(`Clock tick failed: ${error instanceof Error ? error.message : String(error)}\n`))
+    .finally(() => { ticking = false; });
+}, tickIntervalMs);
+ticker.unref();
+
 const trustedOrigins = new Set((process.env.NEEDL_TRUSTED_ORIGINS ?? `${process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:4173"},http://127.0.0.1:5173`).split(",").map((value) => value.trim()).filter(Boolean));
 
 const mime: Readonly<Record<string, string>> = {
@@ -193,14 +212,31 @@ const server = createServer(async (request, response) => {
       const { tenantId } = await requireWorkspace(request);
       const body = await readJson(request) as { text?: unknown };
       if (typeof body.text !== "string") throw new Error("Translation text is required");
-      if (unsupportedAuthoringIntent(body.text)) {
-        json(response, 422, { error: "This describes eventual or deadline behavior, which Needl cannot silently rewrite into a safety assertion." }); return;
-      }
       if (openAIModel === undefined) { json(response, 503, { error: "OpenAI translation is not configured on this server" }); return; }
       const remaining = await repository.consumeTranslationQuota(tenantId);
-      const proposal = await translateSafetyAssertion(body.text, openAIModel);
+      const connected = new Set((await repository.listIntegrationSummaries(tenantId)).filter((item) => item.purpose === "ingestion" && item.enabled).map((item) => item.provider as Provider));
+      const proposal = await translateToRule(body.text, openAIModel, connected);
       const proposalId = await repository.createTranslationProposal(tenantId, body.text.trim(), proposal, openAIModel.model);
-      json(response, proposal.supported ? 200 : 422, { proposalId, proposal, remaining }); return;
+      // A proposal without a rule is a valid answer; the dialog shows its reason and lets the user start elsewhere.
+      json(response, 200, { proposalId, proposal, remaining }); return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/rules/suggestions") {
+      assertMutationOrigin(request);
+      const { tenantId } = await requireWorkspace(request);
+      const body = await readJson(request) as { source?: unknown };
+      if (typeof body.source !== "string") throw new Error("Rule source is required");
+      const checked = checkRule(body.source);
+      if (!checked.ok) throw new Error(checked.errors[0]!.message);
+      const suggestions: ChoiceSuggestions[] = suggestChoices(checked.rule, await repository.recentLiveEvents(tenantId)).map((entry) => ({
+        param: entry.param.name,
+        label: entry.param.label,
+        type: entry.param.type,
+        list: entry.param.list,
+        freeText: entry.freeText,
+        usages: entry.param.usages.map((usage) => `${usage.event.provider}.${usage.event.name}.${usage.field.name}`),
+        values: entry.values,
+      }));
+      json(response, 200, { suggestions }); return;
     }
     if (request.method === "POST" && url.pathname === "/api/investigations") {
       assertMutationOrigin(request);
@@ -237,6 +273,7 @@ const server = createServer(async (request, response) => {
 server.listen(port, host, () => process.stdout.write(`Needl server listening on http://${host}:${port} (${runtime.type})\n`));
 
 async function shutdown() {
+  clearInterval(ticker);
   server.close();
   await runtime.close();
 }

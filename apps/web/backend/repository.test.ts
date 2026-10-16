@@ -2,9 +2,10 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { getDemoBootstrap, runDemoScenario } from "../demo.js";
-import { defaultMeaningValues } from "../src/meaning.js";
+import { runDemoScenario } from "../demo.js";
 import type { AssertionDraft } from "../src/domain.js";
+import { exampleRules } from "../src/examples.js";
+import { exampleDraft } from "../src/ruleDrafts.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./repository.js";
 
@@ -21,17 +22,7 @@ async function setup(filename?: string) {
 }
 
 function draft(index = 0): AssertionDraft {
-  const template = getDemoBootstrap().templates[index]!;
-  return {
-    localId: template.definition.id,
-    expectation: template.prompt,
-    definition: template.definition,
-    status: "monitoring",
-    templateId: template.id,
-    meaning: { templateId: template.id, values: defaultMeaningValues(template.id) },
-    createdAt: "2026-02-18T10:39:00.000Z",
-    updatedAt: "2026-02-18T10:39:00.000Z",
-  };
+  return exampleDraft(exampleRules[index]!);
 }
 
 describe("NeedlRepository", () => {

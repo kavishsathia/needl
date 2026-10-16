@@ -2,7 +2,7 @@ import type { AssertionDraft, StoredAssertionEnvelope } from "./domain.js";
 import { STORAGE_VERSION } from "./domain.js";
 import { validateAssertionCollection, validateProductAssertionCollection } from "./collection.js";
 import { productSafetyIssue } from "./safety.js";
-import { restoreCanonicalMeaning } from "./meaning.js";
+import { upgradeLegacyDraft } from "./ruleDrafts.js";
 
 export function storageKeyForTenant(tenantId: string): string {
   return `needl.assertions.v1.${tenantId}`;
@@ -13,9 +13,8 @@ export function parseStoredAssertions(raw: string | null): AssertionDraft[] {
   try {
     const parsed = JSON.parse(raw) as Partial<StoredAssertionEnvelope>;
     if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.assertions)) return [];
-    const validated = validateAssertionCollection(parsed.assertions);
-    const migrated = validated.map((storedDraft): AssertionDraft => {
-      const draft = restoreCanonicalMeaning(storedDraft);
+    const validated = validateAssertionCollection(parsed.assertions.map((stored) => upgradeLegacyDraft(stored).draft));
+    const migrated = validated.map((draft): AssertionDraft => {
       const reviewReason = productSafetyIssue(draft.definition);
       return reviewReason === undefined ? draft : { ...draft, status: "needs-review", reviewReason };
     });

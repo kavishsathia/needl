@@ -5,42 +5,38 @@ import type {
   MonitorOutboxItem,
   MonitorProcessResult,
 } from "../../../src/ltl/runtime-types.js";
-import type { NormalizedEvent, Provider } from "../../../src/core/types.js";
+import type { NormalizedEvent } from "../../../src/core/types.js";
+import type { ParamValues } from "../../../src/rules/compile.js";
+import type { ExampleRule } from "./examples.js";
 
 export type AssertionStatus = "monitoring" | "paused" | "needs-review";
-export type TemplateId = "ghost" | "boomerang" | "clean-break";
-export type LegacyTemplateId = "provisioning";
 export const DEMO_TENANT_ID = "synthetic-demo";
 export const MAX_ASSERTIONS = 25;
+
+/** A rule in the Needl rule language with its chosen `$` values; the stored monitor is compiled from it. */
+export interface RuleSpec {
+  readonly source: string;
+  readonly values: ParamValues;
+}
 
 export interface AssertionDraft {
   readonly localId: string;
   readonly expectation: string;
   readonly definition: AssertionDefinition;
   readonly status: AssertionStatus;
-  readonly templateId?: TemplateId | LegacyTemplateId;
-  readonly meaning?: {
-    readonly templateId: TemplateId;
-    readonly values: Readonly<Record<string, string>>;
-  };
+  /** Absent only for older engine-level assertions kept for review. */
+  readonly rule?: RuleSpec;
+  /** The worked example this assertion started from, if any. */
+  readonly exampleId?: ExampleRule["id"];
   readonly reviewReason?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
 
-export interface AuthoringTemplate {
-  readonly id: TemplateId;
-  readonly prompt: string;
-  readonly shortLabel: string;
-  readonly description: string;
-  readonly providers: readonly Provider[];
-  readonly definition: AssertionDefinition;
-}
-
 export interface DemoBootstrap {
   readonly mode: "deterministic-local-demo";
   readonly anchorTime: string;
-  readonly templates: readonly AuthoringTemplate[];
+  readonly examples: readonly ExampleRule[];
 }
 
 export interface DemoReplayRequest {
@@ -108,14 +104,39 @@ export interface MonitorSnapshot {
   readonly investigations: readonly InvestigationRecord[];
 }
 
+/** What the authoring agent proposed: a checked rule, or why none was written. */
+export interface RuleProposal {
+  readonly supported: boolean;
+  readonly name?: string;
+  readonly source?: string;
+  readonly values?: ParamValues;
+  readonly explanation: string;
+  readonly rejectionReason?: string;
+  /** Model calls used, including repairs after checker errors. */
+  readonly attempts: number;
+}
+
 export interface TranslationProposalResponse {
   readonly proposalId: string;
   readonly remaining: number;
-  readonly proposal: {
-    readonly supported: boolean;
-    readonly templateId?: TemplateId;
-    readonly values?: Readonly<Record<string, string>>;
-    readonly explanation: string;
-    readonly rejectionReason?: string;
-  };
+  readonly proposal: RuleProposal;
+}
+
+/** Suggested values for one `$` choice, as served by `/api/rules/suggestions`. */
+export interface ChoiceSuggestions {
+  readonly param: string;
+  readonly label: string;
+  readonly type: "string" | "number" | "boolean";
+  readonly list: boolean;
+  readonly freeText: boolean;
+  /** Where the choice is used, e.g. `gitlab.deployment.environment`. */
+  readonly usages: readonly string[];
+  readonly values: readonly {
+    readonly value: string | number | boolean;
+    readonly label: string;
+    readonly counts: readonly number[];
+    readonly seenEverywhere: boolean;
+    readonly fixed: boolean;
+    readonly lastSeen?: string;
+  }[];
 }

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { parseStoredAssertions, serializeAssertions } from "./storage.js";
 import { validateProductAssertionCollection } from "./collection.js";
 import type { AssertionDraft } from "./domain.js";
-import { authoringTemplates } from "../demo.js";
-import { createDraftFromTemplate } from "./authoring.js";
+import { exampleRules } from "./examples.js";
+import { exampleDraft } from "./ruleDrafts.js";
 
 const valid: AssertionDraft = {
   localId: "local-1",
@@ -27,14 +27,12 @@ describe("assertion storage", () => {
     expect(parseStoredAssertions(serializeAssertions([valid]))).toEqual([valid]);
   });
 
-  it("restores canonical meaning for legacy authored clones without relying on a built-in ID", () => {
-    const authored = createDraftFromTemplate("A renamed ghost rule", authoringTemplates[0]!, []);
-    const legacy = { ...authored, meaning: undefined };
+  it("upgrades cached template-based assertions to rules", () => {
+    const current = exampleDraft(exampleRules[2]!);
+    const legacy = { ...current, rule: undefined, exampleId: undefined, templateId: "clean-break", meaning: { templateId: "clean-break", values: {} } };
     const restored = parseStoredAssertions(JSON.stringify({ version: 1, assertions: [legacy] }));
 
-    expect(restored[0]!.localId).toMatch(/^local-/);
-    expect(restored[0]!.localId).not.toBe(authoringTemplates[0]!.definition.id);
-    expect(restored[0]!.meaning).toEqual(authored.meaning);
+    expect(restored[0]).toMatchObject({ localId: "clean-break", exampleId: "clean-break", rule: { source: exampleRules[2]!.source }, definition: { version: 2 } });
   });
 
   it.each(["not json", "{}", '{"version":2,"assertions":[]}', '{"version":1,"assertions":[{"localId":"x"}]}'])(
@@ -92,7 +90,7 @@ describe("assertion storage", () => {
     expect(restored[0]!.expectation).toBe(unsupported.expectation);
     expect(restored[0]!.definition).toEqual(unsupported.definition);
     expect(restored[0]!.status).toBe("needs-review");
-    expect(restored[0]!.reviewReason).toMatch(/eventually happen/i);
+    expect(restored[0]!.reviewReason).toMatch(/no time limit/i);
     expect((restored[0] as AssertionDraft & { history: unknown }).history).toEqual(unsupported.history);
   });
 
@@ -105,9 +103,9 @@ describe("assertion storage", () => {
         formula: { kind: "eventually", operand: { kind: "atom", name: "error" } } as const,
       },
     };
-    expect(() => validateProductAssertionCollection([eventual])).toThrow(/eventually happen/i);
+    expect(() => validateProductAssertionCollection([eventual])).toThrow(/no time limit/i);
     expect(() => validateProductAssertionCollection([{ ...eventual, status: "needs-review", reviewReason: "Legacy liveness rule" }], { allowNeedsReview: false }))
-      .toThrow(/eventually happen/i);
+      .toThrow(/no time limit/i);
     expect(() => validateProductAssertionCollection([{ ...valid, status: "needs-review", reviewReason: "Manual review" }], { allowNeedsReview: false }))
       .toThrow(/reviewed before replay/i);
   });

@@ -6,6 +6,8 @@ import { RuntimeMonitor } from "../../../src/ltl/runtime.js";
 import type { DeduplicatingEventSink, DeduplicationScope } from "../../../src/receiver/types.js";
 import type { DemoReplay, AssertionDraft } from "../src/domain.js";
 import { validateProductAssertionCollection } from "../src/collection.js";
+import { upgradeLegacyDraft } from "../src/ruleDrafts.js";
+import type { MonitorCheckpoint } from "../../../src/ltl/runtime-types.js";
 import type { DatabaseRuntime, NeedlDatabase } from "./database.js";
 import { LiveMonitorStore } from "./monitor-store.js";
 
@@ -144,13 +146,79 @@ export class NeedlRepository implements DeduplicatingEventSink {
   }
 
   private async processLiveEvent(event: NormalizedEvent): Promise<void> {
+    const monitor = await this.liveMonitor(event.tenantId);
+    if (monitor !== undefined) await monitor.process(event);
+  }
+
+  /** The tenant's monitoring assertions over its durable live store; undefined when nothing is monitoring. */
+  private async liveMonitor(tenantId: string): Promise<RuntimeMonitor | undefined> {
     const rows = await this.db.selectFrom("assertions").select("draftJson")
-      .where("tenantId", "=", event.tenantId).where("status", "=", "monitoring").execute();
+      .where("tenantId", "=", tenantId).where("status", "=", "monitoring").execute();
     const drafts = validateProductAssertionCollection(rows.map((row) => JSON.parse(row.draftJson)), { allowNeedsReview: false });
-    if (drafts.length === 0) return;
-    const definitions: AssertionDefinition[] = drafts.map((draft) => ({ ...draft.definition, tenantId: event.tenantId }));
-    const monitor = new RuntimeMonitor({ store: new LiveMonitorStore(this.runtime, event.tenantId), assertions: definitions });
-    await monitor.process(event);
+    if (drafts.length === 0) return undefined;
+    const definitions: AssertionDefinition[] = drafts.map((draft) => ({ ...draft.definition, tenantId }));
+    return new RuntimeMonitor({ store: new LiveMonitorStore(this.runtime, tenantId), assertions: definitions });
+  }
+
+  /**
+   * Delivers clock ticks to live monitors whose time window has closed, so a missing event is caught even when no
+   * other event arrives. A tick is applied `graceMs` after the window ends, at one millisecond past its end, so
+   * webhooks that occurred inside the window but arrive slightly late are still processed first.
+   */
+  async advanceDueMonitors(now = new Date(), graceMs = 5_000): Promise<{ readonly ticked: number; readonly violations: number }> {
+    const cutoff = new Date(now.getTime() - graceMs).toISOString();
+    const rows = await this.db.selectFrom("liveMonitorState").select(["tenantId", "instanceKey", "checkpointJson"])
+      .where("nextDueAt", "is not", null).where("nextDueAt", "<=", cutoff).orderBy("nextDueAt").limit(500).execute();
+    let ticked = 0;
+    let violations = 0;
+    const monitors = new Map<string, RuntimeMonitor | undefined>();
+    for (const row of rows) {
+      const checkpoint = JSON.parse(row.checkpointJson) as MonitorCheckpoint;
+      if (checkpoint.nextDueAt === undefined) continue;
+      if (!monitors.has(row.tenantId)) monitors.set(row.tenantId, await this.liveMonitor(row.tenantId));
+      const monitor = monitors.get(row.tenantId);
+      const at = new Date(Date.parse(checkpoint.nextDueAt) + 1).toISOString();
+      try {
+        if (monitor === undefined) throw new Error("No monitoring assertions");
+        const result = await monitor.advanceTime({
+          id: `tick:${checkpoint.nextDueAt}`, tenantId: row.tenantId, assertionId: checkpoint.assertionId,
+          assertionVersion: checkpoint.assertionVersion, scope: checkpoint.scope, at,
+        });
+        ticked += 1;
+        if (result.outcome === "applied") violations += result.violationIds.length;
+        if (result.outcome !== "applied") await this.clearDue(row.tenantId, row.instanceKey);
+      } catch {
+        // The assertion was paused, edited into a new version, or deleted: this instance no longer runs.
+        await this.clearDue(row.tenantId, row.instanceKey);
+      }
+    }
+    return { ticked, violations };
+  }
+
+  private async clearDue(tenantId: string, instanceKey: string): Promise<void> {
+    await this.db.updateTable("liveMonitorState").set({ nextDueAt: null }).where("tenantId", "=", tenantId).where("instanceKey", "=", instanceKey).execute();
+  }
+
+  /** Recent signed-webhook events of this workspace (not sample replay data), newest first. */
+  async recentLiveEvents(tenantId: string, limit = 5_000): Promise<NormalizedEvent[]> {
+    const rows = await this.db.selectFrom("monitorEvents").select("eventJson").where("tenantId", "=", tenantId)
+      .orderBy("receivedAt", "desc").limit(limit).execute();
+    return rows.map((row) => JSON.parse(row.eventJson) as NormalizedEvent).filter((event) => event.tenantId === tenantId);
+  }
+
+  /** Rewrites assertions saved by the template-based authoring flow as rules; returns how many changed. */
+  async upgradeLegacyAssertions(): Promise<number> {
+    const rows = await this.db.selectFrom("assertions").select(["tenantId", "assertionId", "version", "draftJson"]).execute();
+    let upgraded = 0;
+    for (const row of rows) {
+      const result = upgradeLegacyDraft(JSON.parse(row.draftJson));
+      if (!result.upgraded) continue;
+      const [draft] = validateProductAssertionCollection([result.draft], { allowNeedsReview: true });
+      if (draft === undefined) continue;
+      await this.saveAssertion(row.tenantId, draft, row.version);
+      upgraded += 1;
+    }
+    return upgraded;
   }
 
   private async storeEvent(transaction: Transaction<NeedlDatabase>, tenantId: string, event: NormalizedEvent, deliveryId: string): Promise<"stored" | "duplicate"> {

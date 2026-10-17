@@ -14,6 +14,8 @@ import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/ru
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
 import { choiceIssues, effectiveValues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
 import { choiceText, readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
+import { eventMatches, readField } from "../../../src/rules/suggest.js";
+import type { CatalogueField } from "../../../src/rules/catalogue.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
 import { confirmTranslation, createConnection, deleteConnection, fetchConnections, saveConnectionSecret, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
@@ -618,28 +620,100 @@ function CounterexampleView({ violation, open }: {
   </details>;
 }
 
-/** Events for one rule, newest first and grouped by day, as a GitLab-style activity feed. */
-function ActivityFeed({ events }: { readonly events: DemoReplay["events"] }) {
-  if (events.length === 0) return <EmptyState title="No matching activity">This assertion has no provider-matched events yet.</EmptyState>;
-  const at = (event: DemoReplay["events"][number]) => event.occurredAt ?? event.receivedAt;
-  const sorted = [...events].sort((left, right) => at(right).localeCompare(at(left)));
-  const day = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(value));
-  const groups: { day: string; events: typeof sorted }[] = [];
-  for (const event of sorted) {
-    const label = day(at(event));
-    if (groups.at(-1)?.day === label) groups.at(-1)!.events.push(event);
-    else groups.push({ day: label, events: [event] });
+type ObservedEvent = DemoReplay["events"][number];
+
+interface ActivityEntry {
+  readonly event: ObservedEvent;
+  /** e.g. "GitLab deployment". */
+  readonly title: string;
+  /** The fields the rule reads from this event, with their values here. */
+  readonly fields: readonly { readonly label: string; readonly value: string; readonly full: string }[];
+  /** False when a condition the rule puts on this event does not hold, so it cannot count towards the rule. */
+  readonly matches: boolean;
+}
+
+function holds(op: string, actual: string | number | boolean, expected: readonly (string | number | boolean)[]): boolean {
+  const [first] = expected;
+  switch (op) {
+    case "=": return actual === first;
+    case "!=": return actual !== first;
+    case "<": return typeof actual === "number" && actual < Number(first);
+    case "<=": return typeof actual === "number" && actual <= Number(first);
+    case ">": return typeof actual === "number" && actual > Number(first);
+    case ">=": return typeof actual === "number" && actual >= Number(first);
+    case "contains": return String(actual).toLowerCase().includes(String(first).toLowerCase());
+    case "starts_with": return String(actual).toLowerCase().startsWith(String(first).toLowerCase());
+    case "in": return expected.includes(actual);
+    default: return true;
   }
-  return <div className="activity-feed">{groups.map((group) => <section key={group.day}>
-    <h4>{group.day}</h4>
-    <ol>{group.events.map((event) => <li key={event.id}>
-      <span className={`timeline-mark provider-icon--${event.provider}`} aria-hidden="true">{providerGlyphs[event.provider]}</span>
-      <div>
-        <div className="trace-line"><p><strong>{providerNames[event.provider]}</strong> <span className="trace-kind">{event.kind}</span> <span className="trace-subject" title={event.subject.id}>{event.subject.name ?? shortId(event.subject.id)}</span></p><time dateTime={at(event)}>{new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date(at(event)))}</time></div>
-        {event.relationships.length > 0 ? <div className="activity-tags">{event.relationships.map((item) => <code key={`${item.type}-${item.id}`} title={item.id}><span>{item.type.replaceAll(/[_-]/g, " ")}</span>{shortId(item.id)}</code>)}</div> : null}
-      </div>
-    </li>)}</ol>
-  </section>)}</div>;
+}
+
+/** The events this rule watches, described with the fields it checks; other events from the same tools are left out. */
+function ruleActivity(draft: AssertionDraft, events: readonly ObservedEvent[]): ActivityEntry[] | undefined {
+  if (draft.rule === undefined) return undefined;
+  let rule;
+  try { rule = checkedRule(draft.rule.source); } catch { return undefined; }
+  const values = effectiveValues(rule, draft.rule.values);
+  const watched = [...rule.events.values()];
+  const display = (field: CatalogueField, value: string | number | boolean): string =>
+    field.values.kind === "fixed" ? field.values.options.find((option) => option.value === value)?.label ?? String(value) : String(value);
+  return events.flatMap((event): ActivityEntry[] => {
+    const candidates = watched.filter((resolved) => eventMatches(resolved.event, event));
+    if (candidates.length === 0) return [];
+    const fields = new Map<string, { label: string; value: string; full: string }>();
+    let matches = false;
+    for (const resolved of candidates) {
+      let all = true;
+      for (const { condition, field } of resolved.conditions) {
+        const actual = readField(field, event);
+        if (actual !== undefined) fields.set(field.name, { label: field.label, value: shortId(display(field, actual)), full: String(actual) });
+        if (condition.value.type === "var") continue;
+        const expected = condition.value.type === "param" ? [values[condition.value.name] ?? []].flat()
+          : condition.value.type === "list" ? condition.value.items.map((item) => (item as { value: string | number | boolean }).value)
+            : [condition.value.value];
+        if (actual === undefined || !holds(condition.op, actual, expected as (string | number | boolean)[])) all = false;
+      }
+      for (const bind of resolved.binds) {
+        const actual = readField(bind.field, event);
+        if (actual !== undefined) fields.set(bind.field.name, { label: bind.field.label, value: shortId(String(actual)), full: String(actual) });
+      }
+      matches ||= all;
+    }
+    const phrase = candidates[0]!.event.phrase.replace(/^(a|an) /, "");
+    return [{ event, title: phrase.charAt(0).toUpperCase() + phrase.slice(1), fields: [...fields.values()], matches }];
+  });
+}
+
+/** The events a rule watches, newest first and grouped by day, as a GitLab-style activity feed. */
+function ActivityFeed({ draft, events }: { readonly draft: AssertionDraft; readonly events: readonly ObservedEvent[] }) {
+  const at = (event: ObservedEvent) => event.occurredAt ?? event.receivedAt;
+  const entries: readonly ActivityEntry[] = ruleActivity(draft, events) ?? events.map((event) => ({
+    event, title: providerNames[event.provider], fields: event.relationships.map((item) => ({ label: item.type.replaceAll(/[_-]/g, " "), value: shortId(item.id), full: item.id })), matches: true,
+  }));
+  if (entries.length === 0) return <EmptyState title="Nothing seen yet">None of the events this rule watches have arrived.</EmptyState>;
+  const sorted = [...entries].sort((left, right) => at(right.event).localeCompare(at(left.event)));
+  const day = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(value));
+  const clock = (value: string) => new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date(value));
+  const groups: { day: string; entries: ActivityEntry[] }[] = [];
+  for (const entry of sorted) {
+    const label = day(at(entry.event));
+    if (groups.at(-1)?.day === label) groups.at(-1)!.entries.push(entry);
+    else groups.push({ day: label, entries: [entry] });
+  }
+  const named = (event: ObservedEvent) => event.subject.name !== undefined && event.subject.name !== event.subject.id && !/^[0-9a-f-]{12,}$/i.test(event.subject.name);
+  return <div className="activity-feed">
+    <p className="activity-intro">Events this rule watches. Dimmed ones do not meet its conditions.</p>
+    {groups.map((group) => <section key={group.day}>
+      <h4>{group.day}</h4>
+      <ol>{group.entries.map(({ event, title, fields, matches }) => <li key={event.id} className={matches ? "" : "is-other"}>
+        <span className={`timeline-mark provider-icon--${event.provider}`} aria-hidden="true">{providerGlyphs[event.provider]}</span>
+        <div>
+          <div className="trace-line"><p><strong>{title}</strong>{named(event) ? <span className="trace-subject"> · {event.subject.name}</span> : null}{matches ? null : <span className="activity-other">not a match</span>}</p><time dateTime={at(event)}>{clock(at(event))} UTC</time></div>
+          {fields.length > 0 ? <div className="activity-tags">{fields.map((field) => <code key={field.label} title={field.full}><span>{field.label}</span>{field.value}</code>)}</div> : null}
+        </div>
+      </li>)}</ol>
+    </section>)}
+  </div>;
 }
 
 function AssertionDetail({ draft, replay, investigations, investigationReady, onLaunchInvestigation, onRefreshInvestigation, onClose, onToggle, onEdit, onCopy, onChoose }: {
@@ -715,7 +789,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
             </div>
           </div>
         </section> : null}
-        {tab === "activity" ? <ActivityFeed events={relatedEvents}/> : null}
+        {tab === "activity" ? <ActivityFeed draft={draft} events={relatedEvents}/> : null}
       </div>
     </div>
     <footer className="detail-footer">

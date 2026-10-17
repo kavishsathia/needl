@@ -99,7 +99,7 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(detail.getByText("Paused", { exact: true })).toBeVisible();
   await detail.getByRole("button", { name: "Enable" }).click();
   await expect(detail.getByRole("button", { name: "Pause" })).toBeVisible();
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
   await page.waitForTimeout(2800);
 
   await detail.getByRole("button", { name: "Edit rule" }).click();
@@ -165,7 +165,7 @@ test("rules started from each example read back in English and produce counterex
     await authorFromExample(page, item.expectation, item.example);
     const detail = page.getByRole("complementary", { name: `${item.expectation} detail` });
     await detail.getByRole("button", { name: "Enable" }).click();
-    await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+    await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
     await detail.getByRole("button", { name: /Counterexamples/ }).click();
     const counterexample = detail.locator(".counterexample");
     await expect(counterexample.getByRole("heading", { name: `${item.expectation} was broken` })).toBeVisible();
@@ -271,12 +271,12 @@ test("$ choices are dropdowns that version the monitor and accept typed values",
   // The environment lives in the predicates; the bound formula itself is environment-independent.
   expect(JSON.stringify(changed.formula)).not.toContain("staging");
   expect(JSON.stringify(changed.propositions)).toContain("staging");
-  await expect(detail.getByText("Needs attention", { exact: true })).toHaveCount(0);
+  await expect(detail.getByText("Broken", { exact: true })).toHaveCount(0);
 
   await rule.getByRole("button", { name: "environment: staging" }).first().click();
   await page.getByRole("listbox", { name: "environment choices" }).getByLabel("Type a environment").fill("production");
   await page.getByRole("listbox", { name: "environment choices" }).getByRole("button", { name: "Use" }).click();
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
 });
 
 test("unsupported saved rules are preserved disabled and excluded from replay", async ({ page }) => {
@@ -365,7 +365,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   await detail.getByRole("button", { name: "Pause" }).click();
   await pauseStarted;
   await detail.getByRole("button", { name: "Enable" }).click();
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
   await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
   const staleResponse = page.waitForResponse((response) => {
     if (!response.url().endsWith("/api/replay")) return false;
@@ -374,7 +374,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   });
   releasePause();
   await staleResponse;
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
   await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
 });
 
@@ -403,7 +403,7 @@ test("a late failed replay cannot replace a newer successful replay with an erro
   await detail.getByRole("button", { name: "Pause" }).click();
   await pauseStarted;
   await detail.getByRole("button", { name: "Enable" }).click();
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
   const staleFailure = page.waitForEvent("requestfailed", {
     predicate: (request) => request.url().endsWith("/api/replay")
       && request.postDataJSON().assertions.some((draft: { localId: string; status: string }) => draft.localId === "no-ghosts" && draft.status === "paused"),
@@ -411,7 +411,7 @@ test("a late failed replay cannot replace a newer successful replay with an erro
   releasePause();
   await staleFailure;
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(detail.getByText("Needs attention", { exact: true })).toBeVisible();
+  await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
   await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
 });
 

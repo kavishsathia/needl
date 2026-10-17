@@ -4,8 +4,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
@@ -31,7 +31,7 @@ import type {
   WorkspaceBootstrap,
 } from "./domain.js";
 import { DEMO_TENANT_ID, MAX_ASSERTIONS } from "./domain.js";
-import { Icon } from "./icons.js";
+import { Icon, StatusIcon } from "./icons.js";
 import { parseStoredAssertions, serializeAssertions, storageKeyForTenant } from "./storage.js";
 import type { ExampleRule } from "./examples.js";
 import { connectionGuides, deliveryExplanation } from "./connectionGuides.js";
@@ -136,6 +136,17 @@ function formatTime(value: string): string {
   return new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date(value));
 }
 
+/** "3 minutes ago", "2 days ago": how long before now an event happened. */
+function timeAgo(value: string, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - Date.parse(value)) / 1000));
+  const units: readonly [string, number][] = [["year", 31_536_000], ["month", 2_592_000], ["day", 86_400], ["hour", 3_600], ["minute", 60]];
+  for (const [unit, size] of units) {
+    const count = Math.floor(seconds / size);
+    if (count >= 1) return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+  }
+  return "just now";
+}
+
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("en", {
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC",
@@ -147,11 +158,13 @@ function providersFor(draft: AssertionDraft): readonly Provider[] {
 }
 
 function ProviderBadge({ provider }: { readonly provider: Provider }) {
-  return <span className="provider-badge"><span aria-hidden="true">{providerGlyphs[provider]}</span>{providerNames[provider]}</span>;
+  return <span className={`provider-badge provider-badge--${provider}`}><span aria-hidden="true">{providerGlyphs[provider]}</span>{providerNames[provider]}</span>;
 }
 
+/** Status badge in the style of GitLab's pipeline badges: outlined, with a status mark. */
 function Pill({ tone, children }: { readonly tone: string; readonly children: ReactNode }) {
-  return <span className={`pill pill--${tone}`}>{children}</span>;
+  const status = ["violated", "monitoring", "paused", "pending", "needs-review", "unavailable"].includes(tone);
+  return <span className={`pill pill--${tone}`}>{status ? <StatusIcon tone={tone}/> : null}{children}</span>;
 }
 
 function AppSkeleton() {
@@ -212,7 +225,7 @@ function assertionTone(draft: AssertionDraft, replay: DemoReplay | null): string
 }
 
 function statusLabel(tone: string): string {
-  return ({ violated: "Needs attention", monitoring: "Watching · No violations observed", paused: "Paused", "needs-review": "Needs review", pending: "Pending response", unavailable: "No matching evidence" })[tone] ?? tone;
+  return ({ violated: "Broken", monitoring: "Watching", paused: "Paused", "needs-review": "Needs review", pending: "Pending", unavailable: "No evidence" })[tone] ?? tone;
 }
 
 function choiceValueFromText(type: ChoiceSuggestions["type"], text: string): ParamValue | undefined {
@@ -326,9 +339,21 @@ function ReadingView({ segments, source, values, onChoose }: {
   readonly values: ParamValues;
   readonly onChoose?: (param: string, value: ParamValue) => void;
 }) {
+  // Punctuation right after a value stays on the value's line, e.g. "production," never wraps before the comma.
+  const glued = (index: number): string => {
+    const next = segments[index + 1];
+    return next?.kind === "text" ? /^[,.;:!?)”’]+/.exec(next.text)?.[0] ?? "" : "";
+  };
   return <>{segments.map((segment, index) => {
+    if (segment.kind !== "text" && glued(index).length > 0) {
+      return <span className="chip-glue" key={index}><ReadingView segments={[segment]} source={source} values={values} onChoose={onChoose}/>{glued(index)}</span>;
+    }
     switch (segment.kind) {
-      case "text": return <Fragment key={index}>{segment.text}</Fragment>;
+      case "text": {
+        const previous = segments[index - 1];
+        const skip = previous !== undefined && previous.kind !== "text" ? glued(index - 1).length : 0;
+        return <Fragment key={index}>{segment.text.slice(skip)}</Fragment>;
+      }
       case "value": return <span className="rule-value" key={index}>{segment.text}</span>;
       case "duration": return <span className="rule-duration" key={index}>{segment.text}</span>;
       case "bound": return <span className="rule-bound" key={index}>{segment.text}</span>;
@@ -382,13 +407,14 @@ function Sidebar({ section, replay, liveSources, onNavigate }: {
       </button>)}
     </nav>
     <div className="sidebar-foot">
-      <div className="connection-summary"><span className="live-dot"/>{liveSources > 0 ? `${liveSources} live source${liveSources === 1 ? "" : "s"}` : "Sample data only"}</div>
+      <div className="connection-summary"><span className={`live-dot ${liveSources > 0 ? "live-dot--on" : ""}`}/>{liveSources > 0 ? `${liveSources} live source${liveSources === 1 ? "" : "s"}` : "Sample data only"}</div>
       <span>{liveSources > 0 ? "Signed webhooks + sample replay" : "No live connections"}</span>
     </div>
   </aside>;
 }
 
-function Topbar({ search, onSearch, onConnections, onSettings }: {
+function Topbar({ user, search, onSearch, onConnections, onSettings }: {
+  readonly user: { readonly name: string; readonly email: string };
   readonly search: string;
   readonly onSearch: (value: string) => void;
   readonly onConnections: () => void;
@@ -398,12 +424,12 @@ function Topbar({ search, onSearch, onConnections, onSettings }: {
     <label className="global-search">
       <Icon name="search"/>
       <span className="sr-only">Search assertions and evidence</span>
-      <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search Acme / Production"/>
+      <input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search rules and events"/>
       <kbd>⌘ K</kbd>
     </label>
     <div className="top-actions">
-      <button className="icon-button source-button" onClick={onConnections} aria-label="View demo sources" title="View demo sources"><span className="source-ring"><span/></span></button>
-      <button className="avatar" onClick={onSettings} aria-label="Open local settings">K</button>
+      <button className="icon-button source-button" onClick={onConnections} aria-label="Connections" title="Connections"><span className="source-ring"><span/></span></button>
+      <button className="avatar" onClick={onSettings} aria-label={`Settings for ${user.name || user.email}`} title={user.email}>{(user.name || user.email).trim().charAt(0).toUpperCase() || "?"}</button>
     </div>
   </header>;
 }
@@ -417,7 +443,11 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
   readonly onChoose?: (param: string, value: ParamValue) => void;
 }) {
   const tone = assertionTone(draft, replay);
-  const violationCount = replay?.violations.filter((item) => item.assertionId === draft.definition.id).length ?? 0;
+  const violations = replay?.violations.filter((item) => item.assertionId === draft.definition.id) ?? [];
+  const latest = violations.map((item) => item.detectedAt).sort().at(-1);
+  const meta = latest !== undefined
+    ? `${timeAgo(latest)} · ${violations.length} break${violations.length === 1 ? "" : "s"}`
+    : tone === "monitoring" ? "No breaks seen" : undefined;
   return <article className={`assertion-card assertion-card--${tone} ${compact ? "is-compact" : ""} ${selected ? "is-selected" : ""}`} data-testid={`assertion-card-${draft.localId}`}>
     <div className="card-hit" onClick={(event) => {
       // The whole card opens the rule; its own controls (choice dropdowns, the arrow) and text selection keep working.
@@ -425,25 +455,32 @@ function AssertionCard({ draft, replay, compact, selected, onOpen, onChoose }: {
       if ((window.getSelection()?.toString() ?? "").length > 0) return;
       onOpen();
     }}>
-      <span className="card-topline"><Pill tone={tone}>{statusLabel(tone)}</Pill><button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button></span>
-      <h3>{draft.definition.name}</h3>
-      {!compact ? <RuleReading draft={draft} onChoose={onChoose}/> : <p className="compact-meaning">{draft.expectation}</p>}
-      {draft.status === "needs-review" ? <p className="review-note">Preserved but disabled · {draft.reviewReason}</p> : null}
+      <div className="card-header">
+        <Pill tone={tone}>{statusLabel(tone)}</Pill>
+        {meta === undefined ? null : <span className="card-meta">{meta}</span>}
+        <button className="card-open" onClick={onOpen} aria-label={`Open ${draft.definition.name}`}><Icon name="arrow"/></button>
+      </div>
+      <div className="card-body">
+        <h3>{draft.definition.name}</h3>
+        {!compact ? <RuleReading draft={draft} onChoose={onChoose}/> : <p className="compact-meaning">{draft.expectation}</p>}
+        {draft.status === "needs-review" ? <p className="review-note">Preserved but disabled · {draft.reviewReason}</p> : null}
+      </div>
       <div className="card-footer">
         <span className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</span>
-        {violationCount > 0 ? <span className="violation-count">{violationCount} counterexample{violationCount === 1 ? "" : "s"}</span> : draft.exampleId === undefined ? <span className="custom-label">Custom</span> : null}
+        {draft.exampleId === undefined ? <span className="custom-label">Custom</span> : null}
       </div>
     </div>
   </article>;
 }
 
-function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOpen, onChoose }: {
+function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOpen, onDismiss, onChoose }: {
   readonly assertions: readonly AssertionDraft[];
   readonly replay: DemoReplay | null;
   readonly selectedId?: string;
   readonly search: string;
   readonly onCreate: (text: string) => string | undefined;
   readonly onOpen: (id: string) => void;
+  readonly onDismiss: () => void;
   readonly onChoose: (draft: AssertionDraft, param: string, value: ParamValue) => void;
 }) {
   const [input, setInput] = useState("");
@@ -459,6 +496,15 @@ function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOp
       .filter((draft) => filter === "all" || (filter === "attention" ? ["violated", "needs-review", "pending", "unavailable"].includes(assertionTone(draft, replay)) : assertionTone(draft, replay) === filter))
       .sort((a, b) => sort === "name" ? a.definition.name.localeCompare(b.definition.name) : sort === "recent" ? b.updatedAt.localeCompare(a.updatedAt) : score(a) - score(b));
   }, [assertions, filter, replay, search, sort]);
+  const counts = useMemo(() => {
+    const tones = assertions.map((draft) => assertionTone(draft, replay));
+    return {
+      all: tones.length,
+      attention: tones.filter((tone) => ["violated", "needs-review", "pending", "unavailable"].includes(tone)).length,
+      monitoring: tones.filter((tone) => tone === "monitoring").length,
+      paused: tones.filter((tone) => tone === "paused").length,
+    };
+  }, [assertions, replay]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (input.trim().length === 0) return;
@@ -466,9 +512,15 @@ function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOp
     setAuthoringError(message ?? null);
     if (message === undefined) setInput("");
   };
-  return <main className={`board ${selectedId === undefined ? "" : "has-detail"}`} id="main-content">
+  // With the drawer open, a click on empty board space closes it.
+  const dismiss = (event: ReactMouseEvent) => {
+    if (selectedId === undefined) return;
+    if ((event.target as HTMLElement).closest(".assertion-card, form, .board-tools, button, a, input, [role=listbox]") !== null) return;
+    onDismiss();
+  };
+  return <main className={`board ${selectedId === undefined ? "" : "has-detail"}`} id="main-content" onClick={dismiss}>
     <div className="board-heading">
-      <div><span className="eyebrow">Acme / Production</span><h1>Assertions</h1><p>Catch a broken promise while it happens.</p></div>
+      <div><span className="eyebrow">Safety rules</span><h1>Assertions</h1><p>Catch a broken promise while it happens.</p></div>
     </div>
     <form className="composer" onSubmit={submit}>
       <label htmlFor="assertion-input">What should never happen?</label>
@@ -481,7 +533,7 @@ function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOp
     </form>
     <div className="board-tools">
       <div className="filters" role="tablist" aria-label="Assertion filters">
-        {(["all", "attention", "monitoring", "paused"] as const).map((item) => <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "attention" ? "Needs attention" : item[0]!.toUpperCase() + item.slice(1)}</button>)}
+        {(["all", "attention", "monitoring", "paused"] as const).map((item) => <button key={item} role="tab" aria-selected={filter === item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "attention" ? "Needs attention" : item[0]!.toUpperCase() + item.slice(1)}<span className="tab-count">{counts[item]}</span></button>)}
       </div>
       <div className="view-tools">
         <button onClick={() => setSort(sort === "attention" ? "recent" : sort === "recent" ? "name" : "attention")}>Sort: {sort}<span aria-hidden="true">↕</span></button>
@@ -565,13 +617,11 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
   const latestViolation = violations.at(-1);
   const investigation = latestViolation === undefined ? undefined : investigations.find((item) => item.violationId === latestViolation.id);
   const refreshable = investigation !== undefined && investigation.workflowId !== undefined && !["completed", "failed", "stopped"].includes(investigation.status);
-  // The panel is its own element that slides in and out; it is not the card morphing into a sidebar.
-  const style = { viewTransitionName: "assertion-detail" } as CSSProperties;
-  return <aside className={`detail detail--${tone}`} style={style} aria-label={`${draft.definition.name} detail`}>
+  return <aside className={`detail detail--${tone}`} aria-label={`${draft.definition.name} detail`}>
     <div className="detail-scroll">
       <header className="detail-header">
         <button className="icon-button detail-back" onClick={onClose} aria-label="Back to assertion board"><Icon name="back"/></button>
-        <div className="detail-title"><span className="eyebrow">Assertion · v{draft.definition.version}</span><h2>{draft.definition.name}</h2><p className="detail-expectation">“{draft.expectation}”</p></div>
+        <div className="detail-title"><span className="eyebrow">Assertion · v{draft.definition.version}</span><h2>{draft.definition.name}</h2></div>
         <Pill tone={tone}>{statusLabel(tone)}</Pill>
         <div className="detail-actions">
           <button onClick={onToggle} disabled={draft.status === "needs-review"} title={draft.status === "needs-review" ? "Choose a supported safety rule before enabling" : undefined}><Icon name={draft.status === "paused" ? "play" : "pause"}/>{draft.status === "paused" ? "Enable" : draft.status === "needs-review" ? "Review required" : "Pause"}</button>
@@ -581,7 +631,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
       <div className="detail-meta">
         {choices.map((param) => <span key={param.name}><small>{param.label}</small>{choiceText(param, chosen[param.name]) ?? "Not chosen"}</span>)}
         <span><small>Rule version</small>v{draft.definition.version}</span>
-        <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} inputs</span>
+        <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} event{checkpoint?.processedCount === 1 ? "" : "s"}</span>
       </div>
       <nav className="detail-tabs" aria-label="Assertion detail sections">
         {(["overview", "counterexamples", "activity"] as const).map((item) => <button key={item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{item[0]!.toUpperCase() + item.slice(1)}{item === "counterexamples" && violations.length ? ` (${violations.length})` : ""}</button>)}
@@ -591,6 +641,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
           <section className="detail-section expectation-section"><span className="section-index">01</span><div>
             <div className="reading-heading"><h3>What Needl watches</h3>{draft.rule !== undefined ? <button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => setExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button> : null}</div>
             <RuleReading draft={draft} mode={exact ? "mechanical" : "sentence"} onChoose={onChoose}/>
+            {draft.expectation.trim().toLowerCase() !== draft.definition.name.trim().toLowerCase() ? <p className="detail-request">You asked: <q>{draft.expectation}</q></p> : null}
             <p>{exact ? "The exact reading is generated from the rule itself, word for word." : "Underlined phrases are your choices; changing one saves a new version."}{draft.rule !== undefined && !exact ? " The exact reading shows precisely what the rule checks." : ""}</p>
             {draft.rule !== undefined ? <details className="rule-source"><summary>Rule</summary><pre>{draft.rule.source}</pre></details> : null}
           </div></section>
@@ -955,11 +1006,34 @@ export function App() {
   }, [toast]);
 
   const selected = assertions.find((draft) => draft.localId === selectedId);
+  // The drawer slides out before it unmounts: keep the last rule on screen for the length of the exit animation.
+  const [closing, setClosing] = useState<AssertionDraft | undefined>(undefined);
+  const shown = useRef<AssertionDraft | undefined>(undefined);
+  useEffect(() => {
+    if (selected !== undefined) { shown.current = selected; setClosing(undefined); return; }
+    const last = shown.current;
+    shown.current = undefined;
+    if (last === undefined) return;
+    setClosing(last);
+    const timeout = window.setTimeout(() => setClosing(undefined), 220);
+    return () => window.clearTimeout(timeout);
+  }, [selected]);
+  const drawer = selected ?? closing;
   const openDetail = (id: string) => { boardScroll.current = window.scrollY; navigate("assertions", id); };
   const closeDetail = () => {
     if (window.history.state?.detail === true) window.history.back();
     else navigate("assertions", undefined, true);
   };
+  // Esc closes the rule drawer, unless a dialog or a choice list is open and should take the key itself.
+  useEffect(() => {
+    if (selectedId === undefined) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || document.querySelector(".modal-layer, .choice-popover") !== null) return;
+      closeDetail();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
   const updateAssertions = (next: AssertionDraft[], replayNow = true) => {
     try {
       const accepted = validateAssertionCollection(next);
@@ -1100,13 +1174,13 @@ export function App() {
   return <div className={`app-shell ${selected !== undefined ? "detail-open" : ""}`}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar section={section} replay={evidence} liveSources={workspace.integrations.filter((item) => item.purpose === "ingestion" && item.enabled).length} onNavigate={(next) => navigate(next)}/>
-    <Topbar search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
+    <Topbar user={workspace.user} search={search} onSearch={setSearch} onConnections={() => navigate("connections")} onSettings={() => navigate("settings")}/>
     <div className="workspace">
-      {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onChoose={changeChoice}/> : null}
+      {section === "assertions" ? <AssertionBoard assertions={assertions} replay={evidence} selectedId={selected?.localId} search={search} onCreate={beginAuthoring} onOpen={openDetail} onDismiss={closeDetail} onChoose={changeChoice}/> : null}
       {section === "activity" ? <ActivityPage replay={evidence}/> : null}
       {section === "connections" ? <ConnectionsPage replay={evidence}/> : null}
       {section === "settings" ? <SettingsPage assertions={assertions} examples={examples} user={workspace.user} onRestore={restoreSamples} onClear={clearLocal} onSignOut={() => void endSession()}/> : null}
-      {selected !== undefined && section === "assertions" ? <AssertionDetail key={selected.localId} draft={selected} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(selected)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(selected, param, value)}/> : null}
+      {drawer !== undefined && section === "assertions" ? <div className={`detail-drawer ${selected === undefined ? "is-closing" : ""}`}><AssertionDetail key={drawer.localId} draft={drawer} replay={evidence} investigations={durableMonitor?.investigations ?? []} investigationReady={workspace.integrations.some((item) => item.provider === "gitlab" && item.purpose === "investigation" && item.enabled)} onLaunchInvestigation={(violationId) => void startInvestigation(violationId)} onRefreshInvestigation={(id) => void refreshGitLabInvestigation(id)} onClose={closeDetail} onToggle={toggleSelected} onEdit={() => setEditing(drawer)} onCopy={() => void copyLink()} onChoose={(param, value) => changeChoice(drawer, param, value)}/></div> : null}
     </div>
     {replaying || translating ? <div className="replaying" role="status"><span/>{translating ? "Writing and checking the rule…" : "Replaying through engine…"}</div> : null}
     {error ? <div className="error-banner" role="alert"><strong>Needl error</strong>{error}<button onClick={() => setError(null)} aria-label="Dismiss error"><Icon name="close"/></button></div> : null}

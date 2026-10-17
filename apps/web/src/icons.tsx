@@ -21,3 +21,19 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { readonly na
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>;
 }
+
+/** Pipeline-style status mark: a filled circle with a white glyph, as GitLab shows job and pipeline states. */
+export function StatusIcon({ tone }: { readonly tone: string }) {
+  const glyph: Record<string, React.ReactNode> = {
+    violated: <path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/>,
+    monitoring: <path d="M4.8 8.3l2.2 2.2 4.2-4.6"/>,
+    paused: <path d="M6.3 5.2v5.6M9.7 5.2v5.6"/>,
+    pending: <><path d="M8 4.6V8l2.2 1.5"/></>,
+    "needs-review": <path d="M8 4.5v4.2M8 11.2v.1"/>,
+    unavailable: <path d="M5 8h6"/>,
+  };
+  return <svg className="status-icon" viewBox="0 0 16 16" aria-hidden="true">
+    <circle cx="8" cy="8" r="8" fill="currentColor"/>
+    <g fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{glyph[tone] ?? glyph.unavailable}</g>
+  </svg>;
+}

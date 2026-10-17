@@ -350,9 +350,9 @@ h1, h2, h3, p { margin-top: 0; }
 .activity-other { height: 18px; margin-left: 8px; padding: 0 7px; display: inline-flex; align-items: center; vertical-align: 2px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; line-height: 1; white-space: nowrap; }
 .activity-feed h4 { margin: 16px 0 12px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .activity-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
-/* Fixed height with centered content: the label and the monospace value have different font metrics. */
-.activity-tags code { height: 22px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--surface); font: 12px/1 var(--mono); }
-.activity-tags code span { color: var(--muted); font: 12px/1 "GitLab Sans", Inter, ui-sans-serif, sans-serif; }
+/* One font for label and value, so both share a baseline and sit centered in the tag, as GitLab's labels do. */
+.activity-tags code { height: 22px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink-strong); background: var(--surface); font: 500 12px/1 "GitLab Sans", Inter, ui-sans-serif, -apple-system, sans-serif; }
+.activity-tags code span { color: var(--muted); font-weight: 400; }
 
 .investigation-panel { padding: 20px 0; }
 .investigation-card { padding: 16px; display: grid; gap: 8px; justify-items: start; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: var(--shadow-sm); }

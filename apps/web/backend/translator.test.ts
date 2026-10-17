@@ -14,11 +14,12 @@ function scripted(outputs: readonly unknown[]): TranslationModel & { readonly ca
   };
 }
 
-const answer = (source: string, choices: { name: string; values: string[] }[] = []) => ({
-  supported: true, name: "Clean break", source, choices, explanation: "Watches charges after cancellation.", rejection_reason: "",
+const answer = (source: string) => ({
+  supported: true, name: "Clean break", source, explanation: "Watches charges after cancellation.", rejection_reason: "",
 });
 
-const cleanBreak = `always (stripe.customer.subscription.deleted bind customer = customer -> never stripe.invoice.paid(customer = customer))`;
+const cleanBreak = `rule "A customer who cancels must never pay an invoice again"
+always (stripe.customer.subscription.deleted bind customer = customer -> never stripe.invoice.paid(customer = customer))`;
 
 describe("translateToRule", () => {
   it("returns a rule only after it passes the checker", async () => {
@@ -40,13 +41,13 @@ describe("translateToRule", () => {
     expect(repair.content).toMatch(/line 1, column 9: stripe has no event "subscription.deleted"/);
   });
 
-  it("types initial choices and rejects values the provider does not allow", async () => {
-    const source = "never gitlab.deployment(status = \"failed\", environment = $environment)";
-    await expect(translateToRule("No failed deploys to production, ever", scripted([answer(source, [{ name: "environment", values: ["production"] }])])))
-      .resolves.toMatchObject({ supported: true, values: { environment: "production" } });
-    const fixed = "never gitlab.deployment(status = $status)";
-    const model = scripted([answer(fixed, [{ name: "status", values: ["exploded"] }]), answer(fixed, [{ name: "status", values: ["failed"] }])]);
-    await expect(translateToRule("No failed deploys to production, ever", model)).resolves.toMatchObject({ values: { status: "failed" }, attempts: 2 });
+  it("sends back defaults the provider does not allow and asks for a missing sentence", async () => {
+    const bad = "rule \"No {status} deploys\"\ninput status: text = \"exploded\"\nnever gitlab.deployment(status = $status)";
+    const good = bad.replace("exploded", "failed");
+    const model = scripted([answer(bad), answer("never gitlab.deployment(status = \"failed\")"), answer(good)]);
+    await expect(translateToRule("No failed deploys to production, ever", model)).resolves.toMatchObject({ supported: true, source: good, values: {}, attempts: 3 });
+    expect(model.calls[1]!.at(-1)!.content).toMatch(/Default for status: "exploded" is not an allowed status/);
+    expect(model.calls[2]!.at(-1)!.content).toMatch(/Start the rule with its sentence/);
   });
 
   it("refuses liveness the model writes and gives up after the attempt limit with the last problems", async () => {
@@ -57,17 +58,18 @@ describe("translateToRule", () => {
   });
 
   it("passes on an explained refusal without a rule", async () => {
-    const model = scripted([{ supported: false, name: "", source: "", choices: [], explanation: "Linear state names are not received.", rejection_reason: "Needl does not receive Linear workflow state names." }]);
+    const model = scripted([{ supported: false, name: "", source: "", explanation: "Linear state names are not received.", rejection_reason: "Needl does not receive Linear workflow state names." }]);
     await expect(translateToRule("When I push to prod it should show as Done on Linear", model)).resolves.toEqual({
       supported: false, explanation: "Linear state names are not received.", rejectionReason: "Needl does not receive Linear workflow state names.", attempts: 1,
     });
   });
 
-  it("keeps a valid rule whose only problem is a note, reading that part mechanically", async () => {
-    const model = scripted([answer("never #\"a failed deploy\" gitlab.deployment(status = \"failed\")")]);
+  it("on the last attempt keeps a valid rule whose only problem is its sentence, read word for word", async () => {
+    const model = scripted([answer("rule \"Deploys must never fail {x}\"\nnever gitlab.deployment(status = \"failed\")")]);
     await expect(translateToRule("Deploys must never fail", model)).resolves.toMatchObject({
-      supported: true, attempts: 1, source: "never  gitlab.deployment(status = \"failed\")",
+      supported: true, attempts: maximumAttempts, source: "never gitlab.deployment(status = \"failed\")",
     });
+    expect(model.calls[1]!.at(-1)!.content).toMatch(/no input x/);
   });
 
   it("rejects malformed structured output", async () => {

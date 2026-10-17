@@ -4,7 +4,7 @@ import type { CatalogueEvent, CatalogueField, FieldOption } from "./catalogue.js
 import type { CheckedRule, ParamInfo } from "./check.js";
 import { durationText } from "./render.js";
 
-/** Common time limits offered for `within $choice`; any other duration can be typed. */
+/** Common time limits offered for `within $input`; any other duration can be typed. */
 const durationSuggestions = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
 
 export interface SuggestedValue {
@@ -66,6 +66,7 @@ export function suggestChoices(rule: CheckedRule, events: readonly NormalizedEve
       return found;
     };
     for (const option of param.options ?? []) entry(option.value);
+    if (param.type === "boolean" && param.options === undefined) { entry(true); entry(false); }
     param.usages.forEach((usage, index) => {
       for (const observed of events) {
         if (!eventMatches(usage.event, observed)) continue;
@@ -93,6 +94,6 @@ export function suggestChoices(rule: CheckedRule, events: readonly NormalizedEve
       || Math.min(...right.counts) - Math.min(...left.counts)
       || right.counts.reduce((sum, count) => sum + count, 0) - left.counts.reduce((sum, count) => sum + count, 0)
       || String(left.value).localeCompare(String(right.value)));
-    return { param, freeText: param.options === undefined, values };
+    return { param, freeText: param.options === undefined && param.type !== "boolean", values };
   });
 }

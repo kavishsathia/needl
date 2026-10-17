@@ -5,14 +5,18 @@ import { catalogue, type CatalogueField } from "./catalogue.js";
 export const ruleLanguageGuide = `NEEDL RULE LANGUAGE
 
 A rule watches the native webhook events of each integration and states something that must never be broken.
-Every rule starts with \`always (…)\` or \`never …\`: a rule is checked from the first event Needl receives, so
+It is written as: the sentence, the inputs, then the rule itself.
+  rule "…{name}…"
+  input name: type = default
+  always ( … $name … )
+The rule itself starts with \`always (…)\` or \`never …\`: a rule is checked from the first event Needl receives, so
 without one of these it would only look at that first event.
 
 EVENTS
   provider.event                      e.g. gitlab.deployment, stripe.invoice.paid, sentry.issue
   provider.event(field op value, …)   conditions that must all hold, e.g. gitlab.deployment(status = "success")
-  ops: = != < <= > >= contains starts_with in        in takes a list ["a", "b"] or a $choice
-  values: "text", 42, true/false, $choice, or a bound name
+  ops: = != < <= > >= contains starts_with in        in takes a list ["a", "b"] or a list $input
+  values: "text", 42, true/false, $input, or a bound name
 
 COMBINING (loosest to tightest)
   A -> B                if A happens at this event, B must hold from this event on (right-associative)
@@ -40,27 +44,27 @@ BOUND VALUES (captured from one event, used later)
   A rule shaped "always (… bind x = … -> …)" in which every other event compares a field with x is monitored separately
   for each value of x (each issue, each customer), so one violation never stops monitoring the others.
 
-CHOICES ($name)
-  $environment is a value the user picks when the rule is set up and can change later; it renders as a dropdown.
-  Its type and suggested values come from the fields it is compared with. Use the same $name everywhere the same
-  choice applies (e.g. the deploy environment and the error environment). Use \`field in $name\` for several values.
-  Use a $choice for anything the user might reasonably want to change (environments, projects, teams, amounts);
-  use a literal for what defines the rule itself (e.g. status = "success" for a successful deploy).
-  Time limits can be choices too: \`eventually within $time_limit …\`. Make every time limit a choice, with the
-  value from the request (or a sensible default) as its initial value, e.g. "1h", so the user can adjust it.
+INPUTS (input name: type = default, used as $name)
+  An input is a value the user sets when the rule is set up and can change later; it renders as a picker.
+  Declare every input once, before the rule, with its type and usually a default:
+    input environment: text = "production"
+    input time_limit: duration = 1h
+    input amount: number = 10000
+    input statuses: list of text = ["failed", "canceled"]      used with \`field in $statuses\`
+  Types: text, number, boolean, duration (time limits: \`eventually within $time_limit …\`), list of text,
+  list of number. The type must fit every place the input is used. Suggested values come from those fields.
+  Leave the default out only when nothing in the request settles the value; the user then has to pick one.
+  Use the same $name everywhere the same value applies (e.g. the deploy environment and the error environment).
+  Make an input of anything the user might reasonably want to change (environments, projects, teams, amounts) and of
+  every time limit; use a literal for what defines the rule itself (e.g. status = "success" for a successful deploy).
 
-NOTES (#"…" before any part)
-  A note is the English reading of the part right after it. {1}, {2}, … stand for that part's own parts, in the
-  order they appear in the source: for an event, each condition's value then each bind; for always/eventually/
-  until with a time limit, the duration is a part; for A -> B, A is {1} and B is {2}; for A and B / A or B, each
-  operand. A bind's slot reads as "its <field> as “<name>”", so write e.g. #"a push to {1}, keeping {2}", not
-  "keeping its commit as {2}". Every part must be used exactly once. Notes must not contain numbers, values, or provider.event names:
-  values and time limits always come from slots, so the reading can never show something the rule does not check.
-  A part without a note is read mechanically. Put a note on the parts a person reads; keep notes short and plain.
-  To annotate a whole -> / and / or, wrap it in parentheses: #"once {1}, {2}" ( A -> B ).
-  Count parts carefully: in  #"…" never ( A or B )  the never has ONE part, {1} = (A or B); to word A and B
-  separately, put a note on each of them instead. An event with no conditions and no bind has no parts, so its
-  note has no slots.
+THE SENTENCE (rule "…", first line)
+  One plain English sentence that says what the rule checks, as a person would say it. Each input appears as {name}
+  and is shown there as its current value, so every input must appear at least once. The sentence must not
+  contain numbers, provider.event names or the value of any input: those come from the slots, so the sentence
+  stays right when someone changes a value. Describe fixed parts of the rule (a successful deploy, a paid invoice)
+  in words. Keep it short and exact: it is what people read, and it must mean what the rule checks.
+    rule "Once a fix for an issue is deployed to {environment}, errors tagged with that issue must never appear there again"
 
 SAFETY (enforced by the checker)
   Needl only runs rules that a single observed event or a passed time limit can break. Unbounded eventually,

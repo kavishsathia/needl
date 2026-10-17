@@ -1,11 +1,11 @@
 import type { CatalogueField } from "./catalogue.js";
-import type { CheckedRule, ParamInfo } from "./check.js";
-import type { ParamValue, ParamValues } from "./compile.js";
-import { parseDuration, parts, type Condition, type Duration, type Expr, type Part, type Value } from "./syntax.js";
+import { sentenceSlot, type CheckedRule, type ParamInfo, type ParamValue, type ParamValues } from "./check.js";
+import { effectiveValues } from "./compile.js";
+import { parseDuration, type Condition, type Duration, type Expr, type Value } from "./syntax.js";
 
 /**
  * A rule read back as English. Values and time limits are always their own segments, so a reading can never show a
- * value the rule does not use; `choice` segments are the user's `$` bindings and render as pickers.
+ * value the rule does not use; `choice` segments are the rule's inputs and render as pickers.
  */
 export type ReadingSegment =
   | { readonly kind: "text"; readonly text: string }
@@ -14,7 +14,8 @@ export type ReadingSegment =
   | { readonly kind: "duration"; readonly text: string }
   | { readonly kind: "bound"; readonly name: string; readonly text: string };
 
-export type ReadingMode = "notes" | "mechanical";
+/** `sentence` uses the rule's own sentence when it has one; `mechanical` reads the rule word for word. */
+export type ReadingMode = "sentence" | "mechanical";
 
 const unitNames: readonly [string, number][] = [["day", 86_400_000], ["hour", 3_600_000], ["minute", 60_000], ["second", 1_000], ["millisecond", 1]];
 
@@ -64,8 +65,27 @@ const opWords: Readonly<Record<Condition["op"], string>> = {
   contains: "contains", starts_with: "starts with", in: "is",
 };
 
-export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMode = "notes"): ReadingSegment[] {
+export function readRule(rule: CheckedRule, chosen: ParamValues, mode: ReadingMode = "sentence"): ReadingSegment[] {
+  const values = effectiveValues(rule, chosen);
   const text = (value: string): ReadingSegment => ({ kind: "text", text: value });
+  const choice = (param: ParamInfo): ReadingSegment => {
+    const shown = choiceText(param, values[param.name]);
+    return { kind: "choice", param: param.name, label: param.label, ...(shown === undefined ? {} : { text: shown }) };
+  };
+
+  if (mode === "sentence" && rule.sentence !== undefined) {
+    const template = rule.sentence.text;
+    const output: ReadingSegment[] = [];
+    let last = 0;
+    for (const match of template.matchAll(sentenceSlot)) {
+      if (match.index > last) output.push(text(template.slice(last, match.index)));
+      const param = rule.params.find((candidate) => candidate.name === match[1]);
+      output.push(param === undefined ? text(match[0]) : choice(param));
+      last = match.index + match[0].length;
+    }
+    if (last < template.length) output.push(text(template.slice(last)));
+    return sentence(output);
+  }
 
   const valueSegments = (value: Value, field: CatalogueField | undefined): ReadingSegment[] => {
     switch (value.type) {
@@ -74,19 +94,13 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
       case "boolean": return [{ kind: "value", text: optionLabel(field, value.value) }];
       case "list": return [{ kind: "value", text: listText(value.items.map((item) => "value" in item ? optionLabel(field, item.value) : ""), "or") }];
       case "var": return [{ kind: "bound", name: value.name, text: `that ${humanize(value.name)}` }];
-      case "param": {
-        const param = rule.params.find((candidate) => candidate.name === value.name)!;
-        const chosen = choiceText(param, values[value.name]);
-        return [{ kind: "choice", param: value.name, label: param.label, ...(chosen === undefined ? {} : { text: chosen }) }];
-      }
+      case "param": return [choice(rule.params.find((candidate) => candidate.name === value.name)!)];
     }
   };
 
   const durationSegment = (within: Duration): ReadingSegment => {
     if (within.ms !== undefined) return { kind: "duration", text: durationText(within.ms) };
-    const param = rule.params.find((candidate) => candidate.name === within.param)!;
-    const chosen = choiceText(param, values[param.name]);
-    return { kind: "choice", param: param.name, label: param.label, ...(chosen === undefined ? {} : { text: chosen }) };
+    return choice(rule.params.find((candidate) => candidate.name === within.param)!);
   };
 
   const fieldOf = (expr: Extract<Expr, { type: "event" }>, condition: Condition): CatalogueField | undefined =>
@@ -106,45 +120,12 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
     return output;
   };
 
-  const partSegments = (part: Part): ReadingSegment[] => {
-    switch (part.kind) {
-      case "expr": return read(part.expr);
-      case "value": {
-        const host = findHost(rule.ast, part.condition);
-        return valueSegments(part.value, host === undefined ? undefined : fieldOf(host, part.condition));
-      }
-      case "duration": return [durationSegment(part.duration)];
-      case "bindField": {
-        const field = [...rule.events.values()].flatMap((resolved) => resolved.binds).find((bind) => bind.name === part.bind.name)?.field;
-        return [text(`its ${field?.label ?? part.bind.field} as `), { kind: "bound", name: part.bind.name, text: `“${humanize(part.bind.name)}”` }];
-      }
-      case "bindSource": {
-        const info = rule.prefixBinds.get(part.expr);
-        return [text(info === undefined ? part.expr.path : `the ${info.field.label} of ${info.event.phrase}`)];
-      }
-    }
-  };
-
-  const noted = (expr: Expr): ReadingSegment[] => {
-    const exprParts = parts(expr);
-    const output: ReadingSegment[] = [];
-    let last = 0;
-    for (const match of expr.note!.text.matchAll(/\{(\d+)\}/g)) {
-      if (match.index! > last) output.push(text(expr.note!.text.slice(last, match.index)));
-      output.push(...partSegments(exprParts[Number(match[1]) - 1]!));
-      last = match.index! + match[0].length;
-    }
-    if (last < expr.note!.text.length) output.push(text(expr.note!.text.slice(last)));
-    return output;
-  };
-
   const read = (expr: Expr): ReadingSegment[] => {
-    if (mode === "notes" && expr.note !== undefined) return noted(expr);
     switch (expr.type) {
       case "event": return eventSegments(expr);
       case "constant": return [text(expr.value ? "anything" : "nothing")];
       case "not": return expr.operand.type === "event" ? [text("not "), ...read(expr.operand)] : [text("it is not the case that "), ...read(expr.operand)];
-      case "never": return eventLike(expr.operand, mode)
+      case "never": return eventLike(expr.operand)
         ? [text("there must never be "), ...read(expr.operand)]
         : [text("it must never be that "), ...read(expr.operand)];
       case "next": return expr.operand.type === "event"
@@ -153,8 +134,6 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
       case "always": {
         if (expr.within !== undefined) return [text("for "), durationSegment(expr.within), text(", at every event, "), ...read(expr.operand)];
         if (expr.operand.type === "implies") {
-          // A noted "once …, …" or "whenever …, …" already says it applies every time.
-          if (mode === "notes" && expr.operand.note !== undefined) return read(expr.operand);
           return [text("whenever there is "), ...read(expr.operand.left), text(", "), ...read(expr.operand.right)];
         }
         return [text("at all times, "), ...read(expr.operand)];
@@ -192,19 +171,8 @@ export function readRule(rule: CheckedRule, values: ParamValues, mode: ReadingMo
 }
 
 /** Events, or alternatives between events, read as a noun phrase ("there must never be …"). */
-function eventLike(expr: Expr, mode: ReadingMode): boolean {
-  if (mode === "notes" && expr.note !== undefined) return false;
-  return expr.type === "event" || (expr.type === "or" && expr.operands.every((operand) => eventLike(operand, mode)));
-}
-
-function findHost(expr: Expr, condition: Condition): Extract<Expr, { type: "event" }> | undefined {
-  if (expr.type === "event" && expr.conditions.includes(condition)) return expr;
-  for (const part of parts(expr)) {
-    if (part.kind !== "expr") continue;
-    const found = findHost(part.expr, condition);
-    if (found !== undefined) return found;
-  }
-  return undefined;
+function eventLike(expr: Expr): boolean {
+  return expr.type === "event" || (expr.type === "or" && expr.operands.every(eventLike));
 }
 
 /** Capitalizes the first letter, merges adjacent text and ends with a full stop. */

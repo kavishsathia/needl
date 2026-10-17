@@ -91,7 +91,7 @@ test("complete assertion journey uses engine evidence and persists authored stat
   await expect(dialog.getByText("AI authoring is not configured")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Create paused rule" })).toBeDisabled();
   await dialog.getByRole("button", { name: /No ghosts/ }).click();
-  await expect(dialog.getByTestId("rule-preview")).toContainText("must never appear there again");
+  await expect(dialog.getByTestId("rule-preview")).toContainText("may appear in production again");
   await dialog.getByRole("button", { name: "Create paused rule" }).click();
 
   const detail = page.locator(".detail");
@@ -145,18 +145,18 @@ test("rules started from each example read back in English and produce counterex
     {
       expectation: "A renamed checkout repair never regresses",
       example: /No ghosts/,
-      reading: "Once a branch for an issue gets a successful deploy to production, keeping its issue key in its branch as “issue”, an error alert tagged that issue in production, or an error tagged that issue in production must never appear there again.",
+      reading: "Once a branch for an issue is successfully deployed to production, no error or error alert tagged with that issue may appear in production again.",
       choice: "environment: production",
     },
     {
       expectation: "A renamed resolved issue stays resolved",
       example: /Boomerang/,
-      reading: "Once a Sentry issue is resolved, keeping its issue as “issue”, that issue being unresolved again must never happen.",
+      reading: "Once a Sentry issue is resolved, it must never be unresolved again.",
     },
     {
       expectation: "A renamed canceled customer stays uncharged",
       example: /Clean break/,
-      reading: "Once a customer cancels their subscription, keeping its customer as “customer”, they must never be charged again by a paid invoice for that customer, a successful charge for that customer, or a successful payment for that customer.",
+      reading: "Once a customer cancels their subscription, they must never be charged again by a paid invoice, a successful charge or a successful payment.",
     },
   ] as const;
 
@@ -259,7 +259,7 @@ test("$ choices are dropdowns that version the monitor and accept typed values",
   await listbox.getByLabel("Type a environment").fill("staging");
   await listbox.getByRole("button", { name: "Use" }).click();
 
-  await expect(rule.getByRole("button", { name: "environment: staging" })).toHaveCount(3);
+  await expect(rule.getByRole("button", { name: "environment: staging" })).toHaveCount(2);
   const changed = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
     const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");

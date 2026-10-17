@@ -1,23 +1,25 @@
 /**
  * Needl rule language: syntax tree and parser.
  *
- *   rule      := expr
+ *   rule      := sentence? input* expr
+ *   sentence  := "rule" STRING                           the whole rule in English; "{name}" shows input name
+ *   input     := "input" NAME ":" type ("=" default)?    a value the user sets; $NAME in the rule
+ *   type      := "text" | "number" | "boolean" | "duration" | "list" "of" ("text" | "number")
+ *   default   := STRING | NUMBER | "true" | "false" | DURATION | "[" value ("," value)* "]"
  *   expr      := or ("->" expr)?                         right-associative implication
  *   or        := and ("or" and)*
  *   and       := binary ("and" binary)*
  *   binary    := unary (("until" | "unless") within? unary)?
- *   unary     := note unary
- *              | "not" unary | "never" unary | "next" unary
+ *   unary     := "not" unary | "never" unary | "next" unary
  *              | ("always" | "eventually") within? unary
  *              | "bind" NAME "=" PROVIDER "." EVENT "." FIELD "in" expr
  *              | primary
- *   within    := "within" (DURATION | "$"NAME)            e.g. 30s, 15m, 2h, 1d, or a time-limit choice
+ *   within    := "within" (DURATION | "$"NAME)            e.g. 30s, 15m, 2h, 1d, or a duration input
  *   primary   := "(" expr ")" | "true" | "false" | event
  *   event     := PROVIDER "." EVENT ("(" condition ("," condition)* ")")? ("bind" NAME "=" FIELD)*
  *   condition := FIELD op value
  *   op        := "=" | "!=" | "<" | "<=" | ">" | ">=" | "contains" | "starts_with" | "in"
  *   value     := STRING | NUMBER | "true" | "false" | "$"NAME | NAME | "[" value ("," value)* "]"
- *   note      := "#" STRING                              English for the next part; "{1}", "{2}" … are its parts
  *
  * Event and field names are resolved against the catalogue by the checker, not here.
  */
@@ -29,15 +31,37 @@ export interface Span {
   readonly column: number;
 }
 
-export interface Note {
+/** The rule's English reading: `{name}` slots show the user's inputs. */
+export interface Sentence {
   readonly text: string;
   readonly span: Span;
 }
 
+export type InputType = "text" | "number" | "boolean" | "duration";
+
+/** `input name: type = default`: a value the user sets when the rule is set up, used in the rule as `$name`. */
+export interface InputDeclaration {
+  readonly name: string;
+  readonly nameSpan: Span;
+  readonly type: InputType;
+  /** `list of …`: several values, used with `in`. */
+  readonly list: boolean;
+  readonly typeSpan: Span;
+  /** Initial value; a duration default is its text, such as "1h". */
+  readonly default?: { readonly value: string | number | boolean | readonly (string | number | boolean)[]; readonly span: Span };
+  readonly span: Span;
+}
+
+export interface ParsedRule {
+  readonly sentence?: Sentence;
+  readonly inputs: readonly InputDeclaration[];
+  readonly body: Expr;
+}
+
 export interface Duration {
-  /** Fixed length; absent when the length is a `$` choice. */
+  /** Fixed length; absent when the length is an input. */
   readonly ms?: number;
-  /** Name of the `$` choice that sets the length, e.g. `within $deadline`. */
+  /** Name of the duration input that sets the length, e.g. `within $deadline`. */
   readonly param?: string;
   readonly text: string;
   readonly span: Span;
@@ -80,7 +104,6 @@ export interface EventBind {
 
 interface NodeBase {
   readonly span: Span;
-  readonly note?: Note;
 }
 
 export type Expr =
@@ -101,7 +124,7 @@ export class RuleSyntaxError extends Error {
   }
 }
 
-type TokenType = "name" | "param" | "string" | "number" | "duration" | "note" | "symbol" | "end";
+type TokenType = "name" | "param" | "string" | "number" | "duration" | "symbol" | "end";
 
 interface Token {
   readonly type: TokenType;
@@ -152,11 +175,7 @@ function tokenize(source: string): Token[] {
     }
     const start = offset;
     if (character === "#") {
-      if (source[offset + 1] !== "\"") throw new RuleSyntaxError("A note is # followed by a quoted string, e.g. #\"after {1}, {2}\"", span(start, start + 1));
-      const { value, end } = readString(offset + 1);
-      tokens.push({ type: "note", text: source.slice(start, end), value, span: span(start, end) });
-      offset = end;
-      continue;
+      throw new RuleSyntaxError("Notes (#\"…\") are gone: describe the whole rule in one sentence at the top, rule \"…\"", span(start, start + 1));
     }
     if (character === "\"") {
       const { value, end } = readString(offset);
@@ -196,7 +215,7 @@ function tokenize(source: string): Token[] {
       offset += name[0].length;
       continue;
     }
-    const symbol = ["->", "!=", "<=", ">=", "(", ")", "[", "]", ",", ".", "=", "<", ">"].find((candidate) => source.startsWith(candidate, offset));
+    const symbol = ["->", "!=", "<=", ">=", "(", ")", "[", "]", ",", ".", "=", "<", ">", ":"].find((candidate) => source.startsWith(candidate, offset));
     if (symbol === undefined) throw new RuleSyntaxError(`Unexpected character ${JSON.stringify(character)}`, span(start, start + 1));
     tokens.push({ type: "symbol", text: symbol, span: span(start, offset + symbol.length) });
     offset += symbol.length;
@@ -209,7 +228,7 @@ function join(left: Span, right: Span): Span {
   return { start: left.start, end: right.end, line: left.line, column: left.column };
 }
 
-export function parseRule(source: string): Expr {
+export function parseRule(source: string): ParsedRule {
   if (source.length > maximumSourceLength) throw new RuleSyntaxError("Rule is too long", { start: 0, end: 0, line: 1, column: 1 });
   const tokens = tokenize(source);
   let position = 0;
@@ -244,7 +263,7 @@ export function parseRule(source: string): Expr {
     const keyword = take();
     const token = take();
     if (token.type === "param") return { param: token.value as string, text: token.text, span: join(keyword.span, token.span) };
-    if (token.type !== "duration") throw new RuleSyntaxError(`Expected a duration after "within", such as 30m or 2h, or a $choice, found ${describe(token)}`, token.span);
+    if (token.type !== "duration") throw new RuleSyntaxError(`Expected a duration after "within", such as 30m or 2h, or a $input, found ${describe(token)}`, token.span);
     return { ms: token.value as number, text: token.text, span: join(keyword.span, token.span) };
   };
 
@@ -279,7 +298,7 @@ export function parseRule(source: string): Expr {
       if (items.some((item) => item.type === "list")) throw new RuleSyntaxError("Lists cannot contain lists", token.span);
       return { type: "list", items, span: join(token.span, close.span) };
     }
-    throw new RuleSyntaxError(`Expected a value (a "string", a number, true/false, a $choice or a bound name), found ${describe(token)}`, token.span);
+    throw new RuleSyntaxError(`Expected a value (a "string", a number, true/false, a $input or a bound name), found ${describe(token)}`, token.span);
   };
 
   const parseCondition = (): Condition => {
@@ -338,12 +357,6 @@ export function parseRule(source: string): Expr {
 
   const parseUnary = (): Expr => {
     const token = peek();
-    if (token.type === "note") {
-      take();
-      const operand = guard(token, parseUnary);
-      if (operand.note !== undefined) throw new RuleSyntaxError("A part can have only one note", token.span);
-      return { ...operand, note: { text: token.value as string, span: token.span } };
-    }
     if (isWord(token, "not") || isWord(token, "never") || isWord(token, "next")) {
       take();
       const operand = guard(token, parseUnary);
@@ -397,10 +410,60 @@ export function parseRule(source: string): Expr {
     return { type: "implies", left, right, span: join(left.span, right.span) };
   }
 
+  const parseInput = (): InputDeclaration => {
+    const keyword = take();
+    const name = expectName("for the input");
+    expectSymbol(":", `after input ${name.text}, followed by its type`);
+    const first = take();
+    let list = false;
+    let typeToken = first;
+    if (isWord(first, "list")) {
+      expectWord("of", "after list");
+      typeToken = take();
+      list = true;
+    }
+    const allowed = list ? ["text", "number"] : ["text", "number", "boolean", "duration"];
+    if (typeToken.type !== "name" || !allowed.includes(typeToken.text)) {
+      throw new RuleSyntaxError(`Expected an input type (${list ? "list of text or list of number" : "text, number, boolean, duration, list of text or list of number"}), found ${describe(typeToken)}`, typeToken.span);
+    }
+    const typeSpan = join(first.span, typeToken.span);
+    let span = join(keyword.span, typeSpan);
+    let initial: InputDeclaration["default"];
+    if (isSymbol(peek(), "=")) {
+      take();
+      const token = peek();
+      if (token.type === "duration") {
+        take();
+        initial = { value: token.text, span: token.span };
+      } else {
+        const value = parseValue();
+        if (value.type === "param" || value.type === "var") throw new RuleSyntaxError("A default is a literal value, such as \"production\", 10, true, 1h or [\"a\", \"b\"]", value.span);
+        initial = {
+          value: value.type === "list" ? value.items.map((item) => (item as { value: string | number | boolean }).value) : value.value,
+          span: value.span,
+        };
+      }
+      span = join(span, initial.span);
+    }
+    return {
+      name: name.text, nameSpan: name.span, type: typeToken.text as InputType, list, typeSpan,
+      ...(initial === undefined ? {} : { default: initial }), span,
+    };
+  };
+
+  let sentence: Sentence | undefined;
+  if (isWord(peek(), "rule") && peek(1).type === "string") {
+    take();
+    const token = take();
+    sentence = { text: token.value as string, span: token.span };
+  }
+  const inputs: InputDeclaration[] = [];
+  while (isWord(peek(), "input") && peek(1).type === "name" && isSymbol(peek(2), ":")) inputs.push(parseInput());
+  if (isWord(peek(), "rule") && peek(1).type === "string") throw new RuleSyntaxError("The rule sentence comes first, before the inputs, and only once", peek().span);
   if (peek().type === "end") throw new RuleSyntaxError("Rule is empty", peek().span);
-  const rule = parseExpr();
+  const body = parseExpr();
   if (peek().type !== "end") throw new RuleSyntaxError(`Unexpected ${describe(peek())}; parts must be joined with and, or, ->, until or unless`, peek().span);
-  return rule;
+  return { ...(sentence === undefined ? {} : { sentence }), inputs, body };
 }
 
 function describe(token: Token): string {
@@ -408,7 +471,7 @@ function describe(token: Token): string {
   return JSON.stringify(token.text);
 }
 
-/** Direct parts of a node in source order, used by notes ({1}, {2}, …) and by every tree walk. */
+/** Direct parts of a node in source order, used by every tree walk. */
 export type Part =
   | { readonly kind: "expr"; readonly expr: Expr }
   | { readonly kind: "value"; readonly value: Value; readonly condition: Condition }

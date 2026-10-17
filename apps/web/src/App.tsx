@@ -12,7 +12,7 @@ import { createPortal } from "react-dom";
 import type { Provider } from "../../../src/core/types.js";
 import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/runtime-types.js";
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
-import { choiceIssues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
+import { choiceIssues, effectiveValues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
 import { choiceText, readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
@@ -338,24 +338,27 @@ function ReadingView({ segments, source, values, onChoose }: {
 }
 
 /** The assertion's rule read back as English; `$` choices are dropdowns when `onChoose` is given. */
-function RuleReading({ draft, mode = "notes", onChoose }: {
+function RuleReading({ draft, mode = "sentence", onChoose }: {
   readonly draft: AssertionDraft;
   readonly mode?: ReadingMode;
   readonly onChoose?: (param: string, value: ParamValue) => void;
 }) {
   const reading = useMemo(() => {
     if (draft.rule === undefined) return undefined;
-    try { return readRule(checkedRule(draft.rule.source), draft.rule.values, mode); } catch { return undefined; }
+    try {
+      const rule = checkedRule(draft.rule.source);
+      return { segments: readRule(rule, draft.rule.values, mode), values: effectiveValues(rule, draft.rule.values) };
+    } catch { return undefined; }
   }, [draft.rule, mode]);
   if (draft.rule === undefined || reading === undefined) return <p className="meaning-sentence meaning-sentence--plain">{draft.expectation}</p>;
   return <p className="meaning-sentence" data-testid={`reading-${draft.localId}`}>
-    <ReadingView segments={reading} source={draft.rule.source} values={draft.rule.values} onChoose={onChoose}/>
+    <ReadingView segments={reading.segments} source={draft.rule.source} values={reading.values} onChoose={onChoose}/>
   </p>;
 }
 
 function ruleReadingText(draft: AssertionDraft): string {
   if (draft.rule === undefined) return draft.expectation;
-  try { return readingText(readRule(checkedRule(draft.rule.source), draft.rule.values, "notes")); } catch { return draft.expectation; }
+  try { return readingText(readRule(checkedRule(draft.rule.source), draft.rule.values, "sentence")); } catch { return draft.expectation; }
 }
 
 function Sidebar({ section, replay, liveSources, onNavigate }: {
@@ -552,8 +555,11 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
   const violations = replay?.violations.filter((item) => item.assertionId === draft.definition.id) ?? [];
   const checkpoint = replay?.checkpoints.find((item) => item.assertionId === draft.definition.id);
   const relatedEvents = replay?.events.filter((item) => providersFor(draft).includes(item.provider)) ?? [];
-  const choices = draft.rule === undefined ? [] : (() => {
-    try { return checkedRule(draft.rule.source).params; } catch { return []; }
+  const { choices, chosen } = draft.rule === undefined ? { choices: [], chosen: {} } : (() => {
+    try {
+      const rule = checkedRule(draft.rule.source);
+      return { choices: rule.params, chosen: effectiveValues(rule, draft.rule.values) };
+    } catch { return { choices: [], chosen: {} }; }
   })();
   const outbox = replay?.outbox.find((item) => item.assertionId === draft.definition.id);
   const latestViolation = violations.at(-1);
@@ -573,7 +579,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
         </div>
       </header>
       <div className="detail-meta">
-        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{choiceText(param, draft.rule?.values[param.name]) ?? "Not chosen"}</span>)}
+        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{choiceText(param, chosen[param.name]) ?? "Not chosen"}</span>)}
         <span><small>Rule version</small>v{draft.definition.version}</span>
         <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} inputs</span>
       </div>
@@ -584,7 +590,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
         {tab === "overview" ? <>
           <section className="detail-section expectation-section"><span className="section-index">01</span><div>
             <div className="reading-heading"><h3>What Needl watches</h3>{draft.rule !== undefined ? <button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => setExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button> : null}</div>
-            <RuleReading draft={draft} mode={exact ? "mechanical" : "notes"} onChoose={onChoose}/>
+            <RuleReading draft={draft} mode={exact ? "mechanical" : "sentence"} onChoose={onChoose}/>
             <p>{exact ? "The exact reading is generated from the rule itself, word for word." : "Underlined phrases are your choices; changing one saves a new version."}{draft.rule !== undefined && !exact ? " The exact reading shows precisely what the rule checks." : ""}</p>
             {draft.rule !== undefined ? <details className="rule-source"><summary>Rule</summary><pre>{draft.rule.source}</pre></details> : null}
           </div></section>
@@ -784,13 +790,13 @@ function RuleEditor({ source, values, onSource, onChoose, exact, onExact }: {
   return <div className="rule-editor">
     {rule !== undefined ? <div className="rule-preview">
       <div className="reading-heading"><span className="eyebrow">Needl will watch</span><button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => onExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button></div>
-      <p className="meaning-sentence" data-testid="rule-preview"><ReadingView segments={readRule(rule, values, exact ? "mechanical" : "notes")} source={source} values={values} onChoose={onChoose}/></p>
+      <p className="meaning-sentence" data-testid="rule-preview"><ReadingView segments={readRule(rule, values, exact ? "mechanical" : "sentence")} source={source} values={effectiveValues(rule, values)} onChoose={onChoose}/></p>
       {missing.length > 0 ? <p className="choice-missing">{missing.map((issue) => issue.message).join(" · ")}</p> : null}
     </div> : null}
     <RuleIssues issues={issues}/>
     <details className="advanced-editor" open={rule === undefined && source.trim().length > 0 ? true : undefined}>
       <summary>Rule</summary>
-      <p>Rules name each integration’s own events, such as <code>gitlab.deployment</code>, and combine them with <code>and</code>, <code>or</code>, <code>-&gt;</code>, <code>never</code>, <code>always</code>, <code>unless</code> and time limits like <code>eventually within 30m</code>. <code>bind</code> keeps a value from one event for later parts; <code>$name</code> is a choice you make. Only rules that can be caught breaking are accepted.</p>
+      <p>Rules name each integration’s own events, such as <code>gitlab.deployment</code>, and combine them with <code>and</code>, <code>or</code>, <code>-&gt;</code>, <code>never</code>, <code>always</code>, <code>unless</code> and time limits like <code>eventually within 30m</code>. <code>bind</code> keeps a value from one event for later parts; <code>input name: text = "…"</code> declares a value you set, used as <code>$name</code>, and the first line, <code>rule "…"</code>, is the rule in one sentence that shows each input as <code>{"{name}"}</code>. Only rules that can be caught breaking are accepted.</p>
       <label>Rule source<textarea aria-label="Rule source" className="code-input rule-input" rows={10} value={source} onChange={(event) => onSource(event.target.value)} spellCheck={false}/></label>
     </details>
   </div>;

@@ -10,6 +10,8 @@ import {
   readRule,
   readingText,
   suggestChoices,
+  stripNotes,
+  upgradeRuleSource,
   type CheckedRule,
 } from "../src/rules/index.js";
 
@@ -51,7 +53,8 @@ function event(input: {
   };
 }
 
-const ghost = `always (
+const ghost = `input env: text
+always (
   gitlab.deployment(status = "success", environment = $env) bind issue = ref.issue_key
   -> never sentry.event_alert(tags.linear_issue.issue_key = issue, environment = $env)
 )`;
@@ -88,11 +91,11 @@ describe("rule checking against the catalogue", () => {
     expect(ok("never stripe.invoice.paid(customer = \"cus_A1\")")).toBeDefined();
   });
 
-  it("marks problems confined to notes so a caller can drop the note", () => {
-    const result = checkRule("never #\"a deploy\" gitlab.deployment(status = \"failed\")");
+  it("marks problems confined to the sentence so a caller can drop it", () => {
+    const result = checkRule("rule \"A deploy fails {env}\"\nnever gitlab.deployment(status = \"failed\")");
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.errors.every((error) => error.kind === "note")).toBe(true);
+    expect(result.errors.every((error) => error.kind === "sentence")).toBe(true);
   });
 
   it("scopes bound values to where they were bound", () => {
@@ -103,15 +106,33 @@ describe("rule checking against the catalogue", () => {
     expect(prefix.bindings.get("issue")?.field.name).toBe("issue");
   });
 
-  it("infers $ choices from where they are used", () => {
+  it("types inputs by their declaration and checks it against where they are used", () => {
     const rule = ok(ghost);
     expect(rule.params).toHaveLength(1);
     expect(rule.params[0]).toMatchObject({ name: "env", type: "string", list: false, label: "environment" });
     expect(rule.params[0]!.usages.map((usage) => `${usage.event.provider}.${usage.event.name}.${usage.field.name}`))
       .toEqual(["gitlab.deployment.environment", "sentry.event_alert.environment"]);
-    const fixed = ok("never gitlab.deployment(status in $statuses)");
+    const fixed = ok("input statuses: list of text\nnever gitlab.deployment(status in $statuses)");
     expect(fixed.params[0]).toMatchObject({ list: true, options: expect.arrayContaining([{ value: "failed", label: "failed" }]) });
-    expect(errors("never (gitlab.deployment(environment = $x) or stripe.charge.succeeded(amount = $x))")[0]).toMatch(/different types/);
+    expect(errors("input x: text\nnever (gitlab.deployment(environment = $x) or stripe.charge.succeeded(amount = $x))")[0]).toMatch(/different types/);
+    expect(errors("never gitlab.deployment(environment = $env)")[0]).toMatch(/\$env is not declared. Add `input env: text`/);
+    expect(errors("input env: number\nnever gitlab.deployment(environment = $env)")[0]).toMatch(/declared as number.*needs text/);
+    expect(errors("input env: text\nnever gitlab.deployment(status in $env)")[0]).toMatch(/needs list of text/);
+    expect(errors("input env: text\ninput spare: number\nnever gitlab.deployment(environment = $env)")[0]).toMatch(/spare is declared but the rule never uses/);
+    expect(errors("input env: text\ninput env: text\nnever gitlab.deployment(environment = $env)")[0]).toMatch(/declared twice/);
+    expect(errors("input wait: text\nalways (gitlab.deployment -> eventually within $wait linear.issue)")[0]).toMatch(/declared as text.*needs duration/);
+  });
+
+  it("checks defaults against the input's type and allowed values, and fills them in", () => {
+    const rule = ok("input env: text = \"production\"\ninput limit: duration = 2h\nalways (gitlab.deployment(environment = $env) -> eventually within $limit linear.issue)");
+    expect(rule.params.map((param) => [param.name, param.default])).toEqual([["limit", "2h"], ["env", "production"]]);
+    expect(choiceIssues(rule, {})).toEqual([]);
+    expect(JSON.stringify(compileRule(rule, {}, { id: "r", version: 1, tenantId, name: "r" }).formula)).toContain('"withinMs":7200000');
+    expect(JSON.stringify(compileRule(rule, { env: "staging" }, { id: "r", version: 1, tenantId, name: "r" }))).toContain("staging");
+    expect(errors("input s: text = \"exploded\"\nnever gitlab.deployment(status = $s)")[0]).toMatch(/Default for s: "exploded" is not an allowed status/);
+    expect(errors("input a: number = \"10\"\nnever stripe.charge.succeeded(amount > $a)")[0]).toMatch(/Default for a: "10" is not a number/);
+    expect(errors("input s: list of text = \"failed\"\nnever gitlab.deployment(status in $s)")[0]).toMatch(/list of status values/);
+    expect(ok("input on: boolean = true\nnever linear.issue(state_changed = $on)").params[0]?.default).toBe(true);
   });
 
   it("rejects liveness and accepts bounded or safe shapes, pointing at the operator", () => {
@@ -132,32 +153,59 @@ describe("rule checking against the catalogue", () => {
   });
 });
 
-describe("notes", () => {
-  it("must use every part exactly once and never spell out values", () => {
-    expect(ok("never #\"a {1} deploy\" gitlab.deployment(status = \"failed\")")).toBeDefined();
-    expect(errors("never #\"a deploy\" gitlab.deployment(status = \"failed\")")[0]).toMatch(/must use \{1\} exactly once/);
-    expect(errors("never #\"a {1} deploy {1}\" gitlab.deployment(status = \"failed\")")[0]).toMatch(/exactly once/);
-    expect(errors("never #\"a {1} deploy to {2}\" gitlab.deployment(status = \"failed\")")[0]).toMatch(/refers to \{2\}/);
-    expect(errors("never #\"a failed deploy {1}\" gitlab.deployment(status = \"failed\")")[0]).toMatch(/cannot spell out the value "failed"/);
-    expect(errors("never #\"a deploy to production {1}\" gitlab.deployment(environment = $env)", { paramValues: { env: "production" } })[0])
-      .toMatch(/"production"/);
-    expect(errors("always (gitlab.deployment -> #\"fixed within {1}\" eventually within 30m linear.issue)")[0]).toMatch(/exactly once/);
-    expect(errors("always (gitlab.deployment -> #\"within 30 minutes {1} {2}\" eventually within 30m linear.issue)")[0]).toMatch(/numbers/);
+describe("the rule sentence", () => {
+  const body = "input env: text = \"production\"\nnever gitlab.deployment(status = \"failed\", environment = $env)";
+
+  it("must show every input and never write out numbers, events or input values", () => {
+    expect(ok(`rule "No deploy to {env} may fail"\n${body}`).sentence?.text).toBe("No deploy to {env} may fail");
+    expect(errors(`rule "No deploy may fail"\n${body}`)[0]).toMatch(/must show \{env\}/);
+    expect(errors(`rule "No deploy to {envy} may fail {env}"\n${body}`)[0]).toMatch(/no input envy/);
+    expect(errors(`rule "No deploy to {env} may fail in production"\n${body}`)[0]).toMatch(/cannot write out "production"/);
+    expect(errors(`rule "No staging deploy to {env} may fail"\n${body}`, { paramValues: { env: "staging" } })[0]).toMatch(/"staging"/);
+    expect(errors(`rule "No {env} deploy may fail twice in 2 days"\n${body}`)[0]).toMatch(/numbers/);
+    expect(errors(`rule "No gitlab.deployment to {env} may fail"\n${body}`)[0]).toMatch(/provider.event/);
+    expect(errors(`rule "No {env} deploy {may} fail"\n${body}`)[0]).toMatch(/no input may/);
+    expect(errors(`${body.split("\n")[0]}\nrule "late {env}"\n${body.split("\n")[1]}`)[0]).toMatch(/sentence comes first/);
+    expect(errors("never #\"a {1} deploy\" gitlab.deployment(status = \"failed\")")[0]).toMatch(/Notes .* are gone/);
   });
 
-  it("reads notes with real values in slots and falls back to mechanical English", () => {
-    const rule = ok(`always (
-      #"once {1}, {2}"
-      (#"a {1} deploy to {2} ({3})" gitlab.deployment(status = "success", environment = $env) bind issue = ref.issue_key
-       -> never sentry.event_alert(tags.linear_issue.issue_key = issue, environment = $env))
-    )`);
-    const notes = readRule(rule, { env: "staging" }, "notes");
-    expect(readingText(notes)).toBe("Once a successful deploy to staging (its issue key in its branch as “issue”), there must never be a Sentry error alert where issue key in its linear issue tag is that issue and environment is staging.");
-    expect(notes.filter((segment) => segment.kind === "choice")).toEqual([
+  it("reads the sentence with the chosen values as choices, and the rule word for word on request", () => {
+    const rule = ok(`rule "Once an issue's branch is deployed to {env}, no error tagged with it may appear in {env}"
+input env: text
+always (gitlab.deployment(status = "success", environment = $env) bind issue = ref.issue_key
+  -> never sentry.event_alert(tags.linear_issue.issue_key = issue, environment = $env))`);
+    const reading = readRule(rule, { env: "staging" });
+    expect(readingText(reading)).toBe("Once an issue's branch is deployed to staging, no error tagged with it may appear in staging.");
+    expect(reading.filter((segment) => segment.kind === "choice")).toEqual([
       { kind: "choice", param: "env", label: "environment", text: "staging" },
       { kind: "choice", param: "env", label: "environment", text: "staging" },
     ]);
     expect(readingText(readRule(rule, {}, "mechanical"))).toMatch(/^Whenever there is a GitLab deployment where status is successful and environment is \[environment\]/);
+    expect(readingText(readRule(ok(ghost), { env: "staging" }))).toMatch(/^Whenever there is a GitLab deployment/);
+  });
+});
+
+describe("upgrading rules written with notes", () => {
+  it("drops notes and declares each $ input from its use, leaving the logic unchanged", () => {
+    const old = `always (
+  #"once {1}, {2}"
+  (
+    #"a push to {1}, keeping its commit as {2}"
+    gitlab.push(ref = $ref) bind commit = commit
+    ->
+    #"within {1}, {2}"
+    eventually within $time_limit
+      linear.issue(title contains commit) // the note text "a {1}" stays inside comments and strings
+  )
+)`;
+    const upgraded = upgradeRuleSource(old)!;
+    expect(upgraded.split("\n").slice(0, 3)).toEqual(["input time_limit: duration", "input ref: text", ""]);
+    expect(upgraded).not.toContain("#\"");
+    expect(upgraded).toContain("// the note text \"a {1}\" stays");
+    const values = { ref: "refs/heads/main", time_limit: "1h" };
+    const before = compileRule(ok(stripNotes(old), { inferUndeclared: true }), values, { id: "r", version: 1, tenantId, name: "r" });
+    expect(compileRule(ok(upgraded), values, { id: "r", version: 1, tenantId, name: "r" })).toEqual(before);
+    expect(upgradeRuleSource(upgraded)).toBeUndefined();
   });
 });
 
@@ -244,11 +292,11 @@ describe("monitoring continues after a violation", () => {
 });
 
 describe("time-limit choices", () => {
-  const source = "always (stripe.invoice.payment_failed bind customer = customer -> eventually within $time_limit stripe.invoice.paid(customer = customer))";
+  const source = "input time_limit: duration\nalways (stripe.invoice.payment_failed bind customer = customer -> eventually within $time_limit stripe.invoice.paid(customer = customer))";
 
   it("are typed as durations, validated, compiled and read back as choices", () => {
     const rule = ok(source);
-    expect(rule.params).toEqual([{ name: "time_limit", type: "duration", list: false, label: "time limit", usages: [] }]);
+    expect(rule.params).toEqual([{ name: "time_limit", type: "duration", list: false, label: "time limit", usages: [], declared: true }]);
     expect(choiceIssues(rule, { time_limit: "soon" })[0]?.message).toMatch(/not a time limit/);
     const definition = compileRule(rule, { time_limit: "2m" }, { id: "r", version: 1, tenantId, name: "r" });
     expect(JSON.stringify(definition.formula)).toContain('"withinMs":120000');
@@ -256,7 +304,7 @@ describe("time-limit choices", () => {
     const [suggestions] = suggestChoices(rule, []);
     expect(suggestions?.freeText).toBe(true);
     expect(suggestions?.values.map((value) => value.value)).toContain("1h");
-    expect(errors("always (stripe.invoice.payment_failed -> eventually within $x stripe.charge.succeeded(amount = $x))")[0]).toMatch(/both as a time limit and as a field value/);
+    expect(errors("input x: duration\nalways (stripe.invoice.payment_failed -> eventually within $x stripe.charge.succeeded(amount = $x))")[0]).toMatch(/both as a time limit and as a field value/);
   });
 });
 

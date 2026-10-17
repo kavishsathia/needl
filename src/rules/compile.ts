@@ -1,12 +1,16 @@
 import type { AssertionDefinition, BindingDefinition, Predicate, PropositionDefinition, Scalar } from "../ltl/assertion.js";
 import type { LtlFormula } from "../ltl/types.js";
 import type { CatalogueEvent, CatalogueField } from "./catalogue.js";
-import { textSource, type CheckedRule, type ParamInfo, type ResolvedCondition } from "./check.js";
+import { paramValueIssue, textSource, type CheckedRule, type ParamInfo, type ParamValue, type ParamValues, type ResolvedCondition } from "./check.js";
 import { parseDuration, type ComparisonOp, type Duration, type Expr } from "./syntax.js";
 
-/** Values chosen for a rule's `$` bindings: a scalar, or a list for bindings used with `in`. */
-export type ParamValue = string | number | boolean | readonly (string | number | boolean)[];
-export type ParamValues = Readonly<Record<string, ParamValue>>;
+export type { ParamValue, ParamValues } from "./check.js";
+
+/** The chosen values, with each input's declared default where nothing is chosen. */
+export function effectiveValues(rule: CheckedRule, values: ParamValues): ParamValues {
+  const defaults = Object.fromEntries(rule.params.flatMap((param) => param.default === undefined ? [] : [[param.name, param.default]]));
+  return { ...defaults, ...values };
+}
 
 export class RuleChoiceError extends Error {
   constructor(message: string, readonly params: readonly string[]) {
@@ -15,33 +19,18 @@ export class RuleChoiceError extends Error {
   }
 }
 
-/** Problems with the chosen `$` values; empty when the rule can be compiled. */
-export function choiceIssues(rule: CheckedRule, values: ParamValues): { readonly param: string; readonly message: string }[] {
+/** Problems with the chosen input values (defaults fill in what is not chosen); empty when the rule can be compiled. */
+export function choiceIssues(rule: CheckedRule, chosen: ParamValues): { readonly param: string; readonly message: string }[] {
+  const values = effectiveValues(rule, chosen);
   const issues: { param: string; message: string }[] = [];
   for (const param of rule.params) {
     const value = values[param.name];
     const missing = value === undefined || (Array.isArray(value) && value.length === 0) || value === "";
     if (missing) { issues.push({ param: param.name, message: `Choose ${param.list ? "at least one" : /^[aeiou]/i.test(param.label) ? "an" : "a"} ${param.label}` }); continue; }
-    const items = Array.isArray(value) ? value : [value];
-    if (Array.isArray(value) !== param.list) {
-      issues.push({ param: param.name, message: param.list ? `Choose a list of ${param.label} values` : `Choose a single ${param.label}` });
-      continue;
-    }
-    for (const item of items) {
-      if (param.type === "duration") {
-        const ms = typeof item === "string" ? parseDuration(item) : undefined;
-        if (ms === undefined) issues.push({ param: param.name, message: `${JSON.stringify(item)} is not a time limit; write it like 30s, 15m, 2h or 1d` });
-        else if (ms > 365 * 86_400_000) issues.push({ param: param.name, message: "Time limits can be at most 365d" });
-        break;
-      }
-      if (typeof item !== param.type) { issues.push({ param: param.name, message: `${JSON.stringify(item)} is not a ${param.type}` }); break; }
-      if (param.options !== undefined && !param.options.some((option) => option.value === item)) {
-        issues.push({ param: param.name, message: `${JSON.stringify(item)} is not an allowed ${param.label}` });
-        break;
-      }
-    }
+    const issue = paramValueIssue(param, value);
+    if (issue !== undefined) issues.push({ param: param.name, message: issue });
   }
-  for (const name of Object.keys(values)) {
+  for (const name of Object.keys(chosen)) {
     if (!rule.params.some((param) => param.name === name)) issues.push({ param: name, message: `$${name} is not used by this rule` });
   }
   return issues;
@@ -95,10 +84,11 @@ function propositionName(index: number, event: CatalogueEvent): string {
 /** Compiles a checked rule with its chosen `$` values into an assertion the runtime monitor executes. */
 export function compileRule(
   rule: CheckedRule,
-  values: ParamValues,
+  chosen: ParamValues,
   identity: { readonly id: string; readonly version: number; readonly tenantId: string; readonly name: string },
 ): AssertionDefinition {
-  const issues = choiceIssues(rule, values);
+  const issues = choiceIssues(rule, chosen);
+  const values = effectiveValues(rule, chosen);
   if (issues.length > 0) throw new RuleChoiceError(issues.map((issue) => issue.message).join("; "), issues.map((issue) => issue.param));
   const propositions: PropositionDefinition[] = [];
   const bindings: BindingDefinition[] = [];

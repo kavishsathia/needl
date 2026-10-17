@@ -2,6 +2,7 @@ import type { Provider } from "../../../src/core/types.js";
 import type { AssertionDefinition } from "../../../src/ltl/assertion.js";
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
 import { compileRule, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
+import { upgradeRuleSource } from "../../../src/rules/upgrade.js";
 import type { AssertionDraft, RuleSpec } from "./domain.js";
 import { DEMO_TENANT_ID } from "./domain.js";
 import { exampleRules, type ExampleRule } from "./examples.js";
@@ -161,6 +162,7 @@ const legacyExamples: Readonly<Record<string, ExampleRule["id"]>> = { ghost: "no
 export function upgradeLegacyDraft(value: unknown): { readonly draft: unknown; readonly upgraded: boolean } {
   if (typeof value !== "object" || value === null) return { draft: value, upgraded: false };
   const candidate = value as Record<string, unknown>;
+  if (candidate.rule !== undefined) return upgradeRuleNotes(candidate);
   const templateId = typeof candidate.templateId === "string" ? candidate.templateId : undefined;
   if (candidate.rule !== undefined || templateId === undefined) return { draft: value, upgraded: false };
   const { templateId: _template, meaning, ...rest } = candidate;
@@ -179,5 +181,31 @@ export function upgradeLegacyDraft(value: unknown): { readonly draft: unknown; r
       exampleId: example.id,
       definition: compileRuleDefinition(rule, { id: candidate.localId, name: definition.name, version: definition.version + 1, tenantId: definition.tenantId }),
     },
+  };
+}
+
+/**
+ * Rewrites a rule saved with per-part notes and undeclared `$` choices into the sentence-and-inputs form. The rule logic
+ * is unchanged, so its stored monitor still matches. A built-in example gets the example's own sentence; other rules are
+ * read word for word until someone edits them.
+ */
+function upgradeRuleNotes(candidate: Record<string, unknown>): { readonly draft: unknown; readonly upgraded: boolean } {
+  const rule = candidate.rule as Partial<RuleSpec> | undefined;
+  const definition = candidate.definition as AssertionDefinition | undefined;
+  if (typeof rule?.source !== "string" || typeof rule.values !== "object" || rule.values === null || definition === undefined) return { draft: candidate, upgraded: false };
+  const upgraded = upgradeRuleSource(rule.source);
+  if (upgraded === undefined) return { draft: candidate, upgraded: false };
+  const example = exampleRules.find((item) => item.id === candidate.exampleId);
+  const identity = { id: definition.id, name: definition.name, version: definition.version, tenantId: definition.tenantId };
+  let source = upgraded;
+  if (example !== undefined) {
+    try {
+      if (canonicalJson(compileRuleDefinition({ source: example.source, values: rule.values }, identity)) === canonicalJson(definition)) source = example.source;
+    } catch { /* the saved rule no longer matches its example; keep the upgraded source */ }
+  }
+  const { exampleId: _example, ...rest } = candidate;
+  return {
+    upgraded: true,
+    draft: { ...rest, ...(source === example?.source ? { exampleId: example.id } : {}), rule: { source, values: rule.values } },
   };
 }

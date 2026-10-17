@@ -114,9 +114,9 @@ test("complete assertion journey uses engine evidence and persists authored stat
 
   await page.getByRole("button", { name: /Counterexamples/ }).click();
   const counterexample = detail.locator(".counterexample");
-  await expect(counterexample.getByRole("heading", { name: "A checkout fix must stay fixed after deployment was broken" })).toBeVisible();
-  await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
-  await expect(counterexample.getByText(/formula false/i)).toBeHidden();
+  await expect(counterexample.first().getByRole("heading", { name: /Rule broken/ })).toBeVisible();
+  await expect(counterexample.first().getByText(/progressed LTL formula became false/)).toBeHidden();
+  await expect(counterexample.first().getByText(/formula false/i)).toBeHidden();
   await expect(page.locator(".trace-timeline li")).toHaveCount(2);
   await expect(page.getByText("sentry", { exact: false }).first()).toBeVisible();
   await page.screenshot({ path: fileURLToPath(new URL("safety-desktop-evidence.png", screenshotDir)), fullPage: true });
@@ -168,8 +168,8 @@ test("rules started from each example read back in English and produce counterex
     await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
     await detail.getByRole("button", { name: /Counterexamples/ }).click();
     const counterexample = detail.locator(".counterexample");
-    await expect(counterexample.getByRole("heading", { name: `${item.expectation} was broken` })).toBeVisible();
-    await expect(counterexample.getByText(/progressed LTL formula became false/)).toBeHidden();
+    await expect(counterexample.first().getByRole("heading", { name: /Rule broken/ })).toBeVisible();
+    await expect(counterexample.first().getByText(/progressed LTL formula became false/)).toBeHidden();
     await page.getByRole("button", { name: "Back to assertion board" }).click();
 
     const card = page.getByTestId(`assertion-card-local-${item.expectation.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36)}`);
@@ -243,7 +243,7 @@ test("hand-written rules are checked live: liveness is refused with its location
   await expect(detail.locator(".rule-duration").first()).toHaveText("1 hour");
   await detail.getByRole("button", { name: "Show exact reading" }).click();
   await expect(detail.locator(".expectation-section .meaning-sentence")).toContainText("Whenever there is a failed Stripe invoice payment");
-  await expect(detail.getByText("Each customer is watched separately.")).toBeVisible();
+  await expect(detail.locator(".detail-meta")).toContainText("Per customer");
 });
 
 test("$ choices are dropdowns that version the monitor and accept typed values", async ({ page }) => {
@@ -334,7 +334,7 @@ test("a cached template-based assertion is rewritten as a rule with its choices 
   const detail = page.getByRole("complementary", { name: "A legacy renamed repair stays repaired detail" });
   await expect(detail.getByText("Assertion · v8")).toBeVisible();
   await detail.getByRole("button", { name: /Counterexamples/ }).click();
-  await expect(detail.locator(".counterexample").getByRole("heading", { name: "A legacy renamed repair stays repaired was broken" })).toBeVisible();
+  await expect(detail.locator(".counterexample").first().getByRole("heading", { name: /Rule broken/ })).toBeVisible();
   await expect.poll(async () => page.evaluate((id) => {
     const key = Object.keys(localStorage).find((candidate) => candidate.startsWith("needl.assertions.v1.ten_"));
     const saved = JSON.parse(key === undefined ? "{}" : localStorage.getItem(key) ?? "{}");

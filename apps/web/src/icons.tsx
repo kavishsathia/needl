@@ -18,6 +18,8 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { readonly na
     menu: <><path d="M4 7h16M4 12h16M4 17h16"/></>,
     check: <path d="M5 12l4 4L19 6"/>,
     warning: <><path d="M12 3l10 18H2z"/><path d="M12 9v5M12 17v.1"/></>,
+    clock: <><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></>,
+    chevron: <path d="M9 6l6 6-6 6"/>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...props}>{paths[name]}</svg>;
 }

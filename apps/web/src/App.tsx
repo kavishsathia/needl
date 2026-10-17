@@ -40,7 +40,7 @@ import { checkedRule, createDraftFromRule, exampleDraft, ruleProviders, updateRu
 type Section = "assertions" | "activity" | "connections" | "settings";
 type Filter = "all" | "attention" | "monitoring" | "paused";
 type SortMode = "attention" | "recent" | "name";
-type DetailTab = "overview" | "counterexamples" | "activity";
+type DetailTab = "overview" | "counterexamples" | "investigation" | "activity";
 
 const providerNames: Readonly<Record<Provider, string>> = {
   gitlab: "GitLab",
@@ -544,48 +544,102 @@ function AssertionBoard({ assertions, replay, selectedId, search, onCreate, onOp
   </main>;
 }
 
+/** Long ids such as UUIDs and commit SHAs, shortened to their first characters; short values are left alone. */
+function shortId(value: string): string {
+  return value.length > 20 && !/\s/.test(value) ? `${value.slice(0, 8)}…` : value;
+}
+
+function shortTime(value: string): string {
+  return `${formatDateTime(value)} UTC`;
+}
+
+/** The events behind a break, as a timeline in the style of GitLab's activity notes; the last entry broke the rule. */
 function TraceTimeline({ trace, sample }: {
   readonly trace: readonly MonitorTraceItem[];
   readonly sample: boolean;
 }) {
   return <ol className="trace-timeline">
-    {trace.map((item) => <li key={`${item.type}-${item.inputId}`}>
-      <span className={`timeline-mark timeline-mark--${item.type}`}>{item.position}</span>
-      <div className="trace-main">
-        <div><strong>{item.type === "observation" ? providerNames[item.source.provider] : item.type === "tick" ? "Clock tick" : "Finalization"}</strong><time dateTime={item.at}>{formatDateTime(item.at)} UTC</time></div>
-        {item.type === "observation" ? <>
-          <p>{item.source.subject.name ?? item.source.subject.id}</p>
-          <div className="trace-links">
-            {item.captured !== undefined ? <span className="trace-captured">{Object.entries(item.captured).map(([name, value]) => `${name.replaceAll("_", " ")} = ${value ?? "not found"}`).join(" · ")}</span> : null}
-            {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">{sample ? "Sample source" : "Source"} ↗</a> : null}
+    {trace.map((item, index) => {
+      const breaking = index === trace.length - 1;
+      return <li key={`${item.type}-${item.inputId}`} className={breaking ? "is-breaking" : ""}>
+        {item.type === "observation"
+          ? <span className={`timeline-mark provider-icon--${item.source.provider}`} aria-hidden="true">{providerGlyphs[item.source.provider]}</span>
+          : <span className="timeline-mark timeline-mark--tick" aria-hidden="true"><Icon name="clock"/></span>}
+        <div className="trace-main">
+          <div className="trace-line">
+            {item.type === "observation"
+              ? <p><strong>{providerNames[item.source.provider]}</strong> <span className="trace-kind">{item.source.providerEventType}</span> <span className="trace-subject" title={item.source.subject.id}>{item.source.subject.name ?? shortId(item.source.subject.id)}</span></p>
+              : <p><strong>{item.type === "tick" ? "Time limit ran out" : "Trace completed"}</strong> <span className="trace-subject">· {item.type === "tick" ? "no event arrived in time" : "the trace was explicitly completed"}</span></p>}
+            <time dateTime={item.at}>{shortTime(item.at)}</time>
           </div>
-          <details className="advanced-evidence"><summary>Advanced event details</summary>
-            <code>{item.source.providerEventType}</code>
-            <div className="valuation">{Object.entries(item.valuation).map(([name, value]) => <span className={value ? "is-true" : "is-false"} key={name}>{name}: {String(value)}</span>)}</div>
-            <div className="predicate-explanations">{Object.entries(item.evaluations).map(([name, evaluation]) => <p key={name}><b>{name}</b> — {evaluation.explanation}</p>)}</div>
-          </details>
-        </> : <p>{item.type === "tick" ? "Time passed with no event; a time limit in the rule ran out." : "The trace was explicitly completed."}</p>}
-      </div>
-    </li>)}
+          {item.type === "observation" ? <div className="trace-links">
+            {item.captured !== undefined ? Object.entries(item.captured).map(([name, value]) => <code key={name} className="trace-captured">{name.replaceAll("_", " ")} = {value ?? "not found"}</code>) : null}
+            {item.source.links[0] !== undefined ? <a href={item.source.links[0].url} target="_blank" rel="noreferrer">{sample ? "Sample source" : "Source"} ↗</a> : null}
+            <details className="advanced-evidence"><summary>Details</summary>
+              <div className="valuation">{Object.entries(item.valuation).map(([name, value]) => <span className={value ? "is-true" : "is-false"} key={name}>{name}: {String(value)}</span>)}</div>
+              <div className="predicate-explanations">{Object.entries(item.evaluations).map(([name, evaluation]) => <p key={name}><b>{name}</b> — {evaluation.explanation}</p>)}</div>
+            </details>
+          </div> : null}
+          {breaking ? <p className="trace-verdict"><StatusIcon tone="violated"/>{item.type === "observation" ? "This event broke the rule" : "The rule broke here"}</p> : null}
+        </div>
+      </li>;
+    })}
   </ol>;
 }
 
-function CounterexampleView({ violation, draft }: {
-  readonly violation: CounterexampleRecord;
-  readonly draft: AssertionDraft;
-}) {
-  return <article className="counterexample">
-    <header><div><span className="eyebrow">Counterexample · observed rule break</span><h3>{violationSummary(draft, violation)}</h3></div>{violation.tenantId === DEMO_TENANT_ID ? null : <Pill tone="monitoring">Live</Pill>}<Pill tone="violated">Detected {formatTime(violation.detectedAt)} UTC</Pill></header>
-    <div className="binding-row">{Object.entries(violation.scope).filter(([key]) => key !== "rule").map(([key, value]) => <span key={key}><small>{key.replaceAll("_", " ")}</small>{value}</span>)}</div>
-    <TraceTimeline trace={violation.trace} sample={violation.tenantId === DEMO_TENANT_ID}/>
-    <details className="advanced-evidence counterexample-engine-details"><summary>Advanced engine details</summary><dl><div><dt>Technical cause</dt><dd><code>{violation.cause}</code></dd></div><div><dt>Engine explanation</dt><dd>{violation.explanation}</dd></div></dl></details>
-    <p className="evidence-note">This is a sufficient engine trace, not a minimality claim. {violation.tenantId === DEMO_TENANT_ID ? "Source references are sample evidence." : "Built from signed webhooks received by this workspace."}</p>
-  </article>;
+/** What a break was about, e.g. issue ENG-890 and environment production; empty for rules watched as one. */
+function breakScope(violation: CounterexampleRecord): [string, string][] {
+  return Object.entries(violation.scope).filter(([key]) => key !== "rule").map(([key, value]) => [key, String(value)]);
 }
 
-function violationSummary(draft: AssertionDraft, violation?: CounterexampleRecord): string {
-  if (violation?.cause === "deadline_expired") return `${draft.definition.name}: a time limit ran out`;
-  return `${draft.definition.name} was broken`;
+/** One break as a row that opens into its evidence, like a pipeline row opening into its jobs. */
+function CounterexampleView({ violation, open }: {
+  readonly violation: CounterexampleRecord;
+  readonly open: boolean;
+}) {
+  const sample = violation.tenantId === DEMO_TENANT_ID;
+  const scope = breakScope(violation);
+  return <details className="counterexample" open={open}>
+    <summary>
+      <StatusIcon tone="violated"/>
+      <div className="break-title">
+        <h3>{violation.cause === "deadline_expired" ? "Time limit ran out" : "Rule broken"}<span>{timeAgo(violation.detectedAt)}</span></h3>
+        {scope.length > 0 ? <div className="activity-tags">{scope.map(([key, value]) => <code key={key} title={value}><span>{key.replaceAll("_", " ")}</span>{shortId(value)}</code>)}</div> : null}
+        <span>{violation.trace.length} event{violation.trace.length === 1 ? "" : "s"} · {sample ? "sample data" : "signed webhooks"}</span>
+      </div>
+      <Icon name="chevron" className="break-chevron"/>
+    </summary>
+    <div className="break-body">
+      <TraceTimeline trace={violation.trace} sample={sample}/>
+      <details className="advanced-evidence counterexample-engine-details"><summary>Engine details</summary><dl><div><dt>Technical cause</dt><dd><code>{violation.cause}</code></dd></div><div><dt>Engine explanation</dt><dd>{violation.explanation}</dd></div><div><dt>Detected</dt><dd>{shortTime(violation.detectedAt)}</dd></div></dl>
+        <p className="evidence-note">A sufficient engine trace, not a minimality claim. {sample ? "Source references are sample evidence." : "Built from signed webhooks received by this workspace."}</p>
+      </details>
+    </div>
+  </details>;
+}
+
+/** Events for one rule, newest first and grouped by day, as a GitLab-style activity feed. */
+function ActivityFeed({ events }: { readonly events: DemoReplay["events"] }) {
+  if (events.length === 0) return <EmptyState title="No matching activity">This assertion has no provider-matched events yet.</EmptyState>;
+  const at = (event: DemoReplay["events"][number]) => event.occurredAt ?? event.receivedAt;
+  const sorted = [...events].sort((left, right) => at(right).localeCompare(at(left)));
+  const day = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(value));
+  const groups: { day: string; events: typeof sorted }[] = [];
+  for (const event of sorted) {
+    const label = day(at(event));
+    if (groups.at(-1)?.day === label) groups.at(-1)!.events.push(event);
+    else groups.push({ day: label, events: [event] });
+  }
+  return <div className="activity-feed">{groups.map((group) => <section key={group.day}>
+    <h4>{group.day}</h4>
+    <ol>{group.events.map((event) => <li key={event.id}>
+      <span className={`timeline-mark provider-icon--${event.provider}`} aria-hidden="true">{providerGlyphs[event.provider]}</span>
+      <div>
+        <div className="trace-line"><p><strong>{providerNames[event.provider]}</strong> <span className="trace-kind">{event.kind}</span> <span className="trace-subject" title={event.subject.id}>{event.subject.name ?? shortId(event.subject.id)}</span></p><time dateTime={at(event)}>{new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" }).format(new Date(at(event)))}</time></div>
+        {event.relationships.length > 0 ? <div className="activity-tags">{event.relationships.map((item) => <code key={`${item.type}-${item.id}`} title={item.id}><span>{item.type.replaceAll(/[_-]/g, " ")}</span>{shortId(item.id)}</code>)}</div> : null}
+      </div>
+    </li>)}</ol>
+  </section>)}</div>;
 }
 
 function AssertionDetail({ draft, replay, investigations, investigationReady, onLaunchInvestigation, onRefreshInvestigation, onClose, onToggle, onEdit, onCopy, onChoose }: {
@@ -629,29 +683,39 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
         </div>
       </header>
       <div className="detail-meta">
-        {choices.map((param) => <span key={param.name}><small>{param.label}</small>{choiceText(param, chosen[param.name]) ?? "Not chosen"}</span>)}
+        {choices.map((param) => <span key={param.name}><small>{param.label.charAt(0).toUpperCase() + param.label.slice(1)}</small>{choiceText(param, chosen[param.name]) ?? "Not chosen"}</span>)}
+        <span><small>Watched</small>{draft.definition.scope.keys.some((key) => key.name !== "rule") ? `Per ${draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")}` : "As one"}</span>
         <span><small>Rule version</small>v{draft.definition.version}</span>
         <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} event{checkpoint?.processedCount === 1 ? "" : "s"}</span>
       </div>
       <nav className="detail-tabs" aria-label="Assertion detail sections">
-        {(["overview", "counterexamples", "activity"] as const).map((item) => <button key={item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{item[0]!.toUpperCase() + item.slice(1)}{item === "counterexamples" && violations.length ? ` (${violations.length})` : ""}</button>)}
+        {(["overview", "counterexamples", "investigation", "activity"] as const).map((item) => <button key={item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{item[0]!.toUpperCase() + item.slice(1)}{item === "counterexamples" && violations.length > 0 ? <span className="tab-count">{violations.length}</span> : null}</button>)}
       </nav>
       <div className="detail-content">
-        {tab === "overview" ? <>
-          <section className="detail-section expectation-section"><span className="section-index">01</span><div>
-            <div className="reading-heading"><h3>What Needl watches</h3>{draft.rule !== undefined ? <button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => setExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button> : null}</div>
-            <RuleReading draft={draft} mode={exact ? "mechanical" : "sentence"} onChoose={onChoose}/>
-            {draft.expectation.trim().toLowerCase() !== draft.definition.name.trim().toLowerCase() ? <p className="detail-request">You asked: <q>{draft.expectation}</q></p> : null}
-            <p>{exact ? "The exact reading is generated from the rule itself, word for word." : "Underlined phrases are your choices; changing one saves a new version."}{draft.rule !== undefined && !exact ? " The exact reading shows precisely what the rule checks." : ""}</p>
-            {draft.rule !== undefined ? <details className="rule-source"><summary>Rule</summary><pre>{draft.rule.source}</pre></details> : null}
-          </div></section>
-          <section className="detail-section"><span className="section-index">02</span><div><h3>Observed scope</h3><p>{draft.definition.scope.keys.some((key) => key.name !== "rule") ? `Each ${draft.definition.scope.keys.map((key) => key.name.replaceAll("_", " ")).join(" and ")} is watched separately.` : "One shared monitor watches every matching event."}</p><div className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div></div></section>
-          <section className="detail-section"><span className="section-index">03</span><div><h3>Investigation state</h3><div className="investigation-card"><span className="simulated-mark">{investigation?.status.toUpperCase() ?? (outbox === undefined ? "NOT REQUESTED" : "READY")}</span><div><strong>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Counterexample ready for review") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</strong><p>{investigation === undefined ? (outbox === undefined ? "Needl only offers an investigation after a counterexample." : investigationReady ? "A configured, read-only GitLab flow can be started explicitly. Needl never retries an ambiguous launch." : "The durable outbox is ready, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>{investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab</a> : null}</div><button disabled={investigation === undefined ? latestViolation === undefined || !investigationReady : !refreshable} onClick={() => investigation !== undefined ? onRefreshInvestigation(investigation.id) : latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined && !refreshable ? "This attempt has no refreshable workflow" : undefined}>{investigation === undefined ? "Start investigation" : refreshable ? "Refresh status" : "Attempt recorded"}</button></div></div></section>
-          {draft.status === "needs-review" ? <section className="review-panel"><Icon name="warning"/><div><h3>Preserved for review</h3><p>{draft.reviewReason} Your wording and advanced specification remain stored, but this rule cannot be enabled.</p></div></section> : null}
-          {violations.length > 0 ? <section className="detail-section"><span className="section-index">04</span><div><h3>Latest counterexample</h3><p>The events below are the evidence: in this order, they break the rule above.</p><CounterexampleView violation={violations.at(-1)!} draft={draft}/></div></section> : <section className="quiet-panel"><Icon name="check"/><div><h3>{tone === "unavailable" ? "No matching evidence" : "Watching · No violations observed"}</h3><p>{tone === "unavailable" ? "The selected meaning has no matching evidence yet. This is unavailable evidence, not proof that the rule holds." : "No breaking event has been observed for this assertion. Quiet sources are not treated as proof."}</p></div></section>}
-        </> : null}
-        {tab === "counterexamples" ? violations.length > 0 ? violations.map((violation) => <CounterexampleView key={violation.id} violation={violation} draft={draft}/>) : <EmptyState title="No counterexamples">Replay the violating sample, send a breaking event through a connected source, or inspect the current evidence in Activity.</EmptyState> : null}
-        {tab === "activity" ? <EventTable events={relatedEvents}/> : null}
+        {tab === "overview" ? <section className="rule-overview expectation-section">
+          {draft.status === "needs-review" ? <div className="review-panel"><Icon name="warning"/><div><h3>Preserved for review</h3><p>{draft.reviewReason} Your wording and advanced specification remain stored, but this rule cannot be enabled.</p></div></div> : null}
+          <div className="reading-heading"><h3>What Needl watches</h3>{draft.rule !== undefined ? <button type="button" className="reading-toggle" aria-pressed={exact} onClick={() => setExact(!exact)}>{exact ? "Show plain reading" : "Show exact reading"}</button> : null}</div>
+          <RuleReading draft={draft} mode={exact ? "mechanical" : "sentence"} onChoose={onChoose}/>
+          <p className="reading-hint">{exact ? "Generated from the rule itself, word for word." : "Underlined values are your inputs; changing one saves a new version."}</p>
+          {draft.expectation.trim().toLowerCase() !== draft.definition.name.trim().toLowerCase() ? <p className="detail-request"><span>You asked</span><q>{draft.expectation}</q></p> : null}
+          <div className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div>
+          {draft.rule !== undefined ? <details className="rule-source"><summary>Rule source</summary><pre>{draft.rule.source}</pre></details> : null}
+        </section> : null}
+        {tab === "counterexamples" ? violations.length > 0
+          ? <div className="break-list">{[...violations].reverse().map((violation, index) => <CounterexampleView key={violation.id} violation={violation} open={index === 0}/>)}</div>
+          : <EmptyState title="No counterexamples">{tone === "unavailable" ? "No matching evidence yet. That is not proof the rule holds." : "No breaking event has been observed. Quiet sources are not treated as proof."}</EmptyState> : null}
+        {tab === "investigation" ? <section className="investigation-panel">
+          <div className="investigation-card">
+            <span className="simulated-mark">{investigation?.status.replaceAll("_", " ") ?? (outbox === undefined ? "not requested" : "ready")}</span>
+            <h3>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Latest break ready to investigate") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</h3>
+            <p>{investigation === undefined ? (outbox === undefined ? "Needl offers an investigation once the rule breaks." : investigationReady ? "Start a read-only GitLab flow on the latest break. Needl never retries an ambiguous launch." : "The break is queued, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>
+            <div className="investigation-actions">
+              <button disabled={investigation === undefined ? latestViolation === undefined || !investigationReady : !refreshable} onClick={() => investigation !== undefined ? onRefreshInvestigation(investigation.id) : latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined && !refreshable ? "This attempt has no refreshable workflow" : undefined}>{investigation === undefined ? "Start investigation" : refreshable ? "Refresh status" : "Attempt recorded"}</button>
+              {investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab ↗</a> : null}
+            </div>
+          </div>
+        </section> : null}
+        {tab === "activity" ? <ActivityFeed events={relatedEvents}/> : null}
       </div>
     </div>
     <footer className="detail-footer">

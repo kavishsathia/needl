@@ -227,7 +227,7 @@ export class NeedlRepository implements DeduplicatingEventSink {
     return rows.map((row) => JSON.parse(row.eventJson) as NormalizedEvent).filter((event) => event.tenantId === tenantId);
   }
 
-  /** Rewrites assertions saved by the template-based authoring flow as rules; returns how many changed. */
+  /** Upgrades saved assertions to the current rule format (template-based drafts, rules with notes); returns how many changed. */
   async upgradeLegacyAssertions(): Promise<number> {
     const rows = await this.db.selectFrom("assertions").select(["tenantId", "assertionId", "version", "draftJson"]).execute();
     let upgraded = 0;

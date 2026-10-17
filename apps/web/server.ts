@@ -38,7 +38,7 @@ const investigations = new GitLabInvestigationService(repository);
 const callbacks = new GitLabCallbackService(repository);
 const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
 const upgraded = await repository.upgradeLegacyAssertions();
-if (upgraded > 0) process.stdout.write(`Rewrote ${upgraded} template-based assertion(s) as rules\n`);
+if (upgraded > 0) process.stdout.write(`Upgraded ${upgraded} saved assertion(s) to the current rule format\n`);
 
 // Time-bounded rules need ticks: a missing event is only noticed when time passes, not when something arrives.
 const tickIntervalMs = Number(process.env.NEEDL_TICK_INTERVAL_MS ?? 5_000);

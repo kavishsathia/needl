@@ -321,7 +321,7 @@ h1, h2, h3, p { margin-top: 0; }
 .trace-subject { color: var(--ink); }
 .trace-line time { flex: 0 0 auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .trace-links { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
-.trace-captured { padding: 1px 6px; border-radius: 4px; color: var(--ink); background: var(--surface-hover); font: 12px var(--mono); }
+.trace-captured { height: 22px; padding: 0 7px; display: inline-flex; align-items: center; border-radius: 4px; color: var(--ink); background: var(--surface-hover); font: 12px/1 var(--mono); }
 .trace-links a { color: var(--blue); font-size: 12px; text-decoration: none; }
 .trace-links a:hover { text-decoration: underline; }
 .trace-verdict { margin: 8px 0 0; display: inline-flex; align-items: center; gap: 6px; color: var(--red-text); font-size: 13px; font-weight: 600; }
@@ -347,17 +347,18 @@ h1, h2, h3, p { margin-top: 0; }
 .activity-intro { margin: 12px 0 0; color: var(--muted); font-size: 13px; }
 .activity-feed li.is-other > div { opacity: .55; }
 .activity-feed li.is-other .timeline-mark { color: var(--faint); }
-.activity-other { margin-left: 8px; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.activity-other { height: 18px; margin-left: 8px; padding: 0 7px; display: inline-flex; align-items: center; vertical-align: 2px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 11px; line-height: 1; white-space: nowrap; }
 .activity-feed h4 { margin: 16px 0 12px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .activity-tags { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
-.activity-tags code { padding: 1px 6px; display: inline-flex; gap: 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--surface); font: 12px var(--mono); }
-.activity-tags code span { color: var(--muted); font-family: "GitLab Sans", Inter, ui-sans-serif, sans-serif; }
+/* Fixed height with centered content: the label and the monospace value have different font metrics. */
+.activity-tags code { height: 22px; padding: 0 7px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--surface); font: 12px/1 var(--mono); }
+.activity-tags code span { color: var(--muted); font: 12px/1 "GitLab Sans", Inter, ui-sans-serif, sans-serif; }
 
 .investigation-panel { padding: 20px 0; }
 .investigation-card { padding: 16px; display: grid; gap: 8px; justify-items: start; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); box-shadow: var(--shadow-sm); }
 .investigation-card h3 { margin: 4px 0 0; color: var(--ink-strong); font-size: 16px; font-weight: 600; }
 .investigation-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
-.simulated-mark { padding: 2px 9px; border: 1px solid currentColor; border-radius: 999px; color: var(--purple-strong); font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.simulated-mark { height: 22px; padding: 0 9px; display: inline-flex; align-items: center; border: 1px solid currentColor; border-radius: 999px; color: var(--purple-strong); font-size: 12px; font-weight: 600; line-height: 1; text-transform: capitalize; }
 .investigation-actions { margin-top: 6px; display: flex; align-items: center; gap: 12px; }
 .investigation-actions button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 4px; color: #fff; background: var(--blue); font-size: 14px; cursor: pointer; }
 .investigation-actions button:hover:not(:disabled) { background: var(--blue-strong); }

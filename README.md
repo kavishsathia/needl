@@ -68,21 +68,21 @@ npm run check
 
 ## Run the full-stack web application locally
 
-Install the web dependencies, then start its Vite client and local API process:
+The app stores everything in Postgres. Create a local database (`createdb needl`) and put `DATABASE_URL=postgres://localhost:5432/needl` in the repository `.env`; the web scripts load it. Backend tests create and drop their own databases on the same server (`NEEDL_TEST_DATABASE_URL`, default `postgres://localhost:5432/postgres`). Then install the web dependencies and start the Vite client and local API process:
 
 ```bash
 npm --prefix apps/web ci --legacy-peer-deps
 npm run web:dev
 ```
 
-Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in local SQLite; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable the rule-authoring agent (`OPENAI_TRANSLATION_MODEL` picks the model; `NEEDL_TRANSLATION_DAILY_LIMIT` caps requests per workspace, default 5). `npm run sim:web` also loads a git-ignored `.env` at the repository root. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
+Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in Postgres; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable the rule-authoring agent (`OPENAI_TRANSLATION_MODEL` picks the model; `NEEDL_TRANSLATION_DAILY_LIMIT` caps requests per workspace, default 5). `npm run sim:web` also loads a git-ignored `.env` at the repository root. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
 
 ```bash
 npm run web:build
 npm run web:serve
 ```
 
-The production-build server defaults to `127.0.0.1:4173`; set `HOST` and `PORT` in hosting. Production refuses SQLite and public signup is closed unless `NEEDL_SIGNUP_ALLOWLIST` contains the email. See [deployment readiness](docs/deployment.md) for the prepared hosting contract and secure integration provisioning.
+The production-build server defaults to `127.0.0.1:4173`; set `HOST` and `PORT` in hosting. Public signup in production is closed unless `NEEDL_SIGNUP_ALLOWLIST` contains the email. Production runs on Vercel; see [deployment](docs/deployment.md) for the build, environment, and integration provisioning.
 
 The runtime package has one portable dependency, Zod. SQLite is an optional subpath backed by Node's `node:sqlite`; importing the core or receiver does not load it.
 

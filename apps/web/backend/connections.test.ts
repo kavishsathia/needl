@@ -1,20 +1,19 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { encodeEvent } from "../../simulator/encoders.js";
 import { connectionSettings } from "./connections.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { SignedIngestionService } from "./ingestion.js";
 import { NeedlRepository } from "./repository.js";
 import { SecretBox } from "./secrets.js";
+import { createTestDatabase, dropTestDatabases } from "./test-database.js";
 
 const runtimes: DatabaseRuntime[] = [];
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((runtime) => runtime.close())); });
+afterAll(async () => { await dropTestDatabases(); });
 
 async function setup() {
-  const runtime = createDatabaseRuntime({ NODE_ENV: "test", NEEDL_SQLITE_PATH: join(await mkdtemp(join(tmpdir(), "needl-connections-")), "needl.sqlite") });
+  const runtime = createDatabaseRuntime({ NODE_ENV: "test", DATABASE_URL: await createTestDatabase() });
   runtimes.push(runtime);
   await migrateApplicationDatabase(runtime);
   const repository = new NeedlRepository(runtime, 2);

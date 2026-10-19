@@ -1,12 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { exampleRules } from "../src/examples.js";
 import { exampleDraft } from "../src/ruleDrafts.js";
+import { createTestDatabase, dropTestDatabases } from "./test-database.js";
 
 let processHandle: ChildProcess;
 let baseUrl: string;
@@ -73,9 +72,9 @@ function sampleDraft() {
 beforeAll(async () => {
   const port = await unusedPort();
   baseUrl = `http://127.0.0.1:${port}`;
-  const directory = await mkdtemp(join(tmpdir(), "needl-http-"));
+  const databaseUrl = await createTestDatabase();
   const tsx = fileURLToPath(new URL("../../../node_modules/tsx/dist/cli.mjs", import.meta.url));
-  // Keep the test server on its own SQLite file, even when the build has production settings.
+  // Keep the test server on its own throwaway database and keys, even when the shell has production settings.
   const { DATABASE_URL: _database, NEEDL_SECRET_KEY: _secret, NEEDL_SIGNUP_ALLOWLIST: _allowlist, OPENAI_API_KEY: _openai, ...inherited } = process.env;
   processHandle = spawn(process.execPath, [tsx, "server.ts", "--api-only"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
@@ -84,7 +83,8 @@ beforeAll(async () => {
       NODE_ENV: "test",
       HOST: "127.0.0.1",
       PORT: String(port),
-      NEEDL_SQLITE_PATH: join(directory, "needl.sqlite"),
+      DATABASE_URL: databaseUrl,
+      NEEDL_SECRET_KEY: randomBytes(32).toString("base64"),
       BETTER_AUTH_URL: baseUrl,
       NEEDL_TRUSTED_ORIGINS: baseUrl,
       BETTER_AUTH_SECRET: "needl-http-test-secret-that-is-long-enough",
@@ -99,6 +99,7 @@ afterAll(async () => {
     processHandle.kill("SIGTERM");
     await new Promise<void>((resolve) => processHandle.once("exit", () => resolve()));
   }
+  await dropTestDatabases();
 });
 
 describe("authenticated HTTP boundaries", () => {

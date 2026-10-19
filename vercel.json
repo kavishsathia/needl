@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci --include=dev && npm --prefix apps/web ci --include=dev --legacy-peer-deps",
+  "buildCommand": "npm run check && npm --prefix apps/web run build:vercel"
+}

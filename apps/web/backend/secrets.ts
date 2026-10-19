@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 
 /**
  * Encrypts webhook signing secrets stored in the database (AES-256-GCM). The key comes from NEEDL_SECRET_KEY
- * (32 bytes, base64). Outside production, a key is generated once into a local file next to the SQLite database so
+ * (32 bytes, base64). Outside production, a key is generated once into .needl/secret.key so
  * development works without setup; production refuses to start without an explicit key.
  */
 export class SecretBox {

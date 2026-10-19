@@ -1,7 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { stories } from "../../simulator/events.js";
 import { encodeEvent, sampleValue, settableFields, type SimulatedValue } from "../../simulator/encoders.js";
 import { generateSecrets, integrationConfig, integrationId, providers, secretEnvName, type SimulatorConfig } from "../../simulator/config.js";
@@ -14,13 +11,15 @@ import { exampleDraft } from "../src/ruleDrafts.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { SignedIngestionService } from "./ingestion.js";
 import { NeedlRepository } from "./repository.js";
+import { createTestDatabase, dropTestDatabases } from "./test-database.js";
 
 const runtimes: DatabaseRuntime[] = [];
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((runtime) => runtime.close())); });
+afterAll(async () => { await dropTestDatabases(); });
 
 async function workspace() {
-  const path = join(await mkdtemp(join(tmpdir(), "needl-simulator-")), "needl.sqlite");
-  const runtime = createDatabaseRuntime({ NODE_ENV: "test", NEEDL_SQLITE_PATH: path });
+  const path = await createTestDatabase();
+  const runtime = createDatabaseRuntime({ NODE_ENV: "test", DATABASE_URL: path });
   runtimes.push(runtime);
   await migrateApplicationDatabase(runtime);
   const repository = new NeedlRepository(runtime, 2);

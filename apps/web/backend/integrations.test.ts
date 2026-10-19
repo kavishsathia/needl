@@ -1,8 +1,5 @@
 import { createHmac } from "node:crypto";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { runDemoScenario } from "../demo.js";
 import type { AssertionDraft } from "../src/domain.js";
 import { exampleRules } from "../src/examples.js";
@@ -11,13 +8,15 @@ import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime
 import { SignedIngestionService } from "./ingestion.js";
 import { GitLabCallbackService, GitLabInvestigationService } from "./investigations.js";
 import { NeedlRepository } from "./repository.js";
+import { createTestDatabase, dropTestDatabases } from "./test-database.js";
 
 const runtimes: DatabaseRuntime[] = [];
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((runtime) => runtime.close())); });
+afterAll(async () => { await dropTestDatabases(); });
 
 async function setup() {
-  const path = join(await mkdtemp(join(tmpdir(), "needl-integrations-")), "needl.sqlite");
-  const runtime = createDatabaseRuntime({ NODE_ENV: "test", NEEDL_SQLITE_PATH: path });
+  const path = await createTestDatabase();
+  const runtime = createDatabaseRuntime({ NODE_ENV: "test", DATABASE_URL: path });
   runtimes.push(runtime);
   await migrateApplicationDatabase(runtime);
   return { runtime, repository: new NeedlRepository(runtime, 2) };

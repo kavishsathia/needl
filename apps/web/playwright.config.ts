@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// End-to-end runs start from an empty local database each time.
+const e2eDatabase = process.env.NEEDL_E2E_DATABASE_NAME ?? "needl_e2e";
+
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "./artifacts/playwright",
@@ -14,13 +17,13 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run build && npm run serve",
+    command: `dropdb --if-exists --force ${e2eDatabase} && createdb ${e2eDatabase} && npm run build && npm run serve`,
     url: "http://127.0.0.1:4173/api/health",
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
       NODE_ENV: "test",
-      NEEDL_SQLITE_PATH: `.needl/e2e-${process.pid}.sqlite`,
+      DATABASE_URL: `postgres://localhost:5432/${e2eDatabase}`,
       BETTER_AUTH_URL: "http://127.0.0.1:4173",
       NEEDL_TRUSTED_ORIGINS: "http://127.0.0.1:4173",
       BETTER_AUTH_SECRET: "needl-playwright-secret-that-is-long-enough",

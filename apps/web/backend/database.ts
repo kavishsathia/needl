@@ -1,7 +1,4 @@
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import Database from "better-sqlite3";
-import { CamelCasePlugin, Kysely, PostgresDialect, SqliteDialect, sql } from "kysely";
+import { CamelCasePlugin, Kysely, PostgresDialect, sql } from "kysely";
 import { Pool } from "pg";
 
 export interface NeedlDatabase {
@@ -150,39 +147,27 @@ export interface NeedlDatabase {
 
 export interface DatabaseRuntime {
   readonly db: Kysely<NeedlDatabase>;
-  readonly type: "postgres" | "sqlite";
+  readonly type: "postgres";
   readonly resource: string;
   close(): Promise<void>;
 }
 
 export function createDatabaseRuntime(environment: NodeJS.ProcessEnv = process.env): DatabaseRuntime {
   const connectionString = environment.DATABASE_URL;
-  if (connectionString !== undefined && connectionString.length > 0) {
-    const parsed = new URL(connectionString);
-    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
-      throw new Error("DATABASE_URL must use PostgreSQL");
-    }
-    const pool = new Pool({ connectionString, max: 10, ssl: parsed.hostname === "localhost" ? undefined : { rejectUnauthorized: true } });
-    return {
-      db: new Kysely<NeedlDatabase>({ dialect: new PostgresDialect({ pool }), plugins: [new CamelCasePlugin()] }),
-      type: "postgres",
-      resource: `${parsed.hostname}/${parsed.pathname.replace(/^\//, "")}`,
-      async close() { await pool.end(); },
-    };
+  if (connectionString === undefined || connectionString.length === 0) {
+    throw new Error("DATABASE_URL is required. For local development use postgres://localhost:5432/needl");
   }
-  if (environment.NODE_ENV === "production") {
-    throw new Error("DATABASE_URL is required in production; local SQLite fallback is disabled");
+  const parsed = new URL(connectionString);
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error("DATABASE_URL must use PostgreSQL");
   }
-  const filename = resolve(environment.NEEDL_SQLITE_PATH ?? ".needl/needl.sqlite");
-  mkdirSync(dirname(filename), { recursive: true });
-  const sqlite = new Database(filename);
-  sqlite.pragma("journal_mode = WAL");
-  sqlite.pragma("foreign_keys = ON");
+  const local = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+  const pool = new Pool({ connectionString, max: Number(environment.NEEDL_DB_POOL_MAX ?? 10), ssl: local ? undefined : { rejectUnauthorized: true } });
   return {
-    db: new Kysely<NeedlDatabase>({ dialect: new SqliteDialect({ database: sqlite }), plugins: [new CamelCasePlugin()] }),
-    type: "sqlite",
-    resource: filename,
-    async close() { sqlite.close(); },
+    db: new Kysely<NeedlDatabase>({ dialect: new PostgresDialect({ pool }), plugins: [new CamelCasePlugin()] }),
+    type: "postgres",
+    resource: `${parsed.hostname}/${parsed.pathname.replace(/^\//, "")}`,
+    async close() { await pool.end(); },
   };
 }
 
@@ -205,12 +190,7 @@ const applicationTables = [
 ] as const;
 
 async function addColumn(runtime: DatabaseRuntime, table: string, column: string): Promise<void> {
-  if (runtime.type === "postgres") {
-    await sql.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`).execute(runtime.db);
-    return;
-  }
-  const columns = await sql.raw<{ name: string }>(`PRAGMA table_info(${table})`).execute(runtime.db);
-  if (!columns.rows.some((existing) => existing.name === column)) await sql.raw(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`).execute(runtime.db);
+  await sql.raw(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TEXT`).execute(runtime.db);
 }
 
 export async function migrateApplicationDatabase(runtime: DatabaseRuntime): Promise<void> {

@@ -1,20 +1,19 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { runDemoScenario } from "../demo.js";
 import type { AssertionDraft } from "../src/domain.js";
 import { exampleRules } from "../src/examples.js";
 import { exampleDraft } from "../src/ruleDrafts.js";
 import { createDatabaseRuntime, migrateApplicationDatabase, type DatabaseRuntime } from "./database.js";
 import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./repository.js";
+import { createTestDatabase, dropTestDatabases } from "./test-database.js";
 
 const runtimes: DatabaseRuntime[] = [];
 afterEach(async () => { await Promise.all(runtimes.splice(0).map((runtime) => runtime.close())); });
+afterAll(async () => { await dropTestDatabases(); });
 
 async function setup(filename?: string) {
-  const path = filename ?? join(await mkdtemp(join(tmpdir(), "needl-app-")), "needl.sqlite");
-  const runtime = createDatabaseRuntime({ NODE_ENV: "test", NEEDL_SQLITE_PATH: path });
+  const path = filename ?? await createTestDatabase();
+  const runtime = createDatabaseRuntime({ NODE_ENV: "test", DATABASE_URL: path });
   runtimes.push(runtime);
   await migrateApplicationDatabase(runtime);
   const repository = new NeedlRepository(runtime, 2);

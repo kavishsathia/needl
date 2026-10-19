@@ -4,19 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c yellow,cyan \"tsx watch server.ts --api-only\" \"vite\"",
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"tsx watch --env-file-if-exists=../../.env server.ts --api-only\" \"vite\"",
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "test": "vitest run --config vitest.config.ts",
-    "serve": "tsx server.ts",
-    "db:migrate": "tsx backend/migrate.ts",
-    "db:configure-integrations": "tsx backend/configure-integrations.ts",
+    "serve": "tsx --env-file-if-exists=../../.env server.ts",
+    "db:migrate": "tsx --env-file-if-exists=../../.env backend/migrate.ts",
+    "db:configure-integrations": "tsx --env-file-if-exists=../../.env backend/configure-integrations.ts",
     "smoke:openai": "tsx backend/live-openai-smoke.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "build:vercel": "npm run build && node scripts/build-vercel.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",
     "better-auth": "^1.7.7",
-    "better-sqlite3": "^13.0.3",
     "kysely": "^0.29.6",
     "openai": "^7.33.0",
     "pg": "^8.23.1",
@@ -29,7 +29,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/better-sqlite3": "^9.6.0",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",

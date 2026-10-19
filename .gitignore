@@ -16,3 +16,6 @@ apps/web/artifacts/report/
 .simulator/
 test-results/
 .needl/
+.vercel/
+.vercel
+.env*

@@ -269,7 +269,7 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const day = now.toISOString().slice(0, 10);
     return this.db.transaction().execute(async (transaction) => {
       const row = await transaction.insertInto("translationUsage").values({ tenantId, usageDay: day, requestCount: 1 })
-        .onConflict((conflict) => conflict.columns(["tenantId", "usageDay"]).doUpdateSet({ requestCount: sql<number>`request_count + 1` }))
+        .onConflict((conflict) => conflict.columns(["tenantId", "usageDay"]).doUpdateSet({ requestCount: sql<number>`translation_usage.request_count + 1` }))
         .returning("requestCount").executeTakeFirstOrThrow();
       const count = row.requestCount;
       if (count > this.translationDailyLimit) throw new QuotaExceededError();

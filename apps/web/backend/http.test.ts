@@ -75,10 +75,12 @@ beforeAll(async () => {
   baseUrl = `http://127.0.0.1:${port}`;
   const directory = await mkdtemp(join(tmpdir(), "needl-http-"));
   const tsx = fileURLToPath(new URL("../../../node_modules/tsx/dist/cli.mjs", import.meta.url));
+  // Keep the test server on its own SQLite file, even when the build has production settings.
+  const { DATABASE_URL: _database, NEEDL_SECRET_KEY: _secret, NEEDL_SIGNUP_ALLOWLIST: _allowlist, OPENAI_API_KEY: _openai, ...inherited } = process.env;
   processHandle = spawn(process.execPath, [tsx, "server.ts", "--api-only"], {
     cwd: fileURLToPath(new URL("..", import.meta.url)),
     env: {
-      ...process.env,
+      ...inherited,
       NODE_ENV: "test",
       HOST: "127.0.0.1",
       PORT: String(port),

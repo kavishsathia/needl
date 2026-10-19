@@ -4,10 +4,9 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm ci && npm --prefix apps/web ci && npm run check && npm --prefix apps/web run test && npm --prefix apps/web run build
+    buildCommand: npm ci --include=dev && npm --prefix apps/web ci --include=dev --legacy-peer-deps && npm run check && npm --prefix apps/web run test && npm --prefix apps/web run build
     startCommand: npm --prefix apps/web run db:migrate && npm --prefix apps/web run serve
     healthCheckPath: /api/health
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: NODE_VERSION
         value: 22.23.1
@@ -22,6 +21,8 @@ services:
       - key: BETTER_AUTH_SECRET
         generateValue: true
       - key: DATABASE_URL
+        sync: false
+      - key: NEEDL_SECRET_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false

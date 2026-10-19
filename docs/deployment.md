@@ -3,8 +3,10 @@
 Needl runs on Vercel as project `needl`, at:
 
 ```text
-https://needl-sigma.vercel.app
+https://needl.dev
 ```
+
+`www.needl.dev` redirects there; `https://needl-sigma.vercel.app` still serves the same deployment, so webhooks registered against it keep working.
 
 `vercel.json` installs both packages and runs `npm --prefix apps/web run build:vercel`, which writes Vercel's Build Output API directly: the Vite frontend as static files and the whole `/api` surface as one bundled Node function (`apps/web/backend/vercel.ts`, wrapping the same `createNeedlApp()` the local server uses). Deploy with `vercel deploy --prod` from the repository root.
 
@@ -71,7 +73,7 @@ Do not enable the investigation record until the dedicated project, numeric AI C
 npm --prefix apps/web run db:configure-integrations -- /restricted/path/needl-integrations.json
 ```
 
-The signed ingestion URL is `https://needl-sigma.vercel.app/api/hooks/<integration-id>`. The optional flow callback URL is `https://needl-sigma.vercel.app/api/hooks/gitlab-flow/<integration-id>`.
+The signed ingestion URL is `https://needl.dev/api/hooks/<integration-id>`. The optional flow callback URL is `https://needl.dev/api/hooks/gitlab-flow/<integration-id>`.
 
 ## Hosted acceptance
 

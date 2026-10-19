@@ -1,4 +1,4 @@
-import type { AssertionDraft, ChoiceSuggestions, Connection, ConnectionsResponse, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
+import type { AssertionDraft, ChoiceSuggestions, Connection, ConnectionsResponse, FlowConnectionSummary, FlowDiscovery, DemoBootstrap, DemoReplay, DemoReplayRequest, InvestigationRecord, MonitorSnapshot, TranslationProposalResponse, WorkspaceBootstrap } from "./domain.js";
 
 async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { credentials: "same-origin", ...init });
@@ -91,4 +91,22 @@ export function saveConnectionSecret(id: string, secret: string, mode?: string):
 
 export function deleteConnection(id: string): Promise<{ readonly deleted: boolean }> {
   return requestJson(`/api/connections/${encodeURIComponent(id)}`, { method: "DELETE", headers: mutation });
+}
+
+export function fetchFlowConnection(): Promise<FlowConnectionSummary> {
+  return requestJson("/api/flow-connection");
+}
+
+/** Checks a token (or the saved one when token is empty) and lists the flows enabled in the project. */
+export function discoverFlows(project: string, token: string): Promise<FlowDiscovery> {
+  return requestJson("/api/flow-connection/discover", { method: "POST", headers: mutation, body: JSON.stringify({ project, ...(token.trim().length > 0 ? { token } : {}) }) });
+}
+
+export function saveFlowConnection(input: { readonly project: string; readonly token: string; readonly consumerId: number; readonly goal: string; readonly autoLaunch: boolean }): Promise<FlowConnectionSummary> {
+  const { token, ...rest } = input;
+  return requestJson("/api/flow-connection", { method: "PUT", headers: mutation, body: JSON.stringify({ ...rest, ...(token.trim().length > 0 ? { token } : {}) }) });
+}
+
+export function disconnectFlow(): Promise<{ readonly disconnected: boolean }> {
+  return requestJson("/api/flow-connection", { method: "DELETE", headers: mutation });
 }

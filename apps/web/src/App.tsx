@@ -17,7 +17,7 @@ import { eventMatches, readField } from "../../../src/rules/suggest.js";
 import type { CatalogueField } from "../../../src/rules/catalogue.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
 import { formulaText } from "./authoring.js";
-import { confirmTranslation, createConnection, deleteConnection, fetchConnections, saveConnectionSecret, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
+import { confirmTranslation, createConnection, deleteConnection, disconnectFlow, discoverFlows, fetchConnections, fetchFlowConnection, saveConnectionSecret, saveFlowConnection, fetchBootstrap, fetchChoiceSuggestions, fetchMonitor, fetchPublicConfig, fetchWorkspace, launchInvestigation, refreshInvestigation, removeAssertion, replayDemo, saveAssertion, signIn, signOut, signUp, translateAssertion } from "./api.js";
 import { assertAssertionCapacity, validateAssertionCollection } from "./collection.js";
 import type {
   AssertionDraft,
@@ -25,6 +25,8 @@ import type {
   Connection,
   ConnectionsResponse,
   DemoReplay,
+  FlowConnectionSummary,
+  FlowDiscovery,
   DemoReplayRequest,
   InvestigationRecord,
   MonitorSnapshot,
@@ -875,6 +877,101 @@ function ConnectDialog({ provider, connection, publicUrl, local, onClose, onSave
   </div>;
 }
 
+function FlowDialog({ summary, onClose, onSaved }: {
+  readonly summary: FlowConnectionSummary;
+  readonly onClose: () => void;
+  readonly onSaved: () => void;
+}) {
+  const [project, setProject] = useState(summary.projectPath ?? "");
+  const [token, setToken] = useState("");
+  const [discovery, setDiscovery] = useState<FlowDiscovery | null>(null);
+  const [consumerId, setConsumerId] = useState<number | undefined>(summary.consumerId);
+  const [goal, setGoal] = useState(summary.goal);
+  const [autoLaunch, setAutoLaunch] = useState(summary.connected ? summary.autoLaunch : true);
+  const [busy, setBusy] = useState<"finding" | "saving" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => closeRef.current?.focus(), []);
+  const canFind = project.trim().length > 0 && (token.trim().length > 0 || summary.connected);
+  const find = async () => {
+    setBusy("finding");
+    setError(null);
+    try {
+      const found = await discoverFlows(project, token);
+      setDiscovery(found);
+      setProject(found.project.path);
+      setConsumerId((current) => found.flows.some((flow) => flow.consumerId === current) ? current : found.flows[0]?.consumerId);
+    } catch (cause) { setDiscovery(null); setError(cause instanceof Error ? cause.message : "Unable to check GitLab"); }
+    finally { setBusy(null); }
+  };
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (consumerId === undefined) return;
+    setBusy("saving");
+    setError(null);
+    try { await saveFlowConnection({ project, token, consumerId, goal, autoLaunch }); setToken(""); onSaved(); onClose(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save"); }
+    finally { setBusy(null); }
+  };
+  const flows = discovery?.flows ?? (summary.connected && summary.consumerId !== undefined ? [{ consumerId: summary.consumerId, name: summary.flowName ?? "Saved flow", foundational: false }] : []);
+  return <div className="modal-layer" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="modal connect-modal" role="dialog" aria-modal="true" aria-labelledby="flow-title">
+      <header><div><span className="eyebrow">When a rule breaks</span><h2 id="flow-title">GitLab Duo flow</h2></div><button ref={closeRef} className="icon-button" onClick={onClose} aria-label="Close setup"><Icon name="close"/></button></header>
+      <div className="connect-body">
+        <ol className="connect-steps">
+          <li>In GitLab, create a personal access token with the <code>api</code> scope (User settings → Access tokens). Use your own account: GitLab only starts flows for people, not bots.</li>
+          <li>Enter the project whose flow should run, then pick the flow. Only flows enabled in that project are listed.</li>
+          <li>Say what the flow should do. Needl also passes it the full record of the violation.</li>
+        </ol>
+        <form className="connect-secret flow-form" onSubmit={(event) => void save(event)}>
+          <label>GitLab project<div><input type="text" aria-label="GitLab project" spellCheck={false} value={project} onChange={(event) => { setProject(event.target.value); setDiscovery(null); }} placeholder="group/project"/></div></label>
+          <label>Personal access token<div><input type="password" aria-label="Personal access token" autoComplete="off" spellCheck={false} value={token} onChange={(event) => { setToken(event.target.value); setDiscovery(null); }} placeholder={summary.connected ? `Saved for ${summary.gitlabUser ?? "your account"}. Paste a new one to replace it` : "glpat-…"}/><button type="button" onClick={() => void find()} disabled={!canFind || busy !== null}>{busy === "finding" ? "Checking…" : "Find flows"}</button></div></label>
+          {discovery !== null ? <p className="flow-found">Signed in to GitLab as <strong>{discovery.gitlabUser}</strong> · {discovery.project.path}</p> : null}
+          {flows.length > 0 ? <div className="connect-modes" role="radiogroup" aria-label="Flow to run">{flows.map((flow) => <label key={flow.consumerId} className={flow.consumerId === consumerId ? "is-active" : ""}><input type="radio" name="flow" checked={flow.consumerId === consumerId} onChange={() => setConsumerId(flow.consumerId)}/><strong>{flow.name}</strong><span>{flow.foundational ? "Built-in GitLab flow" : "Custom flow"}</span></label>)}</div>
+            : discovery !== null ? <p className="connect-warning"><Icon name="warning"/><span>No flows are enabled in {discovery.project.path}. Enable one in GitLab under Automate → Flows, then check again.</span></p> : null}
+          <label>Instructions for the flow<textarea aria-label="Instructions for the flow" rows={4} value={goal} onChange={(event) => setGoal(event.target.value)}/></label>
+          <label className="flow-toggle"><input type="checkbox" checked={autoLaunch} onChange={(event) => setAutoLaunch(event.target.checked)}/><span><strong>Start it automatically when a rule breaks</strong><small>Otherwise, start it yourself from a violation. Only violations found after you switch this on start a flow.</small></span></label>
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          <button className="primary-button" type="submit" disabled={busy !== null || consumerId === undefined || project.trim().length === 0}>{busy === "saving" ? "Saving…" : summary.connected ? "Save changes" : "Connect flow"}</button>
+        </form>
+      </div>
+    </section>
+  </div>;
+}
+
+function FlowPanel() {
+  const [summary, setSummary] = useState<FlowConnectionSummary | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = async () => {
+    try { setSummary(await fetchFlowConnection()); setError(null); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load the flow connection"); }
+  };
+  useEffect(() => { void load(); }, []);
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect the GitLab flow? Needl forgets the access token and stops starting flows.")) return;
+    try { await disconnectFlow(); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to disconnect"); }
+  };
+  const connected = summary?.connected === true;
+  return <section className="flow-panel" data-testid="flow-connection">
+    <span className="provider-icon provider-icon--gitlab">{providerGlyphs.gitlab}</span>
+    <div>
+      <span className="eyebrow">When a rule breaks</span>
+      <h2>GitLab Duo flow</h2>
+      <p>{connected
+        ? <>Runs <strong>{summary.flowName}</strong> in {summary.projectPath} as {summary.gitlabUser}. {summary.autoLaunch ? "Starts automatically on new violations." : "Start it from a violation."}</>
+        : "Wake up a GitLab Duo flow to investigate or fix a violation, for example by opening a draft merge request."}</p>
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+    </div>
+    <span className="connection-actions">
+      <button className="connect-button" onClick={() => setOpen(true)} disabled={summary === null}>{connected ? "Edit" : "Connect"}</button>
+      {connected ? <button className="danger-button" onClick={() => void disconnect()}>Disconnect</button> : null}
+    </span>
+    {open && summary !== null ? <FlowDialog summary={summary} onClose={() => setOpen(false)} onSaved={() => void load()}/> : null}
+  </section>;
+}
+
 function ConnectionsPage({ replay }: { readonly replay: DemoReplay | null }) {
   const [data, setData] = useState<ConnectionsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -907,6 +1004,7 @@ function ConnectionsPage({ replay }: { readonly replay: DemoReplay | null }) {
   const publicUrl = data?.publicUrl ?? window.location.origin;
   return <main className="page" id="main-content"><div className="page-heading"><span className="eyebrow">Signed webhooks</span><h1>Connections</h1><p>Connect a tool by pointing its webhooks at Needl. Every delivery is verified against the tool's signing secret before Needl reads it.</p></div>
     {error ? <p className="form-error" role="alert">{error}</p> : null}
+    <FlowPanel/>
     <div className="connection-grid">{providers.map((provider) => {
       const routes = data?.connections.filter((item) => item.provider === provider) ?? [];
       return <article key={provider} data-testid={`connection-${provider}`}>

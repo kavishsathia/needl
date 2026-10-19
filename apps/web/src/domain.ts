@@ -156,6 +156,30 @@ export interface Connection {
   readonly createdAt: string;
 }
 
+/** The GitLab flow Needl wakes up when a rule breaks. The access token is never sent to the browser. */
+export interface FlowConnectionSummary {
+  readonly connected: boolean;
+  readonly gitlabUser?: string;
+  readonly projectPath?: string;
+  readonly flowName?: string;
+  readonly consumerId?: number;
+  readonly goal: string;
+  readonly autoLaunch: boolean;
+  readonly updatedAt?: string;
+}
+
+export interface FlowOption {
+  readonly consumerId: number;
+  readonly name: string;
+  readonly foundational: boolean;
+}
+
+export interface FlowDiscovery {
+  readonly gitlabUser: string;
+  readonly project: { readonly id: string; readonly path: string };
+  readonly flows: readonly FlowOption[];
+}
+
 export interface ConnectionsResponse {
   /** NEEDL_PUBLIC_URL when the server pins it; otherwise webhook URLs use the address Needl was opened on. */
   readonly publicUrl: string | null;

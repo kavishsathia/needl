@@ -388,6 +388,43 @@ export class NeedlRepository implements DeduplicatingEventSink {
     });
   }
 
+  /** The workspace's GitLab flow connection (purpose "investigation"), enabled or not. */
+  async findFlowConnection(tenantId: string): Promise<StoredIntegration | undefined> {
+    const rows = await this.db.selectFrom("integrationConfigs").selectAll()
+      .where("tenantId", "=", tenantId).where("provider", "=", "gitlab").orderBy("createdAt").execute();
+    return rows.map(integrationFromRow).find((integration) => integration.config.purpose === "investigation");
+  }
+
+  /** Creates or replaces the workspace's flow connection. Without a new sealed token the saved one is kept. */
+  async saveFlowConnection(tenantId: string, config: Readonly<Record<string, unknown>>, sealedToken?: string): Promise<StoredIntegration> {
+    const existing = await this.findFlowConnection(tenantId);
+    const now = new Date().toISOString();
+    const configJson = JSON.stringify({ ...config, purpose: "investigation" });
+    if (existing === undefined) {
+      if (sealedToken === undefined) throw Object.assign(new Error("Paste a GitLab access token"), { statusCode: 400 });
+      const id = `int_gitlab_flow_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+      await this.db.insertInto("integrationConfigs").values({
+        id, tenantId, provider: "gitlab", configJson, secretEnvName: "", secretCiphertext: sealedToken,
+        lastAttemptAt: null, lastOutcome: null, lastDetail: null, lastReceivedAt: null, enabled: 1, createdAt: now, updatedAt: now,
+      }).execute();
+      return this.getIntegration(id);
+    }
+    if (sealedToken === undefined && existing.secretCiphertext === undefined) throw Object.assign(new Error("Paste a GitLab access token"), { statusCode: 400 });
+    await this.db.updateTable("integrationConfigs").set({
+      configJson, enabled: 1, updatedAt: now, ...(sealedToken === undefined ? {} : { secretCiphertext: sealedToken, secretEnvName: "" }),
+    }).where("tenantId", "=", tenantId).where("id", "=", existing.id).execute();
+    return this.getIntegration(existing.id);
+  }
+
+  /** Turns the flow connection off and forgets its token; past investigations keep pointing at the row. */
+  async disableFlowConnection(tenantId: string): Promise<boolean> {
+    const existing = await this.findFlowConnection(tenantId);
+    if (existing === undefined) return false;
+    await this.db.updateTable("integrationConfigs").set({ enabled: 0, secretCiphertext: null, updatedAt: new Date().toISOString() })
+      .where("tenantId", "=", tenantId).where("id", "=", existing.id).execute();
+    return true;
+  }
+
   async findInvestigationIntegration(tenantId: string): Promise<StoredIntegration | undefined> {
     const rows = await this.db.selectFrom("integrationConfigs").selectAll()
       .where("tenantId", "=", tenantId).where("provider", "=", "gitlab").where("enabled", "=", 1).execute();
@@ -396,7 +433,7 @@ export class NeedlRepository implements DeduplicatingEventSink {
 
   /**
    * Violations waiting for an automatic GitLab launch: the workspace's investigation integration has `autoLaunch`,
-   * the violation was detected after that integration was set up, and no investigation exists for it yet.
+   * the violation was detected after automatic launch was switched on, and no investigation exists for it yet.
    */
   async listViolationsAwaitingLaunch(limit = 3): Promise<readonly { readonly tenantId: string; readonly violationId: string }[]> {
     const result = await sql<{ tenantId: string; violationId: string }>`
@@ -405,7 +442,7 @@ export class NeedlRepository implements DeduplicatingEventSink {
       join integration_configs i on i.tenant_id = c.tenant_id and i.provider = 'gitlab' and i.enabled = 1
         and (i.config_json::jsonb ->> 'purpose') = 'investigation'
         and (i.config_json::jsonb ->> 'autoLaunch') = 'true'
-      where c.detected_at >= i.created_at
+      where c.detected_at >= coalesce(i.config_json::jsonb ->> 'autoLaunchSince', i.created_at)
         and not exists (select 1 from investigations v where v.tenant_id = c.tenant_id and v.violation_id = c.counterexample_id)
       order by c.detected_at
       limit ${limit}`.execute(this.db.withoutPlugins());

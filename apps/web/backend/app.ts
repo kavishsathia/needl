@@ -19,6 +19,7 @@ import { NeedlRepository, QuotaExceededError, StaleAssertionError } from "./repo
 import { OpenAITranslationModel, translateToRule } from "./translator.js";
 import { SecretBox } from "./secrets.js";
 import { connectionSettings } from "./connections.js";
+import { FlowConnectionService } from "./flow-connection.js";
 import { providers as allProviders } from "../../../src/core/types.js";
 
 const appRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -42,6 +43,7 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
   const secretBox = SecretBox.fromEnvironment();
   const ingestion = new SignedIngestionService(repository, process.env, secretBox);
   const investigations = new GitLabInvestigationService(repository);
+  const flowConnection = new FlowConnectionService(repository);
   const callbacks = new GitLabCallbackService(repository);
   const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
   const upgraded = await repository.upgradeLegacyAssertions();
@@ -219,6 +221,26 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
         if (request.method === "DELETE" && connectionId !== null && connectionId[2] === undefined) {
           json(response, 200, { deleted: await repository.deleteConnection(tenantId, decodeURIComponent(connectionId[1]!)) }); return;
         }
+      }
+      if (url.pathname === "/api/flow-connection" || url.pathname === "/api/flow-connection/discover") {
+        const { tenantId } = await requireWorkspace(request);
+        if (request.method === "GET" && url.pathname === "/api/flow-connection") { json(response, 200, await flowConnection.summary(tenantId)); return; }
+        assertMutationOrigin(request);
+        if (request.method === "POST" && url.pathname === "/api/flow-connection/discover") {
+          const body = await readJson(request) as { token?: unknown; project?: unknown };
+          json(response, 200, await flowConnection.discoverFor(tenantId, typeof body.token === "string" ? body.token : undefined, typeof body.project === "string" ? body.project : "")); return;
+        }
+        if (request.method === "PUT" && url.pathname === "/api/flow-connection") {
+          const body = await readJson(request) as { token?: unknown; project?: unknown; consumerId?: unknown; goal?: unknown; autoLaunch?: unknown };
+          if (typeof body.project !== "string" || typeof body.consumerId !== "number") throw new Error("Choose a project and a flow");
+          json(response, 200, await flowConnection.save(tenantId, {
+            ...(typeof body.token === "string" ? { token: body.token } : {}),
+            project: body.project, consumerId: body.consumerId,
+            ...(typeof body.goal === "string" ? { goal: body.goal } : {}),
+            autoLaunch: body.autoLaunch === true,
+          })); return;
+        }
+        if (request.method === "DELETE" && url.pathname === "/api/flow-connection") { json(response, 200, { disconnected: await flowConnection.remove(tenantId) }); return; }
       }
       if (request.method === "GET" && url.pathname === "/api/monitor") {
         const { tenantId } = await requireWorkspace(request);

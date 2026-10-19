@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { hmac, secureEqual } from "../../../src/core/crypto.js";
 import type { CounterexampleRecord } from "../../../src/ltl/runtime-types.js";
 import type { NeedlRepository, InvestigationRecord, StoredIntegration } from "./repository.js";
+import { SecretBox } from "./secrets.js";
 
 interface GitLabInvestigationConfig {
   readonly baseUrl: string;
@@ -109,6 +110,15 @@ export class GitLabInvestigationService {
     }
   }
 
+  #box: SecretBox | undefined;
+
+  /** Tokens saved in the app are sealed in the database; older setups name a server environment variable. */
+  private token(integration: StoredIntegration): string | undefined {
+    if (integration.secretCiphertext !== undefined) return (this.#box ??= SecretBox.fromEnvironment(this.environment)).open(integration.secretCiphertext);
+    const value = integration.secretEnvName === "" ? undefined : this.environment[integration.secretEnvName];
+    return value === undefined || value.length === 0 ? undefined : value;
+  }
+
   /** Launches flows for violations that arrived since the last pass, where the workspace opted into autoLaunch. */
   async launchPending(): Promise<number> {
     let launched = 0;
@@ -131,8 +141,8 @@ export class GitLabInvestigationService {
       throw Object.assign(new Error("GitLab investigation integration is not enabled for this workspace"), { statusCode: 404 });
     }
     const config = investigationConfig(integration);
-    const token = this.environment[integration.secretEnvName];
-    if (token === undefined || token.length === 0) throw Object.assign(new Error(`Integration credential ${integration.secretEnvName} is not configured on the server`), { statusCode: 503 });
+    const token = this.token(integration);
+    if (token === undefined) throw Object.assign(new Error("The GitLab flow connection has no access token"), { statusCode: 503 });
     const headers: Record<string, string> = { "content-type": "application/json" };
     headers[config.tokenType === "bearer" ? "authorization" : "private-token"] = config.tokenType === "bearer" ? `Bearer ${token}` : token;
     let response: Response;
@@ -179,8 +189,8 @@ export class GitLabInvestigationService {
     counterexample: CounterexampleRecord,
     clientReference: string,
   ): Promise<{ workflowId: string; webUrl?: string; progress?: unknown }> {
-    const token = this.environment[integration.secretEnvName];
-    if (token === undefined || token.length === 0) throw new GitLabLaunchError(`Integration credential ${integration.secretEnvName} is not configured on the server`, false);
+    const token = this.token(integration);
+    if (token === undefined) throw new GitLabLaunchError("The GitLab flow connection has no access token", false);
     const envelope = counterexampleEnvelope(counterexample, config);
     const content = JSON.stringify(envelope);
     if (Buffer.byteLength(content) > 32_768) throw new GitLabLaunchError("Counterexample exceeds the 32 KiB investigation context limit", false);

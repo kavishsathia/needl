@@ -1,0 +1,832 @@
+% Needl setup manual: MCP servers for Claude Code + provider webhooks into Needl.
+% Build: see BUILD.md (xelatex, run twice).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{fontspec}
+% DejaVu Sans Oblique is often not installed; slant the upright face for italics.
+\setmainfont{DejaVu Sans}[ItalicFont={DejaVu Sans},ItalicFeatures={FakeSlant=0.18},BoldItalicFont={DejaVu Sans Bold},BoldItalicFeatures={FakeSlant=0.18}]
+\setmonofont{DejaVu Sans Mono}
+\usepackage[a4paper,left=20mm,right=20mm,top=20mm,bottom=22mm,headheight=14pt]{geometry}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{framed}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{etoolbox}
+\usepackage[hyphens]{url}
+\usepackage[colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue,pdftitle={Needl setup manual: MCP and webhooks},pdfauthor={Needl}]{hyperref}
+
+% Let long URLs break after any character so nothing runs into the margin.
+\makeatletter
+\g@addto@macro{\UrlBreaks}{\do\a\do\b\do\c\do\d\do\e\do\f\do\g\do\h\do\i\do\j\do\k\do\l\do\m\do\n\do\o\do\p\do\q\do\r\do\s\do\t\do\u\do\v\do\w\do\x\do\y\do\z\do\0\do\1\do\2\do\3\do\4\do\5\do\6\do\7\do\8\do\9\do\_\do\-}
+\makeatother
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\linespread{1.08}
+\setlist{itemsep=2pt,topsep=3pt,parsep=1pt}
+\setcounter{tocdepth}{1}
+\setlength{\emergencystretch}{4em}
+
+\definecolor{winbg}{HTML}{E8EEF7}
+\definecolor{winfg}{HTML}{1F3A68}
+\definecolor{cmdbg}{HTML}{F4F4F4}
+\definecolor{xferbg}{HTML}{FFF6DD}
+\definecolor{warnbg}{HTML}{FDECEC}
+\definecolor{okbg}{HTML}{E9F6EC}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Needl setup manual: MCP + webhooks}
+\fancyhead[R]{\small\nouppercase{\leftmark}}
+\fancyfoot[C]{\small Page \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\titleformat{\section}{\Large\bfseries\color{winfg}}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{10pt}{6pt}
+\titlespacing*{\subsection}{0pt}{9pt}{4pt}
+\newcommand{\chapterbreak}{\clearpage}
+
+% On-screen labels (buttons, fields, menu items) are bold.
+\newcommand{\ui}[1]{\textbf{#1}}
+% Window / tab / terminal you must be in.
+\newcommand{\where}[1]{\par\smallskip\noindent\colorbox{winbg}{\color{winfg}\bfseries\strut\ #1\ }\par\nopagebreak[4]}
+% Inline literal you type or see.
+\newcommand{\lit}[1]{\texttt{#1}}
+
+% Value-transfer box: copy X from Y -> paste in Z.
+\newenvironment{xfer}{\def\FrameCommand{\fboxsep=6pt\colorbox{xferbg}}\MakeFramed{\advance\hsize-\width\FrameRestore}\textbf{Copy \& paste}\par}{\endMakeFramed}
+\newenvironment{warn}{\def\FrameCommand{\fboxsep=6pt\colorbox{warnbg}}\MakeFramed{\advance\hsize-\width\FrameRestore}}{\endMakeFramed}
+\newenvironment{okbox}{\def\FrameCommand{\fboxsep=6pt\colorbox{okbg}}\MakeFramed{\advance\hsize-\width\FrameRestore}}{\endMakeFramed}
+
+\lstdefinestyle{cmd}{basicstyle=\ttfamily\normalsize,backgroundcolor=\color{cmdbg},frame=single,rulecolor=\color{Gray},columns=fullflexible,keepspaces=true,breaklines=true,breakatwhitespace=false,upquote=false,showstringspaces=false,xleftmargin=4pt,xrightmargin=4pt,framesep=4pt,aboveskip=6pt,belowskip=6pt}
+\lstset{style=cmd}
+\lstnewenvironment{cmd}{\lstset{style=cmd}}{}
+\newenvironment{prompt}{\def\FrameCommand{\fboxsep=6pt\fcolorbox{Gray}{okbg}}\MakeFramed{\advance\hsize-\width\FrameRestore}\raggedright}{\endMakeFramed}
+
+\newlist{steps}{enumerate}{1}
+\setlist[steps]{label=\textbf{Step \arabic*.},leftmargin=*,widest=10,itemsep=3pt}
+\newlist{moves}{enumerate}{1}
+\setlist[moves]{label=\textbf{\arabic*.},leftmargin=*}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries Needl setup manual}\par\medskip
+{\large Connect seven tools twice: to Claude Code (MCP) and to Needl (webhooks)}\par\medskip
+{\normalsize GitLab · Linear · LaunchDarkly · Sentry · PostHog · Intercom · Stripe}\par\smallskip
+{\small Prepared for Kavish · written 2026-10-19 against Needl commit \lit{16eec52} and vendor docs checked that day}
+\end{center}
+
+\section*{How to read this manual}
+Follow it top to bottom. Each step starts with a blue label telling you which window to use:
+
+\where{Terminal (Mac)}
+\where{Browser tab: Needl}
+\where{Browser tab: \textit{provider}}
+
+\ui{Bold text} is the exact label on screen. \lit{Monospace} is something you type or paste. Grey boxes are commands or prompts to copy. Yellow \textbf{Copy \& paste} boxes say what to move between windows. Red boxes are stop points: do what they say and don't improvise.
+
+\begin{xfer}
+Values that never change:\\
+Needl address: \url{https://needl.dev}\\
+Needl Connections page: \url{https://needl.dev/#/connections}\\
+Every webhook URL comes from that page's \ui{Copy} button. It looks like \lit{https://needl.dev/api/hooks/int\_stripe\_a1b2c3d4e5f6}. The last part is unique to your workspace, so never type it by hand.
+\end{xfer}
+
+\begingroup\setlength{\parskip}{0pt}\makeatletter\renewcommand{\l@section}{\@dottedtocline{1}{0em}{2.2em}}\makeatother
+\tableofcontents
+\endgroup
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{Before you start}
+
+\subsection{Two separate connections per tool}
+Each tool gets two connections, and they don't know about each other:
+
+\begin{tabularx}{\textwidth}{@{}L{29mm}YY@{}}
+\toprule
+ & \textbf{A. MCP (tool → Claude Code)} & \textbf{B. Webhook (tool → Needl)}\\
+\midrule
+What it does & Lets Claude Code on your Mac read (and, if you allow it, change) the tool for you. & The tool sends events to Needl, Needl checks the signature, and Needl runs your rules.\\
+Where you set it up & Mac Terminal plus a browser sign-in page & The tool's settings page plus Needl's Connections page\\
+Credential & OAuth sign-in, stored by Claude Code on your Mac & A signing secret, saved encrypted in Needl\\
+Rights you need & Your normal user account & Usually an admin or maintainer role in the tool (see 1.3)\\
+\bottomrule
+\end{tabularx}
+
+Finishing Part A does \textbf{not} set up Part B, and the reverse is also true. In this manual every webhook is created by hand in the tool's own interface, even when its MCP could do it.
+
+\subsection{Order of work}
+\begin{enumerate}[label=\textbf{\arabic*.}]
+\item Read the checklist in 1.3 and 1.4. Where the last column applies to you, do that first or skip that tool for now.
+\item Do Section 2 once to get Terminal, Claude Code and Needl ready.
+\item Work through Chapters 3–9 one at a time, in any order. Inside a chapter, do A, then B, then C. Section D is only for when something goes wrong.
+\item Tick the chapter's success line before you start the next one.
+\end{enumerate}
+
+\subsection{Accounts and permissions checklist}
+\begin{longtable}{@{}L{25mm}L{44mm}L{43mm}L{44mm}@{}}
+\toprule
+\textbf{Tool} & \textbf{A. MCP needs} & \textbf{B. Webhook needs} & \textbf{If you lack it}\\
+\midrule
+\endhead
+GitLab & GitLab.com account. Your top-level group must allow MCP (\ui{Allow connection to GitLab}, which is on by default). & Webhook already exists (Chapter 3). Creating a new one needs \textbf{Maintainer} or \textbf{Owner} on the project. & You are \textbf{Developer} on the hackathon project. Ask a Maintainer/Owner (message in 3.D).\\\addlinespace[3pt]
+Linear & Any member of the workspace. & \textbf{Workspace admin}. & Ask a workspace admin to do 4.B.\\\addlinespace[3pt]
+Launch\-Darkly & Role that can manage flags (LaunchDarkly suggests \textbf{Writer} or \textbf{Developer}). US commercial instance only: no EU or federal. & Permission to add organisation integrations. & Ask a LaunchDarkly admin or owner to do 5.B.\\\addlinespace[3pt]
+Sentry & Member of the Sentry organisation. & Permission to create Custom Integrations in Organisation Settings. & Ask a Sentry org Owner or Manager to do 6.B.\\\addlinespace[3pt]
+PostHog & Member of the PostHog project. & Data pipelines → Destinations available. The HTTP Webhook destination is a paid template. & Ask the billing admin to enable Data pipelines.\\\addlinespace[3pt]
+Intercom & Teammate in a US- or EU-hosted workspace. Australian workspaces are not supported. & Access to the Developer Hub plus an app installed in the workspace. & Ask an Intercom admin.\\\addlinespace[3pt]
+Stripe & Dashboard user. Approve \textbf{sandbox only}. & Workbench access in a \textbf{sandbox}. & Ask a Stripe admin to add you to a sandbox.\\\addlinespace[3pt]
+\bottomrule
+\end{longtable}
+
+\subsection{Stripe: sandbox only}
+Do everything for Stripe in a \textbf{sandbox} (Stripe's isolated test environment). Sandbox payments are not processed by card networks, so nothing is charged. Live mode never comes up in this manual. If the Stripe Dashboard doesn't show a sandbox name in the account picker (top left), switch to one before Chapter 9.
+
+\subsection{Rules for secrets}
+\begin{itemize}
+\item Paste secrets only into the two fields this manual names: the tool's field and Needl's secret field. Don't paste them into chat, Claude, notes or git.
+\item Needl's secret field is a password field. After \ui{Save and start receiving}, Needl never shows the secret again. To change it, paste a new one; the button then reads \ui{Replace secret}.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{One-time preparation}
+
+\subsection{Terminal and Claude Code}
+\where{Terminal (Mac)}
+\begin{steps}
+\item Press \ui{Cmd+Space}, type \lit{Terminal}, press \ui{Return}.
+\item Type the command below and press \ui{Return}:
+\begin{cmd}
+claude --version
+\end{cmd}
+\textbf{Expected:} a version number followed by \lit{(Claude Code)}. If you see \lit{command not found}, install Claude Code from \url{https://code.claude.com/docs/en/setup} and come back.
+\item See which MCP servers you already have:
+\begin{cmd}
+claude mcp list
+\end{cmd}
+\textbf{Expected:} a list, which may be empty. If a name this manual uses (\lit{gitlab}, \lit{linear}, \lit{launchdarkly}, \lit{sentry}, \lit{posthog}, \lit{intercom}, \lit{stripe}) already shows \lit{✔ Connected} with the URL this manual gives, skip that chapter's Part A.
+\end{steps}
+
+\subsection{How every Part A works (same 4 moves)}
+\begin{enumerate}[label=\textbf{\arabic*.},leftmargin=*]
+\item \textbf{Add}: one \lit{claude mcp add ... --scope user ...} command. User scope makes the server available in every folder on your Mac. It writes only that one entry to your Claude Code settings and touches nothing else. The command is printed over two lines joined by a trailing \lit{\textbackslash}: copy both lines together and press \ui{Return} once.
+\item \textbf{Sign in}: \lit{claude mcp login <name>}. Your browser opens the tool's consent page. Sign in, check the account or workspace shown, then click the approve button. Claude Code stores the token and refreshes it for you.
+
+\emph{If your Claude Code says \lit{unknown command 'login'}}: run \lit{claude}, type \lit{/mcp}, press \ui{Return}, select the server with the arrow keys, press \ui{Return}, choose \ui{Authenticate}, and finish in the browser. Type \lit{/exit} afterwards.
+\item \textbf{Check}: \lit{claude mcp list} must show the server with \lit{✔ Connected}.
+\item \textbf{Prove}: start a \emph{new} \lit{claude} session (sessions that were already open don't pick up new servers), paste the chapter's read-only prompt, and approve the single tool call Claude asks about. Type \lit{/exit} when done.
+\end{enumerate}
+To undo a Part A later: \lit{claude mcp remove <name> --scope user}. This also deletes the stored sign-in.
+
+\subsection{Needl: open the Connections page}
+\where{Browser tab: Needl}
+\begin{steps}
+\item Open \url{https://needl.dev} and sign in with the account you use for Needl.
+\item In the left sidebar click \ui{Connections}, or open \url{https://needl.dev/#/connections}.
+\item \textbf{Expected:} the page title is \ui{Connections}, with a \ui{GitLab Duo flow} panel at the top and one card per tool below it. Each card shows \ui{Not connected}, \ui{Sample data only}, or \ui{1 webhook}.
+\end{steps}
+Keep this tab open for the whole manual. The page refreshes itself every few seconds, so you never need to reload it.
+
+\subsection{How the Needl connect dialog behaves (all tools)}
+\begin{itemize}
+\item Clicking \ui{Connect} on a card creates that tool's own webhook route right away and opens a dialog titled \ui{Connect} / \textit{tool name}. The route belongs only to your workspace.
+\item The route accepts nothing until you save a secret. Until then the status reads \ui{Not finished: paste the signing secret to start receiving.} Deliveries that arrive before that are refused.
+\item If you close the dialog early, the card button changes to \ui{Finish setup}. Click it to reopen the \emph{same} route; it does not create a new one. Each route row also has a \ui{Setup} button that reopens it.
+\item The dialog contains: \ui{Webhook URL} with a \ui{Copy} button (which briefly shows \ui{Copied}), numbered steps, the secret field, the save button \ui{Save and start receiving}, and \ui{Then send a test:}.
+\item Never click \ui{Disconnect} in this manual. It deletes a route, and its URL stops accepting deliveries.
+\end{itemize}
+
+\subsection{Needl status lines: what they mean}
+These are the exact texts shown on the route row and at the top of the dialog.
+\begin{longtable}{@{}L{78mm}L{84mm}@{}}
+\toprule
+\textbf{Needl shows} & \textbf{Meaning → your action}\\
+\midrule
+\endhead
+\ui{Not finished: paste the signing secret to start receiving.} & No secret saved yet → finish the chapter's Part B.\\
+\ui{Webhooks are arriving. Save the signing secret below to start verifying them.} & The tool is already sending, but there's no secret → paste and save it.\\
+\ui{Waiting for the first webhook…} & Secret saved and nothing has arrived yet → do Part C.\\
+\ui{Receiving events · last: }\textit{event} & \textbf{Success.} A signed event was verified and stored.\\
+\ui{Receiving events · last one was a retry Needl already had} & \textbf{Success.} The tool resent an event Needl already had (a duplicate).\\
+\ui{Connected and verified, but the last event isn't one Needl reads (}\textit{x}\ui{).} & The signature is fine; that event type just isn't used by Needl → OK for pings. Otherwise tick the events listed in the chapter.\\
+\ui{A webhook arrived but its signature didn't match…} & Wrong secret → see that chapter's D.\\
+\ui{A webhook arrived with an old timestamp…} & Clock or old retry → send a fresh test.\\
+\ui{A webhook arrived but wasn't in the expected format…} & Wrong webhook type, or wrong PostHog body → see that chapter's D.\\
+\ui{A webhook arrived but couldn't be stored; the provider will retry it.} & Temporary Needl storage problem → wait and retest.\\
+\bottomrule
+\end{longtable}
+\textbf{Delivery is not the same as action.} \ui{Receiving events} only means Needl verified and stored the event. Whether a rule broke, or a GitLab Duo flow started or finished, appears on the rule itself (its \ui{Counterexamples} and \ui{Investigation} tabs), not on the Connections page.
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{GitLab}
+\begin{warn}
+\textbf{Your GitLab situation (read first).} GitLab push → Needl webhook → agent start already works. \textbf{Don't create, edit or delete that webhook, and don't click Disconnect or Add another on Needl's GitLab card.} The \ui{GitLab Duo flow} panel is a different connection (Needl → GitLab, which starts flows). It is already tested, so leave it as it is. Enabling custom flows in the hackathon project is still waiting on a \textbf{Maintainer}: you are \textbf{Developer} there, and nothing in this manual changes that.
+\end{warn}
+
+\subsection*{3.A Connect the official GitLab MCP to Claude Code}
+Endpoint \url{https://gitlab.com/api/v4/mcp} · transport HTTP · OAuth. Available on GitLab.com Free, Premium and Ultimate. GitLab Duo is not required to connect; the Duo tools only appear if Duo Agent Platform is available to you.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  gitlab https://gitlab.com/api/v4/mcp
+\end{cmd}
+\textbf{Expected:} a line saying the HTTP server \lit{gitlab} was added to user config.
+\item Sign in:
+\begin{cmd}
+claude mcp login gitlab
+\end{cmd}
+\where{Browser: GitLab authorization page}
+\item Sign in to GitLab if asked. Check that the account shown is yours, then click the button that \textbf{authorizes} the application.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{gitlab} … \lit{✔ Connected}.
+\item Run \lit{claude}, paste this prompt, and approve the tool call:
+\begin{prompt}
+Using only the gitlab MCP server, tell me which GitLab user I am signed in as and list 5 projects I am a member of. Read only: do not create, change or delete anything.
+\end{prompt}
+\textbf{Expected:} your GitLab username and project paths. Type \lit{/exit}.
+\end{steps}
+The GitLab MCP has no tool for project webhooks, and connecting it gives you no new rights.
+
+\subsection*{3.B Check the existing GitLab webhook in Needl (don't recreate it)}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}
+\item Look at the \ui{GitLab} card, without clicking its button.
+\item Read the route rows under it and match what you see:
+  \begin{itemize}
+  \item A row with a green dot reading \ui{Receiving events · last: push} (or another GitLab event), plus \ui{secret saved in Needl} or \ui{secret in server settings} → \textbf{done.} This is the working route. Go to 3.C.
+  \item A row reading \ui{Not finished: paste the signing secret…} with \ui{no secret yet} → an unused extra route, probably from an accidental \ui{Connect} click. It is harmless; leave it. Find the green row as above.
+  \item The card says \ui{Not connected} or \ui{Sample data only} → you are probably signed in to a \textbf{different Needl account} from the one the working webhook belongs to. Sign out (Settings) and sign in with the other account, then look again. Only if no Needl account has a green GitLab row, use 3.D “New GitLab webhook”.
+  \end{itemize}
+\end{steps}
+
+\subsection*{3.C Test}
+No new test is needed: the green row's \ui{last event …~UTC} time already proves delivery. \textbf{Don't push commits just to test.} In this project a push can lead to a broken rule, which starts a Duo flow and uses Duo credits. If a real push happens anyway, the row should update to \ui{Receiving events · last: push} within seconds.
+
+\subsection*{3.D Fixes and handoffs}
+\textbf{GitLab row shows a signature or old-timestamp error.} The working route's secret was changed. Ask the project Maintainer to open \ui{Settings → Webhooks}, click \ui{Edit} on the Needl webhook, and check \ui{Recent events}. Don't replace the secret yourself unless the Maintainer has generated a new signing token for you.
+
+\textbf{GitLab MCP says access is not allowed.} The top-level group has \ui{Allow connection to GitLab} cleared. Only a group Owner can change it: in the group, go to \ui{Settings → General → Permissions and group features → MCP client access}, tick \ui{Allow connection to GitLab}, then click \ui{Save changes}.
+
+\textbf{GitLab MCP rejects your token.} The MCP doesn't accept legacy personal, project or group access tokens. Use the OAuth sign-in from 3.A (\lit{claude mcp logout gitlab}, then \lit{claude mcp login gitlab}).
+
+\textbf{New GitLab webhook (only if 3.B found none).} You need \textbf{Maintainer} or \textbf{Owner} on the project. As Developer you can't see \ui{Settings → Webhooks}, so send the message below to a Maintainer and do the Needl side together on a call:
+\begin{prompt}
+Please add a project webhook for Needl: Settings > Webhooks > Add new webhook. URL: (I will send the Needl URL). Trigger: Push events, Pipeline events, Deployment events, Merge request events, Issues events. Click “Generate signing token” and paste the token into Needl's field while I share my screen, before clicking “Add webhook”.
+\end{prompt}
+Needl side: \ui{GitLab} card → \ui{Connect} → \ui{Copy} next to \ui{Webhook URL} → select the radio option \ui{Signing token} → paste the GitLab token (it starts with \lit{whsec\_}) into \ui{Signing token or secret token} → \ui{Save and start receiving} → the Maintainer clicks \ui{Add webhook}. The Maintainer then tests with \ui{Test → Push events}. If the error says \lit{GitLab signing tokens start with whsec\_}, the token was copied incompletely; GitLab shows it only once, so the Maintainer must generate a new one.
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{Linear}
+\subsection*{4.A Connect the official Linear MCP to Claude Code}
+Endpoint \url{https://mcp.linear.app/mcp} · Streamable HTTP · OAuth.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  linear https://mcp.linear.app/mcp
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login linear
+\end{cmd}
+\where{Browser: Linear consent page}
+\item Check the workspace name shown, then approve access.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{linear} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the linear MCP server, list the teams in my Linear workspace with their keys. Read only: do not create, change or delete anything.
+\end{prompt}
+\textbf{Expected:} your team names and keys (for example \lit{ENG}). Type \lit{/exit}.
+\end{steps}
+Linear's MCP has no webhook tools. Webhooks need a workspace admin (4.B).
+
+\subsection*{4.B Connect Linear webhooks to Needl}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}
+\item On the \ui{Linear} card click \ui{Connect} (or \ui{Finish setup}). The dialog \ui{Connect} / \ui{Linear} opens.
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: Linear}
+\begin{steps}[resume]
+\item Open \url{https://linear.app/settings/api} (Settings → \ui{API}). You must be a workspace admin.
+\item Find the \ui{Webhooks} section and click \ui{New webhook}.
+\item \ui{Label}: type \lit{Needl}. \ui{URL}: paste (Cmd+V).
+\item Team: choose \ui{All public teams}.
+\item Data change events: tick exactly \ui{Issues}, \ui{Comments} and \ui{Issue SLAs}.
+\item Click the create button. The webhook's detail page opens.
+\item On the detail page, copy the \ui{Signing secret}.
+\end{steps}
+\begin{xfer}
+Linear webhook detail page → \ui{Signing secret} → Needl dialog field \ui{Signing secret}
+\end{xfer}
+\where{Browser tab: Needl (dialog still open)}
+\begin{steps}[resume]
+\item Paste into \ui{Signing secret} and click \ui{Save and start receiving}.
+\item \textbf{Expected:} the status reads \ui{Waiting for the first webhook…} and the row shows \ui{secret saved in Needl}.
+\end{steps}
+
+\subsection*{4.C Test}
+\where{Browser tab: Linear}
+Create an issue in any public team titled \lit{Needl webhook test}. Then move it to \ui{In Progress} (or any other state) and back.
+\where{Browser tab: Needl}
+\textbf{Success:} \ui{Receiving events · last: Issue.create}, then \ui{… last: Issue.update}. You can delete or cancel the test issue afterwards.
+
+\subsection*{4.D Fixes}
+\begin{itemize}
+\item \textbf{No \ui{New webhook} / \ui{API} settings visible:} you're not a workspace admin. Send a workspace admin 4.B steps 3–9 and paste the secret yourself.
+\item \textbf{Signature didn't match:} you copied a different webhook's secret. Open the Needl webhook in Linear, copy its \ui{Signing secret} again, then in Needl click \ui{Setup} → paste → \ui{Replace secret}.
+\item \textbf{Old timestamp:} Linear allows 60 seconds. Make a new issue change instead of waiting for Linear's retries.
+\item \textbf{Still \ui{Waiting…}:} the test issue's team is private and you chose all public teams. Use a public team.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{LaunchDarkly}
+\subsection*{5.A Connect the official LaunchDarkly MCP to Claude Code}
+Endpoint \url{https://mcp.launchdarkly.com/mcp/launchdarkly} · HTTP · OAuth. Hosted MCP is \textbf{not} available on the EU or federal instances.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  launchdarkly https://mcp.launchdarkly.com/mcp/launchdarkly
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login launchdarkly
+\end{cmd}
+\where{Browser: LaunchDarkly authorization page}
+\item Check the account shown, then authorize.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{launchdarkly} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the launchdarkly MCP server, list my LaunchDarkly projects (name and key). Read only: do not create, change, toggle or delete anything.
+\end{prompt}
+\textbf{Expected:} your project names and keys. Type \lit{/exit}.
+\end{steps}
+The LaunchDarkly MCP's observability alert tools (\lit{create-alert} and similar) are \textbf{not} Needl's webhook. Needl reads signed audit-log webhooks from \ui{Integrations → Webhooks} only.
+
+\subsection*{5.B Connect the LaunchDarkly webhook to Needl}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}
+\item On the \ui{LaunchDarkly} card click \ui{Connect} (or \ui{Finish setup}).
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: LaunchDarkly}
+\begin{steps}[resume]
+\item Click the gear icon (Organization settings) in the left sidebar, then \ui{Integrations}.
+\item Search for \lit{Webhooks}, open it, and click \ui{Add integration}. The \ui{Create a webhook} panel opens.
+\item \ui{Name}: \lit{Needl}. \ui{URL}: paste.
+\item Tick \ui{Sign this webhook}. A \ui{Secret} value appears; copy it.
+\item Leave the policy editor empty. By default LaunchDarkly then sends all flag changes in the \textbf{production} environment.
+\item \textbf{Don't save yet}: first do Steps 9–10 in Needl.
+\end{steps}
+\begin{xfer}
+LaunchDarkly \ui{Create a webhook} → \ui{Secret} → Needl dialog field \ui{Signing secret}
+\end{xfer}
+\where{Browser tab: Needl (dialog)}
+\begin{steps}[resume]
+\item Paste into \ui{Signing secret} and click \ui{Save and start receiving}.
+\item \textbf{Expected:} \ui{Waiting for the first webhook…}.
+\end{steps}
+\where{Browser tab: LaunchDarkly}
+\begin{steps}[resume]
+\item Tick the Integration Terms and Conditions box, then click \ui{Save settings}.
+\end{steps}
+
+\subsection*{5.C Test}
+\where{Browser tab: LaunchDarkly}
+LaunchDarkly has no test button. Create a boolean flag with key \lit{needl-webhook-test} (no code reads it, so it's harmless). Switch to the \textbf{Production} environment and toggle the flag \ui{On}, then \ui{Off}.
+\where{Browser tab: Needl}
+\textbf{Success:} \ui{Receiving events · last: flag.updateOn} (or another \lit{flag.…} action). You can archive the test flag afterwards.
+
+\subsection*{5.D Fixes}
+\begin{itemize}
+\item \textbf{No \ui{Add integration} button:} your role can't manage integrations. Ask a LaunchDarkly admin to do 5.B steps 3–11 with you.
+\item \textbf{Signature didn't match:} the secret in LaunchDarkly changed. Edit the webhook, copy \ui{Secret}, then in Needl click \ui{Setup} → paste → \ui{Replace secret}.
+\item \textbf{Nothing arrives:} you toggled a flag in a non-production environment. Toggle it in Production, or add a policy that includes that environment.
+\item LaunchDarkly retries a failed delivery only once, so after a fix send a fresh toggle.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{Sentry}
+\subsection*{6.A Connect the official Sentry MCP to Claude Code}
+Endpoint \url{https://mcp.sentry.dev/mcp} · HTTP · OAuth.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  sentry https://mcp.sentry.dev/mcp
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login sentry
+\end{cmd}
+\where{Browser: Sentry authorization page}
+\item Sign in to Sentry, check the organisation shown, then approve.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{sentry} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the sentry MCP server, list the Sentry organizations and projects I can access. Read only: do not resolve, assign, update or delete anything.
+\end{prompt}
+\textbf{Expected:} your organisation slug and project slugs. Type \lit{/exit}.
+\end{steps}
+Sentry's MCP doesn't create Custom Integrations, so 6.B is done in Sentry's own settings.
+
+\subsection*{6.B Connect Sentry webhooks to Needl}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}
+\item On the \ui{Sentry} card click \ui{Connect} (or \ui{Finish setup}).
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: Sentry}
+\begin{steps}[resume]
+\item Click the gear icon (\ui{Settings}), then \ui{Developer Settings} → \ui{Custom Integrations}.
+\item Click \ui{Create New Integration}, choose \ui{Internal Integration}, and click \ui{Next}.
+\item \ui{Name}: \lit{Needl}. \ui{Webhook URL}: paste.
+\item Turn on \ui{Alert Rule Action}. This lets your alert rules send to Needl later; it changes nothing by itself.
+\item \ui{Permissions}: set \ui{Issue \& Event} to \ui{Read}. Leave everything else at \ui{No Access}.
+\item \ui{Webhooks}: tick \ui{issue}. Tick \ui{error} as well \textbf{only} if your Sentry plan is Business or Enterprise (other plans don't offer error webhooks). Leave \ui{comment} unticked.
+\item Click \ui{Save Changes}. Creating an internal integration installs it on your organisation automatically.
+\item On the integration page, under \ui{Credentials}, copy \ui{Client Secret}. Don't copy the Client ID or a token.
+\end{steps}
+\begin{xfer}
+Sentry integration \ui{Credentials} → \ui{Client Secret} → Needl dialog field \ui{Client Secret}
+\end{xfer}
+\where{Browser tab: Needl (dialog)}
+\begin{steps}[resume]
+\item Paste into \ui{Client Secret} and click \ui{Save and start receiving}.
+\item \textbf{Expected:} \ui{Waiting for the first webhook…}. If it briefly said \ui{Webhooks are arriving…} before you saved, that was Sentry's installation notice, and it's fine.
+\end{steps}
+
+\subsection*{6.C Test}
+\where{Browser tab: Sentry}
+Open \ui{Issues}, pick any existing issue in a non-critical project, click \ui{Resolve}, then unresolve it.
+\where{Browser tab: Needl}
+\textbf{Success:} \ui{Receiving events · last: issue.resolved}, then \ui{… issue.unresolved}.
+
+\subsection*{6.D Fixes}
+\begin{itemize}
+\item \textbf{\ui{Create New Integration} missing or disabled:} you lack the rights. Ask a Sentry organisation Owner or Manager to do 6.B steps 3–10 and paste the Client Secret into Needl while sharing their screen.
+\item \textbf{\ui{issue} checkbox greyed out:} set \ui{Issue \& Event} to \ui{Read} first.
+\item \textbf{Signature didn't match:} you pasted the Client ID or an auth token. Copy \ui{Client Secret}, then in Needl click \ui{Setup} → paste → \ui{Replace secret}.
+\item \textbf{\ui{…isn't one Needl reads (installation.created)}:} that's the installation notice. Run the 6.C test.
+\item \textbf{No issues to resolve:} send one test error from a test app, or wait for a real issue.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{PostHog}
+\subsection*{7.A Connect the official PostHog MCP to Claude Code}
+Endpoint \url{https://mcp.posthog.com/mcp} · HTTP · OAuth. Sign-in picks your US or EU region automatically.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  posthog https://mcp.posthog.com/mcp
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login posthog
+\end{cmd}
+\where{Browser: PostHog authorization page}
+\item Sign in to PostHog, check the organisation and project shown, then authorize.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{posthog} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the posthog MCP server, tell me which PostHog organization and projects I can access (names and ids). Read only: do not create, change or delete anything.
+\end{prompt}
+\textbf{Expected:} your organisation and projects. Type \lit{/exit}.
+\end{steps}
+Webhook \emph{sources} (data coming into PostHog) are not what Needl uses. Needl needs an outgoing \ui{HTTP Webhook} \textbf{destination}, set up in 7.B.
+
+\subsection*{7.B Connect a PostHog Webhook destination to Needl}
+You make the signing secret yourself, then paste it into both Needl and PostHog.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Generate a Standard Webhooks secret:
+\begin{cmd}
+echo "whsec_$(openssl rand -base64 32)"
+\end{cmd}
+\textbf{Expected:} one line starting with \lit{whsec\_}, about 50 characters long. Select the whole line and copy it (Cmd+C). Don't save it anywhere else.
+\end{steps}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}[resume]
+\item On the \ui{PostHog} card click \ui{Connect} (or \ui{Finish setup}).
+\item Under \ui{How webhooks are verified}, keep \ui{Signing secret} selected.
+\item Paste the \lit{whsec\_…} line into \ui{Signing secret or header token} and click \ui{Save and start receiving}. Keep the dialog open.
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: PostHog}
+\begin{steps}[resume]
+\item Open \ui{Data pipelines} in the sidebar → \ui{Destinations}. Click \ui{+ New} → \ui{Destination}, search \lit{Webhook}, and click \ui{+ Create} on \ui{HTTP Webhook}.
+\item \ui{Webhook URL}: paste. \ui{Method}: \ui{POST}.
+\end{steps}
+\where{Browser tab: Needl (dialog)}
+\begin{steps}[resume]
+\item Click \ui{Copy} next to \ui{Webhook body}. The body is shown below for reference; use the Copy button, not this PDF:
+\begin{cmd}
+{
+  "event": "{event}",
+  "project_id": "{project.id}",
+  "relationships": []
+}
+\end{cmd}
+\end{steps}
+\where{Browser tab: PostHog}
+\begin{steps}[resume]
+\item \ui{JSON Body}: select everything in it, delete it, then paste.
+\item \ui{Headers}: leave as is (\lit{Content-Type: application/json}).
+\end{steps}
+\where{Terminal (Mac)}
+\begin{steps}[resume]
+\item Your clipboard now holds the body, not the secret. Select the \lit{whsec\_…} line from step 1 again and press \ui{Cmd+C}.
+\end{steps}
+\where{Browser tab: PostHog}
+\begin{steps}[resume]
+\item \ui{Signing secret}: paste.
+\item \ui{Filters}: set the match to the single event \lit{\$pageview}. This keeps volume low; later, add the event names your Needl rules use.
+\item Click \ui{Create \& Enable}.
+\end{steps}
+\begin{xfer}
+Terminal \lit{whsec\_…} line → Needl \ui{Signing secret or header token} \textbf{and} PostHog \ui{Signing secret}\\
+Needl \ui{Webhook URL} → PostHog \ui{Webhook URL}\\
+Needl \ui{Webhook body} → PostHog \ui{JSON Body}
+\end{xfer}
+
+\subsection*{7.C Test}
+\where{Browser tab: PostHog (destination page)}
+In \ui{Testing}, click \ui{Start testing} → \ui{Test function}.
+\where{Browser tab: Needl}
+\textbf{Success:} \ui{Receiving events · last: }\textit{event name} (for example \lit{\$pageview}). Close the Terminal window afterwards so the secret isn't left on screen.
+
+\subsection*{7.D Fixes}
+\begin{itemize}
+\item \textbf{Your PostHog form has no \ui{Signing secret} field} (PostHog Cloud may lag their source code). Use the fallback: in Needl click \ui{Setup} → select \ui{Authorization header} → click \ui{Generate} → copy the value shown under \ui{Paste this into the provider too} → \ui{Save and start receiving} (or \ui{Replace secret}). In PostHog, add a header under \ui{Secret headers} (or under \ui{Headers} if there is no Secret headers section) with key \lit{Authorization} and value \lit{Bearer } plus the token: one space after \lit{Bearer}, nothing else. This proves the sender but doesn't sign the body.
+\item \textbf{Destination needs an upgrade:} the HTTP Webhook destination is a paid template. Ask your PostHog billing admin to enable Data pipelines, or skip PostHog.
+\item \textbf{Wasn't in the expected format:} the \ui{JSON Body} isn't exactly Needl's body. Paste it again from Needl's \ui{Copy}.
+\item \textbf{Signature didn't match:} the two \lit{whsec\_} values differ. Generate a new one (step 1), paste it into Needl (\ui{Replace secret}) and into PostHog \ui{Signing secret}, then save the destination.
+\item \textbf{PostHog error “not valid base64” or “at least 24 bytes”:} part of the secret is missing. Copy the full line again.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{Intercom}
+\subsection*{8.A Connect the official Intercom MCP to Claude Code}
+Endpoint \url{https://mcp.intercom.com/mcp} (US workspaces) or \url{https://mcp.eu.intercom.com/mcp} (EU workspaces) · HTTP · OAuth. Australian workspaces are not supported. If your Intercom address starts with \lit{app.eu.intercom.com}, use the EU command.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add \textbf{one} of these. US:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  intercom https://mcp.intercom.com/mcp
+\end{cmd}
+EU:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  intercom https://mcp.eu.intercom.com/mcp
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login intercom
+\end{cmd}
+\where{Browser: Intercom authorization page}
+\item Check the workspace shown, then authorize.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{intercom} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the intercom MCP server, list up to 3 help center articles (titles only). Read only: do not create, update, reply or add notes.
+\end{prompt}
+\textbf{Expected:} article titles, or a reply saying there are no articles. Either one proves the connection. Type \lit{/exit}.
+\end{steps}
+Intercom's MCP has no webhook tools. Webhook topics are set up in the Developer Hub (8.B).
+
+\subsection*{8.B Connect Intercom webhooks to Needl}
+\begin{warn}
+\textbf{Known risk.} When you save, Intercom checks the URL with a \lit{HEAD} request. Needl's current code answers \lit{POST} on webhook URLs and returns 404 for \lit{HEAD}. If Intercom refuses to save the URL (step 10), \textbf{stop}. Send the developer this: \emph{“Needl /api/hooks/<id> must answer HEAD with 200 for Intercom's URL validation.”} Don't try other URLs.
+\end{warn}
+\where{Browser tab: Intercom Developer Hub}
+\begin{steps}
+\item Open \url{https://app.intercom.com/a/apps/_/developer-hub}. Under \ui{Your apps}, open your app. If you have none, click \ui{New app}, name it \lit{Needl}, choose your workspace, and click \ui{Create app}; this pre-installs it in that workspace.
+\item Open \ui{Basic information} and copy \ui{Client secret}.
+\end{steps}
+\begin{xfer}
+Intercom \ui{Basic information} → \ui{Client secret} → Needl dialog field \ui{Client secret}
+\end{xfer}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}[resume]
+\item On the \ui{Intercom} card click \ui{Connect} (or \ui{Finish setup}).
+\item Paste into \ui{Client secret} and click \ui{Save and start receiving}. (Do this first, because Intercom sends a test request as soon as you save on its side.)
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: Intercom Developer Hub (your app)}
+\begin{steps}[resume]
+\item In the left menu, under \ui{Configure}, click \ui{Webhooks}.
+\item Paste into the endpoint URL field.
+\item In the topics dropdown, add exactly these 7 topics:
+\begin{itemize}[itemsep=0pt]
+\item \lit{conversation.user.created}
+\item \lit{conversation.admin.replied}
+\item \lit{conversation.admin.closed}
+\item \lit{ticket.created}
+\item \lit{ticket.updated}
+\item \lit{contact.created}
+\item \lit{contact.updated}
+\end{itemize}
+\item If the page shows a missing-permission error, open \ui{Configure → Authentication}, add the permission it names, save, and return to \ui{Webhooks}.
+\item Click \ui{Save}.
+\end{steps}
+
+\subsection*{8.C Test}
+\where{Browser tab: Needl}
+Right after you save, Intercom sends a ping. If the signature is correct, Needl shows \ui{Connected and verified, but the last event isn't one Needl reads (ping).} That is the expected result. To send it again, use \ui{Send a test request} on Intercom's Webhooks page if it is shown.
+\where{Browser tab: Intercom (workspace)}
+Create a test contact: open \ui{Contacts} and add a new user or lead.
+Use the email \lit{needl-test@example.com}.
+\where{Browser tab: Needl}
+\textbf{Success:} \ui{Receiving events · last: contact.created}. You can delete the test contact afterwards.
+
+\subsection*{8.D Fixes}
+\begin{itemize}
+\item \textbf{Intercom won't save the URL:} see the red box above. This is a Needl code limitation, not your mistake.
+\item \textbf{Signature didn't match:} you copied the Client ID or access token, or a different app's secret. Copy \ui{Client secret} from \emph{this} app's \ui{Basic information}, then in Needl click \ui{Setup} → paste → \ui{Replace secret}.
+\item \textbf{Subscription suspended} (private apps, after 7 days of errors): fix the cause, then click \ui{Set live} on the Webhooks page.
+\item \textbf{MCP fails for an Australian workspace:} not supported by Intercom. Skip 8.A; 8.B still works.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{Stripe (sandbox only)}
+\subsection*{9.A Connect the official Stripe MCP to Claude Code}
+Endpoint \url{https://mcp.stripe.com} · HTTP · OAuth. On Stripe's consent page you choose which accounts or sandboxes the client may use.
+\where{Terminal (Mac)}
+\begin{steps}
+\item Add:
+\begin{cmd}
+claude mcp add --transport http --scope user \
+  stripe https://mcp.stripe.com/
+\end{cmd}
+\item Sign in:
+\begin{cmd}
+claude mcp login stripe
+\end{cmd}
+\where{Browser: Stripe OAuth consent page}
+\item Select \textbf{only your sandbox}. Leave every live-mode account unselected. Then grant access.
+\where{Terminal (Mac)}
+\item Run \lit{claude mcp list}. \textbf{Expected:} \lit{stripe} … \lit{✔ Connected}.
+\item Run \lit{claude}, then:
+\begin{prompt}
+Using only the stripe MCP server, call get\_stripe\_account\_info and tell me the account name and whether it is a sandbox. Read only: do not create, update, refund or delete anything.
+\end{prompt}
+\textbf{Expected:} the account name and confirmation that it is a sandbox. Type \lit{/exit}.
+\end{steps}
+Stripe's MCP \emph{could} create webhook endpoints through \lit{stripe\_api\_write}. This manual sets them up in Workbench on purpose, because the Dashboard shows the signing secret directly. Never use the MCP for refunds or payouts; Stripe asks for human approval on such writes anyway.
+
+\subsection*{9.B Connect a Stripe event destination to Needl}
+\where{Browser tab: Needl (Connections)}
+\begin{steps}
+\item On the \ui{Stripe} card click \ui{Connect} (or \ui{Finish setup}).
+\item Click \ui{Copy} next to \ui{Webhook URL}.
+\end{steps}
+\where{Browser tab: Stripe Dashboard (sandbox)}
+\begin{steps}[resume]
+\item Check that the account picker (top left) shows your \textbf{sandbox}. Open \url{https://dashboard.stripe.com/webhooks} (Workbench → \ui{Webhooks}).
+\item Click \ui{Create an event destination}, then select \ui{Your account}.
+\item Payload format: choose \ui{Snapshot} (\textbf{not} Thin). Leave the API version as preselected.
+\item Select these 9 events (type each into the search box and tick it):
+\begin{itemize}[itemsep=0pt]
+\item \lit{payment\_intent.succeeded}
+\item \lit{payment\_intent.payment\_failed}
+\item \lit{charge.succeeded}
+\item \lit{charge.failed}
+\item \lit{charge.dispute.created}
+\item \lit{invoice.paid}
+\item \lit{invoice.payment\_failed}
+\item \lit{customer.subscription.updated}
+\item \lit{customer.subscription.deleted}
+\end{itemize}
+\item Click \ui{Continue}, choose \ui{Webhook endpoint}, then click \ui{Continue}.
+\item \ui{Endpoint URL}: paste. Description: \lit{Needl}. Click the final create button.
+\item On the destination's settings page, click \ui{Reveal secret} and copy the value that starts with \lit{whsec\_}.
+\end{steps}
+\begin{xfer}
+Stripe destination page → \ui{Reveal secret} (\lit{whsec\_…}) → Needl dialog field \ui{Signing secret}\\
+\textbf{Not} the API keys \lit{sk\_…} / \lit{pk\_…} / \lit{rk\_…}.
+\end{xfer}
+\where{Browser tab: Needl (dialog)}
+\begin{steps}[resume]
+\item Paste into \ui{Signing secret} and click \ui{Save and start receiving}.
+\item \textbf{Expected:} \ui{Waiting for the first webhook…}.
+\end{steps}
+
+\subsection*{9.C Test}
+\where{Browser tab: Stripe Dashboard (sandbox) → Workbench → Shell tab}
+Type this and press \ui{Return}. Shell is read-only in live mode, so this only works in a sandbox:
+\begin{cmd}
+stripe trigger payment_intent.succeeded
+\end{cmd}
+\textbf{Expected in Shell:} \lit{Trigger succeeded!}
+\where{Browser tab: Needl}
+\textbf{Success:} the status reads \ui{Receiving events · last:} followed by one of these:\\
+\lit{payment\_intent.succeeded} or \lit{charge.succeeded} (the trigger produces both).
+
+Optional, after setup: run \lit{claude} and paste this to cross-check from the MCP side:
+\begin{prompt}
+Using only the stripe MCP server in my sandbox, list my event destinations / webhook endpoints and show the URL and enabled events of the one whose URL starts with https://needl.dev. Read only: change nothing.
+\end{prompt}
+
+\subsection*{9.D Fixes}
+\begin{itemize}
+\item \textbf{Needl says \lit{Stripe webhook signing secrets start with whsec\_ (not the sk\_ or pk\_ API keys).}} You pasted an API key. Use \ui{Reveal secret} on the destination page.
+\item \textbf{Wasn't in the expected format:} you created a \ui{Thin} destination. Create a new \ui{Snapshot} destination with the same URL, put its secret into Needl (\ui{Setup} → \ui{Replace secret}), then delete the Thin destination in Stripe.
+\item \textbf{Signature didn't match:} you used the secret printed by \lit{stripe listen} (local CLI), which is a different secret. Use the destination's \ui{Reveal secret}.
+\item \textbf{\lit{stripe trigger} refused in Shell:} you're in live mode. Switch to the sandbox.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\clearpage
+\section{After setup}
+\subsection{Final checklist}
+\begin{tabularx}{\textwidth}{@{}L{28mm}YY@{}}
+\toprule
+\textbf{Tool} & \textbf{A: \lit{claude mcp list} shows} & \textbf{B/C: Needl row shows}\\
+\midrule
+GitLab & \lit{gitlab … ✔ Connected} & existing green row (unchanged)\\
+Linear & \lit{linear … ✔ Connected} & \ui{Receiving events · last: Issue.…}\\
+LaunchDarkly & \lit{launchdarkly … ✔ Connected} & \ui{Receiving events · last: flag.…}\\
+Sentry & \lit{sentry … ✔ Connected} & \ui{Receiving events · last: issue.…}\\
+PostHog & \lit{posthog … ✔ Connected} & \ui{Receiving events · last: }\textit{event}\\
+Intercom & \lit{intercom … ✔ Connected} & \ui{Receiving events · last: contact.created}\\
+Stripe & \lit{stripe … ✔ Connected} (sandbox) & \ui{Receiving events · last: payment\_intent.…}\\
+\bottomrule
+\end{tabularx}
+
+\subsection{General MCP fixes}
+\begin{itemize}
+\item \lit{! Needs authentication} → run \lit{claude mcp login <name>}.
+\item A notice in Claude Code about an expired sign-in → type \lit{/mcp}, select the server, choose \ui{Re-authenticate}.
+\item \lit{✘ Failed to connect} → check the URL with \lit{claude mcp get <name>}. If it's wrong, run \lit{claude mcp remove <name> --scope user} and add it again from the chapter.
+\item The browser doesn't open → copy the URL Claude Code prints into your browser.
+\item \lit{already exists} when adding → the name is taken. Run \lit{claude mcp get <name>}; if it points to the URL in this manual, skip adding and just sign in.
+\item Removing a server's access completely: \lit{claude mcp remove <name> --scope user}. You can also revoke the app in the tool's own account settings (Stripe: user settings → \ui{OAuth sessions} → \ui{Revoke access}).
+\end{itemize}
+
+\subsection{Safe use of MCP later}
+When a tool calls for it, Claude Code asks before using it. Approve calls one at a time, and don't choose “always allow” for tools that write. A safe pattern for any later request is to end it with: \emph{“Read only unless I confirm a specific change.”}
+
+\subsection{What this manual could not verify}
+\begin{itemize}
+\item It was written without signing in to any of the seven tools, so no live screen was clicked through. Labels come from the Needl source code (commit \lit{16eec52}) and official vendor docs checked on 2026-10-19. A few labels (Sentry form, LaunchDarkly \ui{Secret} field, Intercom \ui{Send a test request}) come from well-known third-party guides, because the vendor docs don't name them. Vendors rename buttons; if one differs slightly, choose the closest match with the same meaning.
+\item Exact text printed by \lit{claude mcp add} and \lit{claude mcp login} may vary by Claude Code version. The checked version was 2.1.302.
+\item Intercom's HEAD validation against Needl (red box in Chapter 8) was found by reading Needl's code and was not tried live.
+\item The PostHog \ui{Signing secret} field exists in PostHog's open-source template. Whether your PostHog Cloud project shows it, and which plan it needs, was not checked live; 7.D gives the fallback.
+\item Every success check proves that \emph{delivery} works. It doesn't prove that a rule or a GitLab flow ran.
+\end{itemize}
+
+\subsection{Official sources}
+\begin{itemize}[itemsep=1pt]
+\item Claude Code MCP: \url{https://code.claude.com/docs/en/mcp}
+\item GitLab MCP: \url{https://docs.gitlab.com/user/model_context_protocol/mcp_server/}
+\item GitLab webhooks: \url{https://docs.gitlab.com/user/project/integrations/webhooks/}
+\item Linear MCP: \url{https://linear.app/docs/mcp}
+\item Linear webhooks: \url{https://linear.app/developers/webhooks}
+\item LaunchDarkly MCP: \url{https://launchdarkly.com/docs/home/getting-started/mcp-hosted}
+\item LaunchDarkly webhooks: \url{https://launchdarkly.com/docs/home/infrastructure/webhooks}
+\item Sentry MCP: \url{https://mcp.sentry.dev/}
+\item Sentry integration webhooks: \url{https://docs.sentry.io/organization/integrations/integration-platform/webhooks/}
+\item PostHog MCP: \url{https://posthog.com/docs/model-context-protocol/claude-code}
+\item PostHog webhook destination: \url{https://posthog.com/docs/cdp/destinations/webhook}
+\item Intercom MCP: \url{https://developers.intercom.com/docs/guides/mcp}
+\item Intercom webhooks: \url{https://developers.intercom.com/docs/webhooks/setting-up-webhooks}
+\item Stripe MCP: \url{https://docs.stripe.com/mcp}
+\item Stripe webhooks: \url{https://docs.stripe.com/webhooks}
+\item Stripe sandboxes: \url{https://docs.stripe.com/sandboxes}
+\end{itemize}
+Full evidence map with check dates: \lit{docs/setup-manual/SOURCES.md} in the Needl repository.
+
+\end{document}

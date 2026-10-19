@@ -13,6 +13,8 @@ interface GitLabInvestigationConfig {
   readonly sourceBranch?: string;
   readonly mergeRequestIid?: number;
   readonly issueIid?: number;
+  /** What the flow is asked to do. The violation id and its record (as needl_counterexample) are always passed. */
+  readonly goal?: string;
 }
 
 export class GitLabLaunchError extends Error {
@@ -54,6 +56,7 @@ function investigationConfig(integration: StoredIntegration): GitLabInvestigatio
     ...(text(integration.config.sourceBranch) === undefined ? {} : { sourceBranch: text(integration.config.sourceBranch) }),
     ...(integer(integration.config.mergeRequestIid) === undefined ? {} : { mergeRequestIid: integer(integration.config.mergeRequestIid) }),
     ...(integer(integration.config.issueIid) === undefined ? {} : { issueIid: integer(integration.config.issueIid) }),
+    ...(text(integration.config.goal) === undefined ? {} : { goal: text(integration.config.goal)!.slice(0, 4_000) }),
   };
 }
 
@@ -104,6 +107,20 @@ export class GitLabInvestigationService {
       const error = cause instanceof GitLabLaunchError ? cause : new GitLabLaunchError("GitLab launch outcome is unknown after a transport failure", true);
       return this.repository.recordInvestigationLaunchFailure(tenantId, queued.id, error.ambiguous ? "launch_unknown" : "failed_to_start", error.message);
     }
+  }
+
+  /** Launches flows for violations that arrived since the last pass, where the workspace opted into autoLaunch. */
+  async launchPending(): Promise<number> {
+    let launched = 0;
+    for (const { tenantId, violationId } of await this.repository.listViolationsAwaitingLaunch()) {
+      try {
+        await this.launch(tenantId, violationId);
+        launched += 1;
+      } catch (error) {
+        process.stderr.write(`Automatic GitLab launch failed for ${violationId}: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    }
+    return launched;
   }
 
   async refresh(tenantId: string, investigationId: string): Promise<InvestigationRecord> {
@@ -170,7 +187,9 @@ export class GitLabInvestigationService {
     const payload: Record<string, unknown> = {
       project_id: config.projectId,
       ai_catalog_item_consumer_id: config.consumerId,
-      goal: `Investigate Needl violation ${counterexample.id} using needl_counterexample. Return evidence, confidence, explicit unknowns, and a proposed GitLab issue or draft-MR plan. Do not merge, deploy, or modify external providers.`,
+      goal: config.goal === undefined
+        ? `Investigate Needl violation ${counterexample.id} using needl_counterexample. Return evidence, confidence, explicit unknowns, and a proposed GitLab issue or draft-MR plan. Do not merge, deploy, or modify external providers.`
+        : `${config.goal}\n\nNeedl violation: ${counterexample.id}. Its full record is in the needl_counterexample context.`,
       start_workflow: true,
       allow_agent_to_request_user: false,
       additional_context: [{ Category: "needl_counterexample", Content: content }],

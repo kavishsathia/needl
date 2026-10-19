@@ -47,11 +47,12 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
   const upgraded = await repository.upgradeLegacyAssertions();
   if (upgraded > 0) process.stdout.write(`Upgraded ${upgraded} saved assertion(s) to the current rule format\n`);
 
-  // Time-bounded rules need ticks: a missing event is only noticed when time passes, not when something arrives.
+    // Time-bounded rules need ticks: a missing event is only noticed when time passes, not when something arrives.
     const tickGraceMs = Number(process.env.NEEDL_TICK_GRACE_MS ?? 5_000);
     let ticking: Promise<void> | undefined;
     function tick(): Promise<void> {
       ticking ??= repository.advanceDueMonitors(new Date(), tickGraceMs)
+        .then(() => investigations.launchPending())
         .then(() => undefined)
         .catch((error: unknown) => { process.stderr.write(`Clock tick failed: ${error instanceof Error ? error.message : String(error)}\n`); })
         .finally(() => { ticking = undefined; });
@@ -167,6 +168,9 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
       const ingestionRoute = url.pathname.match(/^\/api\/hooks\/([^/]+)$/);
       if (request.method === "POST" && ingestionRoute !== null) {
         const outcome = await ingestion.receive(decodeURIComponent(ingestionRoute[1]!), await readBody(request), webhookHeaders(request));
+        // A stored event can break a rule; launch any opted-in GitLab flow before answering, since a serverless
+        // function may stop once the response is sent.
+        if (outcome.outcome === "stored") await investigations.launchPending().catch(() => 0);
         json(response, outcome.statusCode, outcome.outcome === "stored" ? { outcome: "stored", eventId: outcome.event.id } : outcome); return;
       }
       if (url.pathname.startsWith("/api/auth/")) { await writeStandardResponse(await auth.handler(await standardRequest(request)), response); return; }

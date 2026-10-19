@@ -394,6 +394,24 @@ export class NeedlRepository implements DeduplicatingEventSink {
     return rows.map(integrationFromRow).find((integration) => integration.config.purpose === "investigation");
   }
 
+  /**
+   * Violations waiting for an automatic GitLab launch: the workspace's investigation integration has `autoLaunch`,
+   * the violation was detected after that integration was set up, and no investigation exists for it yet.
+   */
+  async listViolationsAwaitingLaunch(limit = 3): Promise<readonly { readonly tenantId: string; readonly violationId: string }[]> {
+    const result = await sql<{ tenantId: string; violationId: string }>`
+      select c.tenant_id as "tenantId", c.counterexample_id as "violationId"
+      from counterexamples c
+      join integration_configs i on i.tenant_id = c.tenant_id and i.provider = 'gitlab' and i.enabled = 1
+        and (i.config_json::jsonb ->> 'purpose') = 'investigation'
+        and (i.config_json::jsonb ->> 'autoLaunch') = 'true'
+      where c.detected_at >= i.created_at
+        and not exists (select 1 from investigations v where v.tenant_id = c.tenant_id and v.violation_id = c.counterexample_id)
+      order by c.detected_at
+      limit ${limit}`.execute(this.db.withoutPlugins());
+    return result.rows;
+  }
+
   async getCounterexample(tenantId: string, violationId: string): Promise<unknown> {
     const row = await this.db.selectFrom("counterexamples").select("recordJson")
       .where("tenantId", "=", tenantId).where("counterexampleId", "=", violationId).executeTakeFirst();

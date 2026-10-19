@@ -117,6 +117,32 @@ describe("GitLab investigations", () => {
     await expect(repository.getInvestigation(tenantA, launched.id)).resolves.toMatchObject({ status: "completed", resultMessage: "Read-only investigation completed." });
   });
 
+  it("launches opted-in workspaces automatically, once per violation, with the configured goal", async () => {
+    const { runtime, repository } = await setup();
+    const auto = await repository.tenantForUser("auto-user");
+    const manual = await repository.tenantForUser("manual-user");
+    const autoViolation = await createViolation(repository, auto);
+    await createViolation(repository, manual);
+    const base = { provider: "gitlab", enabled: true, secretEnvName: "NEEDL_TEST_GITLAB_TOKEN" } as const;
+    const flow = { purpose: "investigation", baseUrl: "https://gitlab.example", projectId: "needl/test", consumerId: 12, tokenType: "private-token" };
+    await repository.upsertIntegration({ ...base, id: "int_auto", tenantId: auto, config: { ...flow, autoLaunch: true, goal: "Open a draft merge request that fixes this." } });
+    await repository.upsertIntegration({ ...base, id: "int_manual", tenantId: manual, config: flow });
+    // The demo violations carry old timestamps; treat both integrations as set up before them.
+    await runtime.db.updateTable("integrationConfigs").set({ createdAt: "2000-01-01T00:00:00.000Z" }).execute();
+
+    const goals: string[] = [];
+    const fetcher = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      goals.push(String((JSON.parse(String(init?.body)) as { goal: unknown }).goal));
+      return new Response(JSON.stringify({ id: 501, status: "running" }), { status: 201, headers: { "content-type": "application/json" } });
+    });
+    const service = new GitLabInvestigationService(repository, { NEEDL_TEST_GITLAB_TOKEN: "test-private-token" }, fetcher as typeof fetch);
+    await expect(service.launchPending()).resolves.toBe(1);
+    await expect(service.launchPending()).resolves.toBe(0);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(goals[0]).toContain("Open a draft merge request that fixes this.");
+    expect(goals[0]).toContain(autoViolation);
+  });
+
   it("records ambiguous launch outcomes without retrying", async () => {
     const { repository } = await setup();
     const tenant = await repository.tenantForUser("ambiguous-user");

@@ -341,10 +341,10 @@ const posthog: ProviderCatalogue = {
   description: "Product analytics events from a PostHog webhook destination.",
   events: [{
     provider: "posthog", name: "event", phrase: "a PostHog event",
-    description: "Any captured analytics event.",
+    description: "Any captured analytics event. Teams name their own events, so a business moment the user describes (an account deleted, a checkout completed) is usually a custom event: use the name the user gives, or a snake_case one such as account_deleted.",
     types: { prefixes: [""] },
     fields: [
-      field("event", "event name", "string", subjectName, observed, "Captured event name, e.g. $pageview or checkout_completed."),
+      field("event", "event name", "string", subjectName, observed, "Captured event name, e.g. $pageview, or a team's own event such as checkout_completed or account_deleted."),
       field("distinct_id", "person", "string", payload("distinctId"), identifier, "PostHog distinct id of the person."),
       field("session", "session", "string", payload("sessionId"), identifier, "Session id."),
     ],

@@ -269,6 +269,19 @@ export function checkRule(source: string, options: CheckOptions = {}): CheckResu
     bindings.set(info.name, info);
   };
 
+  /**
+   * True when the event on the left of `->` always satisfies the event inside a `never` on the right: same event, and
+   * every condition there is either repeated from the left or compares a field with the value bound from that same field.
+   */
+  const sameValue = (left: Value, right: Value): boolean => JSON.stringify({ ...left, span: undefined }) === JSON.stringify({ ...right, span: undefined });
+  const triggerMatches = (trigger: Expr, forbidden: Expr): boolean => {
+    if (trigger.type !== "event" || forbidden.type !== "event") return false;
+    if (trigger.provider !== forbidden.provider || trigger.event !== forbidden.event) return false;
+    return forbidden.conditions.every((condition) =>
+      trigger.conditions.some((given) => given.field === condition.field && given.op === condition.op && sameValue(given.value, condition.value))
+      || (condition.op === "=" && condition.value.type === "var" && trigger.binds.some((bind) => bind.name === (condition.value as { name: string }).name && bind.field === condition.field)));
+  };
+
   /** Returns the bindings an antecedent event introduces for the right side of `->`. */
   const visit = (expr: Expr, scope: ReadonlyMap<string, BindingInfo>, negated: boolean, antecedent: boolean): Map<string, BindingInfo> => {
     const introduced = new Map<string, BindingInfo>();
@@ -328,6 +341,9 @@ export function checkRule(source: string, options: CheckOptions = {}): CheckResu
       case "implies": {
         const bound = visit(expr.left, scope, !negated, true);
         visit(expr.right, new Map([...scope, ...bound]), negated, false);
+        if (expr.right.type === "never" && triggerMatches(expr.left, expr.right.operand)) {
+          fail("The event that starts this rule also matches the `never` after `->`, so the rule would break on every one of them. To mean \"never again after it\", write `next never …`.", expr.right.span);
+        }
         break;
       }
       case "bind": {

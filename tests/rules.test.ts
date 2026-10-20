@@ -151,6 +151,16 @@ describe("rule checking against the catalogue", () => {
       expect(findLiveness(compileRule(rule, {}, { id: "r", version: 1, tenantId, name: "r" }).formula), source).toBeUndefined();
     }
   });
+
+  it("refuses a `never` that the starting event itself satisfies, and suggests `next never`", () => {
+    // The authoring agent wrote this for "an invoice must never be paid twice": it breaks on every paid invoice.
+    expect(errors("always (stripe.invoice.paid bind invoice = id -> never stripe.invoice.paid(id = invoice))")[0]).toMatch(/next never/);
+    expect(errors("always (stripe.invoice.paid(livemode = true) bind c = customer -> never stripe.invoice.paid(livemode = true, customer = c))")[0]).toMatch(/next never/);
+    ok("always (stripe.invoice.paid bind invoice = id -> next never stripe.invoice.paid(id = invoice))");
+    // A condition the starting event may not meet keeps the rule meaningful.
+    ok("always (stripe.invoice.paid bind c = customer -> never stripe.invoice.paid(customer = c, livemode = false))");
+    ok("always (stripe.charge.dispute.created bind pi = payment_intent -> never stripe.charge.succeeded(payment_intent = pi))");
+  });
 });
 
 describe("the rule sentence", () => {

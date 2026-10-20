@@ -45,7 +45,9 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
   const investigations = new GitLabInvestigationService(repository);
   const flowConnection = new FlowConnectionService(repository);
   const callbacks = new GitLabCallbackService(repository);
-  const openAIModel = process.env.OPENAI_API_KEY === undefined ? undefined : new OpenAITranslationModel({ apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_TRANSLATION_MODEL });
+  // An empty key counts as unset, so tests can switch AI authoring off even when .env provides one.
+  const openAIKey = process.env.OPENAI_API_KEY?.trim() || undefined;
+  const openAIModel = openAIKey === undefined ? undefined : new OpenAITranslationModel({ apiKey: openAIKey, model: process.env.OPENAI_TRANSLATION_MODEL });
   const upgraded = await repository.upgradeLegacyAssertions();
   if (upgraded > 0) process.stdout.write(`Upgraded ${upgraded} saved assertion(s) to the current rule format\n`);
 

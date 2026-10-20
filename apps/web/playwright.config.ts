@@ -27,6 +27,9 @@ export default defineConfig({
       BETTER_AUTH_URL: "http://127.0.0.1:4173",
       NEEDL_TRUSTED_ORIGINS: "http://127.0.0.1:4173",
       BETTER_AUTH_SECRET: "needl-playwright-secret-that-is-long-enough",
+      // npm run serve also reads the repo's .env; keep its real keys out of the tests.
+      OPENAI_API_KEY: "",
+      NEEDL_SIGNUP_ALLOWLIST: "",
     },
   },
   projects: [

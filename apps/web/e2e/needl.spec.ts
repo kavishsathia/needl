@@ -69,7 +69,7 @@ test("browser signup, signout, and signin keep the private workspace", async ({ 
   await page.getByLabel("Password").fill(currentUser.password);
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Assertions", exact: true })).toBeVisible();
-  await page.getByLabel("Open local settings").click();
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByLabel("Email").fill(secondEmail);
   await page.getByLabel("Password").fill(currentUser.password);
@@ -127,14 +127,14 @@ test("complete assertion journey uses engine evidence and persists authored stat
 
   await page.getByRole("tab", { name: "Needs attention" }).click();
   await expect(page.locator(".assertion-card")).toHaveCount(4);
-  await page.getByPlaceholder("Search Acme / Production").fill("Boomerang");
+  await page.getByPlaceholder("Search rules and events").fill("Boomerang");
   await expect(page.locator(".assertion-card")).toHaveCount(1);
-  await page.getByPlaceholder("Search Acme / Production").fill("");
+  await page.getByPlaceholder("Search rules and events").fill("");
 
-  await page.getByRole("button", { name: "Activity" }).click();
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("button", { name: "Activity" }).click();
   await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(page.locator(".page-summary > div").filter({ hasText: "Counterexamples" }).getByText("4", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Connections" }).click();
+  await page.getByRole("navigation", { name: "Primary navigation" }).getByRole("button", { name: "Connections" }).click();
   await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
   await expect(page.getByTestId("connection-stripe")).toContainText("Sample data only");
   expect(consoleErrors).toEqual([]);
@@ -366,7 +366,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   await pauseStarted;
   await detail.getByRole("button", { name: "Enable" }).click();
   await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
-  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 events");
   const staleResponse = page.waitForResponse((response) => {
     if (!response.url().endsWith("/api/replay")) return false;
     const body = response.request().postDataJSON();
@@ -375,7 +375,7 @@ test("a delayed pause replay cannot overwrite the newer enabled result", async (
   releasePause();
   await staleResponse;
   await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
-  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 events");
 });
 
 test("a late failed replay cannot replace a newer successful replay with an error", async ({ page }) => {
@@ -412,7 +412,7 @@ test("a late failed replay cannot replace a newer successful replay with an erro
   await staleFailure;
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(detail.getByText("Broken", { exact: true })).toBeVisible();
-  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 inputs");
+  await expect(detail.locator(".detail-meta > span").filter({ hasText: "Evidence" })).toContainText("2 events");
 });
 
 test("invalid restored data is rejected and replaced with safe defaults", async ({ page }) => {

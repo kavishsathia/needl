@@ -128,7 +128,7 @@ always (
   stripe.invoice.payment_failed bind cust = customer
   -> eventually within $time_limit (
     stripe.invoice.paid(customer = cust)
-    or stripe.customer.subscription.updated(customer = cust, status in ["past_due", "unpaid", "canceled", "paused"])
+    or stripe.customer.subscription.updated(customer = cust, status in ["past_due", "unpaid", "canceled", "paused", "incomplete_expired"])
     or stripe.customer.subscription.deleted(customer = cust)
   )
 )

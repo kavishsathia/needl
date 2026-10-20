@@ -226,6 +226,7 @@ const stripeObjects: Readonly<Record<string, { readonly object: string; readonly
   "charge.dispute": { object: "dispute", prefix: "dp" },
   invoice: { object: "invoice", prefix: "in" },
   "customer.subscription": { object: "subscription", prefix: "sub" },
+  invoice_payment: { object: "invoice_payment", prefix: "inpay" },
 };
 
 function stripe(event: CatalogueEvent, values: SimulatedValues, at: Date, secret: string): SignedDelivery {
@@ -234,14 +235,16 @@ function stripe(event: CatalogueEvent, values: SimulatedValues, at: Date, secret
   const { object, prefix } = stripeObjects[kind]!;
   const id = text(values, "id", `${prefix}_${hex(8)}`);
   const optional = (name: string, key = name) => values[name] === undefined || values[name] === "" ? {} : { [key]: values[name] };
-  const status = type.endsWith("succeeded") ? "succeeded" : type.endsWith("failed") ? "failed" : type === "invoice.paid" ? "paid" : type === "customer.subscription.deleted" ? "canceled" : undefined;
+  const status = type.endsWith("succeeded") ? "succeeded" : type.endsWith("failed") ? "failed" : type === "invoice.paid" || type === "invoice_payment.paid" ? "paid" : type === "customer.subscription.deleted" ? "canceled" : undefined;
   const body = JSON.stringify({
     id: `evt_${hex(12)}`, object: "event", api_version: "2025-09-30.clover", created: Math.floor(at.getTime() / 1_000),
     livemode: values.livemode === true, pending_webhooks: 1, request: { id: null, idempotency_key: null }, type,
     data: {
       object: {
         id, object, ...optional("customer"), ...optional("amount"), ...optional("currency"), ...optional("invoice"),
-        ...optional("subscription"), ...optional("charge"), ...optional("payment_intent"),
+        ...optional("subscription"), ...optional("charge"),
+        // Invoice payments name their PaymentIntent under payment, as Stripe sends them.
+        ...(object === "invoice_payment" ? (values.payment_intent === undefined || values.payment_intent === "" ? {} : { payment: { type: "payment_intent", payment_intent: values.payment_intent } }) : optional("payment_intent")),
         status: values.status === undefined || values.status === "" ? status : values.status,
         description: "Simulated object",
         ...(object === "invoice" ? { hosted_invoice_url: `https://invoice.stripe.com/i/${id}`, amount_paid: 4900, currency: "usd" } : {}),

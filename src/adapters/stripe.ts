@@ -41,6 +41,8 @@ const stripeEvents: Record<string, { kind: string; subject: string }> = {
   "charge.dispute.created": { kind: "charge.disputed", subject: "dispute" },
   "invoice.paid": { kind: "invoice.paid", subject: "invoice" },
   "invoice.payment_failed": { kind: "invoice.payment_failed", subject: "invoice" },
+  // Since API version 2025-03-31 this is the only event that ties a payment to the invoice it paid.
+  "invoice_payment.paid": { kind: "invoice.payment_recorded", subject: "invoice_payment" },
   "customer.subscription.updated": { kind: "subscription.updated", subject: "subscription" },
   "customer.subscription.deleted": { kind: "subscription.deleted", subject: "subscription" },
 };
@@ -96,11 +98,19 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
     const subjectId = stringValue(entity.id);
     if (subjectId === undefined) return rejected(this.provider, "malformed", "Supported Stripe event is missing data.object.id");
     const charge = objectValue(entity.charge);
+    // Newer API versions moved these: an invoice's subscription now sits under parent, and an
+    // invoice payment names its PaymentIntent under payment.
+    const subscriptionDetails = objectValue(objectValue(entity.parent)?.subscription_details);
+    const payment = objectValue(entity.payment);
     const relationships = [
       ...relation("customer", entity.customer, "/data/object/customer"),
-      ...relation("payment_intent", entity.payment_intent, "/data/object/payment_intent"),
+      ...(entity.payment_intent !== undefined
+        ? relation("payment_intent", entity.payment_intent, "/data/object/payment_intent")
+        : relation("payment_intent", payment?.payment_intent, "/data/object/payment/payment_intent")),
       ...relation("invoice", entity.invoice, "/data/object/invoice"),
-      ...relation("subscription", entity.subscription, "/data/object/subscription"),
+      ...(entity.subscription !== undefined
+        ? relation("subscription", entity.subscription, "/data/object/subscription")
+        : relation("subscription", subscriptionDetails?.subscription, "/data/object/parent/subscription_details/subscription")),
       ...relation("charge", typeof entity.charge === "string" ? entity.charge : charge?.id, "/data/object/charge"),
     ];
     const url = stringValue(entity.hosted_invoice_url) ?? stringValue(entity.receipt_url);
@@ -131,7 +141,7 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
             objectType: entity.object,
             ...(payload.livemode === undefined ? {} : { livemode: payload.livemode }),
             ...(entity.status === undefined ? {} : { status: entity.status }),
-            ...(entity.amount === undefined ? {} : { amount: entity.amount }),
+            ...(entity.amount === undefined ? (entity.amount_paid === undefined ? {} : { amount: entity.amount_paid }) : { amount: entity.amount }),
             ...(entity.currency === undefined ? {} : { currency: entity.currency }),
             ...(payload.data.previous_attributes === undefined ? {} : { previousAttributes: payload.data.previous_attributes }),
           },

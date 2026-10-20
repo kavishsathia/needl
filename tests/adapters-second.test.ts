@@ -154,6 +154,31 @@ describe("StripeAdapter", () => {
     expect(result.event.relationships).toContainEqual(expect.objectContaining({ type: "customer", id: "cus_7" }));
   });
 
+  it("reads invoice links from API versions that moved them (invoice_payment.paid, invoice.parent)", async () => {
+    const secret = "whsec_stripe_test";
+    const timestamp = "1791968400";
+    const ingest = (body: unknown) => {
+      const rawBody = Buffer.from(JSON.stringify(body));
+      const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody.toString()}`).digest("hex");
+      return new StripeAdapter().ingest(request(rawBody, { "Stripe-Signature": `t=${timestamp},v1=${signature}` }), { secrets: [secret] });
+    };
+    const paid = await ingest({ id: "evt_ip", object: "event", type: "invoice_payment.paid", created: 1791968400, livemode: false, data: { object: {
+      id: "inpay_1", object: "invoice_payment", invoice: "in_9", status: "paid", amount_paid: 1500, currency: "sgd",
+      payment: { type: "payment_intent", payment_intent: "pi_123" },
+    } } });
+    expect(paid.status).toBe("accepted");
+    if (paid.status !== "accepted") return;
+    expect(paid.event.relationships).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "invoice", id: "in_9" }), expect.objectContaining({ type: "payment_intent", id: "pi_123" }),
+    ]));
+    expect(paid.event.evidence.providerPayload).toMatchObject({ amount: 1500 });
+    const failed = await ingest({ id: "evt_if", object: "event", type: "invoice.payment_failed", created: 1791968400, livemode: false, data: { object: {
+      id: "in_9", object: "invoice", customer: "cus_7", status: "open",
+      parent: { type: "subscription_details", subscription_details: { subscription: "sub_4" } },
+    } } });
+    expect(failed.status === "accepted" && failed.event.relationships).toContainEqual(expect.objectContaining({ type: "subscription", id: "sub_4" }));
+  });
+
   it("rejects stale deliveries before parsing", async () => {
     const rawBody = await fixture("stripe-payment.json");
     const secret = "whsec_stripe_test";

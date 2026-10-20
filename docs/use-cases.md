@@ -93,28 +93,27 @@ always (
 
 Stripe: money moving the way the business promised.
 
-### When a payment for an invoice succeeds, that invoice must be marked paid within <time_limit>
+### Once an invoice is paid, no payment attempt on it may fail afterwards
 
-Money arrived but the invoice still looks unpaid, so the customer gets dunned anyway.
+A paid invoice being charged again, and failing, means billing is retrying money it already has.
 
 ```text
-rule "When a payment for an invoice succeeds, that invoice must be marked paid within {time_limit}"
-input time_limit: duration = 1h
+rule "Once an invoice is paid, no payment attempt on it may fail afterwards"
 always (
-  stripe.payment_intent.succeeded(livemode = true) bind inv = invoice
-  -> eventually within $time_limit stripe.invoice.paid(id = inv)
+  stripe.invoice_payment.paid bind inv = invoice
+  -> next never stripe.invoice.payment_failed(id = inv)
 )
 ```
 
-### An invoice must never be paid by a second successful payment
+### An invoice must never be paid by a second payment
 
 Retries or race conditions charging the same invoice twice.
 
 ```text
-rule "An invoice must never be paid by a second successful payment"
+rule "An invoice must never be paid by a second payment"
 always (
-  stripe.payment_intent.succeeded(livemode = true) bind inv = invoice
-  -> next never stripe.payment_intent.succeeded(invoice = inv)
+  stripe.invoice_payment.paid bind inv = invoice
+  -> next never stripe.invoice_payment.paid(invoice = inv)
 )
 ```
 

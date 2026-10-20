@@ -10,7 +10,7 @@ https://needl.dev
 
 `vercel.json` installs both packages and runs `npm --prefix apps/web run build:vercel`, which writes Vercel's Build Output API directly: the Vite frontend as static files and the whole `/api` surface as one bundled Node function (`apps/web/backend/vercel.ts`, wrapping the same `createNeedlApp()` the local server uses). Deploy with `vercel deploy --prod` from the repository root.
 
-Time-bounded rules have no background timer on Vercel. They advance on incoming requests (at most every 2 seconds; the open UI polls every few seconds) and on a daily cron to `/api/cron/tick`, which requires `CRON_SECRET`. Hobby plans cannot run crons more often than daily.
+Time-bounded rules have no background timer on Vercel. They advance on incoming requests (at most every 2 seconds; the open UI polls every few seconds) and on a daily cron to `/api/cron/tick`, which requires `CRON_SECRET`. Hobby plans cannot run crons more often than daily, so with nobody on the site a missed deadline can go unnoticed for up to a day. To catch deadlines within minutes, point any external scheduler (for example cron-job.org, or a scheduled CI job) at `https://needl.dev/api/cron/tick` every few minutes with the header `Authorization: Bearer <CRON_SECRET>`; any request to `/api/health` also advances the clock.
 
 ## Environment
 

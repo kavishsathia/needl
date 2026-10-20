@@ -133,6 +133,21 @@ export class GitLabInvestigationService {
     return launched;
   }
 
+  /** Asks GitLab how running flows are doing, so finished flows show as finished without anyone clicking refresh. */
+  async refreshRunning(): Promise<number> {
+    let refreshed = 0;
+    for (const { tenantId, id } of await this.repository.listInvestigationsToRefresh()) {
+      try {
+        await this.refresh(tenantId, id);
+        refreshed += 1;
+      } catch (error) {
+        await this.repository.touchInvestigation(tenantId, id).catch(() => undefined);
+        process.stderr.write(`GitLab status check failed for ${id}: ${error instanceof Error ? error.message : String(error)}\n`);
+      }
+    }
+    return refreshed;
+  }
+
   async refresh(tenantId: string, investigationId: string): Promise<InvestigationRecord> {
     const investigation = await this.repository.getInvestigation(tenantId, investigationId);
     if (["completed", "failed", "stopped"].includes(investigation.status) || investigation.workflowId === undefined) return investigation;
@@ -150,7 +165,7 @@ export class GitLabInvestigationService {
       response = await this.fetcher(`${config.baseUrl}/api/graphql`, {
         method: "POST", headers, signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
-          query: "query NeedlFlowStatus($workflowId: AiDuoWorkflowsWorkflowID!) { duoWorkflowWorkflows(workflowId: $workflowId) { nodes { id status statusName statusGroup webUrl summary title updatedAt aiCatalogItemVersionId } } }",
+          query: "query NeedlFlowStatus($workflowId: AiDuoWorkflowsWorkflowID!) { duoWorkflowWorkflows(workflowId: $workflowId) { nodes { id status statusName statusGroup webUrl summary title updatedAt aiCatalogItemVersionId mergeRequestLinks(first: 5) { nodes { mergeRequest { webUrl title } } } latestCheckpoint { lastDuoMessage { content } } } } }",
           variables: { workflowId: `gid://gitlab/Ai::DuoWorkflows::Workflow/${investigation.workflowId}` },
         }),
       });
@@ -171,15 +186,24 @@ export class GitLabInvestigationService {
       : /CANCEL|STOP/.test(rawStatus) ? "stopped" as const
         : /SUCCESS|COMPLETE|FINISH/.test(rawStatus) ? "completed" as const
           : "running" as const;
+    const mergeRequests = (Array.isArray(object(node.mergeRequestLinks)?.nodes) ? object(node.mergeRequestLinks)!.nodes as unknown[] : [])
+      .flatMap((link) => {
+        const mergeRequest = object(object(link)?.mergeRequest);
+        const url = text(mergeRequest?.webUrl);
+        return url === undefined ? [] : [{ url, title: text(mergeRequest?.title) ?? url }];
+      });
+    // The flow's last message is what it concluded; GitLab's summary field is usually empty.
+    const lastMessage = text(object(object(node.latestCheckpoint)?.lastDuoMessage)?.content);
+    const resultMessage = text(node.summary) ?? lastMessage;
     return this.repository.recordInvestigationStatus(tenantId, investigationId, {
       status,
       ...(text(node.webUrl) === undefined ? {} : { webUrl: text(node.webUrl) }),
       progress: {
         source: "gitlab-graphql", status: node.status ?? null, statusName: node.statusName ?? null,
         statusGroup: node.statusGroup ?? null, updatedAt: node.updatedAt ?? null,
-        catalogVersionId: node.aiCatalogItemVersionId ?? null,
+        catalogVersionId: node.aiCatalogItemVersionId ?? null, mergeRequests,
       },
-      ...(text(node.summary) === undefined || status === "running" ? {} : { resultMessage: text(node.summary) }),
+      ...(resultMessage === undefined || status === "running" ? {} : { resultMessage }),
     });
   }
 
@@ -193,13 +217,13 @@ export class GitLabInvestigationService {
     if (token === undefined) throw new GitLabLaunchError("The GitLab flow connection has no access token", false);
     const envelope = counterexampleEnvelope(counterexample, config);
     const content = JSON.stringify(envelope);
-    if (Buffer.byteLength(content) > 32_768) throw new GitLabLaunchError("Counterexample exceeds the 32 KiB investigation context limit", false);
+    if (Buffer.byteLength(content) > 12_000) throw new GitLabLaunchError("Counterexample exceeds the 12 KB limit for flow instructions", false);
     const payload: Record<string, unknown> = {
       project_id: config.projectId,
       ai_catalog_item_consumer_id: config.consumerId,
       goal: config.goal === undefined
-        ? `Investigate Needl violation ${counterexample.id} using needl_counterexample. Return evidence, confidence, explicit unknowns, and a proposed GitLab issue or draft-MR plan. Do not merge, deploy, or modify external providers.`
-        : `${config.goal}\n\nNeedl violation: ${counterexample.id}. Its full record is in the needl_counterexample context.`,
+        ? `Investigate Needl violation ${counterexample.id}. Return evidence, confidence, explicit unknowns, and a proposed GitLab issue or draft-MR plan. Do not merge, deploy, or modify external providers.\n\nThe violation record (also attached as needl_counterexample context, which some flows do not receive):\n${content}`
+        : `${config.goal}\n\nNeedl violation ${counterexample.id}. The violation record (also attached as needl_counterexample context, which some flows do not receive):\n${content}`,
       start_workflow: true,
       allow_agent_to_request_user: false,
       additional_context: [{ Category: "needl_counterexample", Content: content }],

@@ -643,3 +643,5 @@ h1, h2, h3, p { margin-top: 0; }
 .flow-toggle strong { font-size: 14px; font-weight: 600; }
 .flow-toggle small { color: var(--muted); font-size: 13px; }
 @media (max-width: 720px) { .flow-panel { grid-template-columns: 44px 1fr; } .flow-panel .connection-actions { grid-column: 1 / -1; } }
+
+.investigation-result { white-space: pre-wrap; max-height: 24rem; overflow-y: auto; }

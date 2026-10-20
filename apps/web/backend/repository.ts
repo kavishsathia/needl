@@ -449,6 +449,20 @@ export class NeedlRepository implements DeduplicatingEventSink {
     return result.rows;
   }
 
+  /** Running flows whose status was last checked more than `staleMs` ago, oldest first. */
+  async listInvestigationsToRefresh(staleMs = 30_000, limit = 3): Promise<readonly { readonly tenantId: string; readonly id: string }[]> {
+    const before = new Date(Date.now() - staleMs).toISOString();
+    return this.db.selectFrom("investigations").select(["tenantId", "id"])
+      .where("status", "=", "running").where("workflowId", "is not", null).where("updatedAt", "<", before)
+      .orderBy("updatedAt").limit(limit).execute();
+  }
+
+  /** Marks a status check as done without changing anything, so a failing check waits its turn. */
+  async touchInvestigation(tenantId: string, id: string): Promise<void> {
+    await this.db.updateTable("investigations").set({ updatedAt: new Date().toISOString() })
+      .where("tenantId", "=", tenantId).where("id", "=", id).execute();
+  }
+
   async getCounterexample(tenantId: string, violationId: string): Promise<unknown> {
     const row = await this.db.selectFrom("counterexamples").select("recordJson")
       .where("tenantId", "=", tenantId).where("counterexampleId", "=", violationId).executeTakeFirst();

@@ -739,6 +739,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
   const latestViolation = violations.at(-1);
   const investigation = latestViolation === undefined ? undefined : investigations.find((item) => item.violationId === latestViolation.id);
   const refreshable = investigation !== undefined && investigation.workflowId !== undefined && !["completed", "failed", "stopped"].includes(investigation.status);
+  const mergeRequests = flowMergeRequests(investigation?.lastProgress);
   return <aside className={`detail detail--${tone}`} aria-label={`${draft.definition.name} detail`}>
     <div className="detail-scroll">
       <header className="detail-header">
@@ -776,9 +777,10 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
           <div className="investigation-card">
             <span className="simulated-mark">{investigation?.status.replaceAll("_", " ") ?? (outbox === undefined ? "not requested" : "ready")}</span>
             <h3>{investigation === undefined ? (outbox === undefined ? "No investigation requested" : "Latest break ready to investigate") : `GitLab investigation ${investigation.status.replaceAll("_", " ")}`}</h3>
-            <p>{investigation === undefined ? (outbox === undefined ? "Needl offers an investigation once the rule breaks." : investigationReady ? "Start a read-only GitLab flow on the latest break. Needl never retries an ambiguous launch." : "The break is queued, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>
+            <p className="investigation-result">{investigation === undefined ? (outbox === undefined ? "Needl offers an investigation once the rule breaks." : investigationReady ? "Start a read-only GitLab flow on the latest break. Needl never retries an ambiguous launch." : "The break is queued, but no scoped GitLab investigation credential is configured.") : investigation.resultMessage ?? (investigation.workflowId === undefined ? "No workflow id was returned." : `Workflow ${investigation.workflowId}`)}</p>
             <div className="investigation-actions">
               <button disabled={investigation === undefined ? latestViolation === undefined || !investigationReady : !refreshable} onClick={() => investigation !== undefined ? onRefreshInvestigation(investigation.id) : latestViolation === undefined ? undefined : onLaunchInvestigation(latestViolation.id)} title={!investigationReady ? "Configure a scoped GitLab investigation integration on the backend" : investigation !== undefined && !refreshable ? "This attempt has no refreshable workflow" : undefined}>{investigation === undefined ? "Start investigation" : refreshable ? "Refresh status" : "Attempt recorded"}</button>
+              {mergeRequests.map((mergeRequest) => <a key={mergeRequest.url} href={mergeRequest.url} target="_blank" rel="noreferrer">{mergeRequest.title} ↗</a>)}
               {investigation?.webUrl ? <a href={investigation.webUrl} target="_blank" rel="noreferrer">Open in GitLab ↗</a> : null}
             </div>
           </div>
@@ -792,6 +794,12 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
       <button onClick={onCopy}><Icon name="copy"/>Copy local link</button>
     </footer>
   </aside>;
+}
+
+/** Merge requests the flow opened, as last reported by GitLab. */
+function flowMergeRequests(progress: unknown): readonly { readonly url: string; readonly title: string }[] {
+  const list = typeof progress === "object" && progress !== null ? (progress as { mergeRequests?: unknown }).mergeRequests : undefined;
+  return Array.isArray(list) ? list.filter((item): item is { url: string; title: string } => typeof item?.url === "string" && item.url.startsWith("https://") && typeof item?.title === "string") : [];
 }
 
 function EventTable({ events }: { readonly events: DemoReplay["events"] }) {

@@ -141,6 +141,44 @@ describe("GitLab investigations", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(goals[0]).toContain("Open a draft merge request that fixes this.");
     expect(goals[0]).toContain(autoViolation);
+    // Some flows never receive additional_context, so the record itself travels in the instructions.
+    expect(goals[0]).toContain('"timeline"');
+  });
+
+  it("checks running flows with GitLab on the clock and records their merge requests and final answer", async () => {
+    const { runtime, repository } = await setup();
+    const tenant = await repository.tenantForUser("refresh-user");
+    const violationId = await createViolation(repository, tenant);
+    await repository.upsertIntegration({
+      id: "int_refresh", tenantId: tenant, provider: "gitlab", enabled: true, secretEnvName: "NEEDL_TEST_GITLAB_TOKEN",
+      config: { purpose: "investigation", baseUrl: "https://gitlab.example", projectId: "needl/test", consumerId: 12, tokenType: "private-token" },
+    });
+    let finished = false;
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      if (!String(input).endsWith("/api/graphql")) return new Response(JSON.stringify({ id: 640, status: "running" }), { status: 201, headers: { "content-type": "application/json" } });
+      const node = finished
+        ? { status: "FINISHED", statusName: "finished", statusGroup: "COMPLETED", summary: null, webUrl: "https://gitlab.example/s/640",
+          mergeRequestLinks: { nodes: [{ mergeRequest: { webUrl: "https://gitlab.example/needl/test/-/merge_requests/7", title: "Draft: fix pipeline" } }] },
+          latestCheckpoint: { lastDuoMessage: { content: "Opened a draft merge request that fixes the failing test." } } }
+        : { status: "RUNNING", statusName: "running", statusGroup: "ACTIVE", mergeRequestLinks: { nodes: [] }, latestCheckpoint: null };
+      return new Response(JSON.stringify({ data: { duoWorkflowWorkflows: { nodes: [node] } } }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    const service = new GitLabInvestigationService(repository, { NEEDL_TEST_GITLAB_TOKEN: "test-private-token" }, fetcher as typeof fetch);
+    const launched = await service.launch(tenant, violationId);
+    // Just launched, so it is not due for a check yet.
+    await expect(service.refreshRunning()).resolves.toBe(0);
+    const age = () => runtime.db.updateTable("investigations").set({ updatedAt: "2000-01-01T00:00:00.000Z" }).execute();
+    await age();
+    await expect(service.refreshRunning()).resolves.toBe(1);
+    await expect(repository.getInvestigation(tenant, launched.id)).resolves.toMatchObject({ status: "running" });
+    finished = true;
+    await age();
+    await expect(service.refreshRunning()).resolves.toBe(1);
+    const done = await repository.getInvestigation(tenant, launched.id);
+    expect(done).toMatchObject({ status: "completed", resultMessage: "Opened a draft merge request that fixes the failing test." });
+    expect(JSON.stringify(done)).toContain("merge_requests/7");
+    await age();
+    await expect(service.refreshRunning()).resolves.toBe(0);
   });
 
   it("records ambiguous launch outcomes without retrying", async () => {

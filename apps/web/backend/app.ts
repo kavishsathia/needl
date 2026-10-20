@@ -55,6 +55,7 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
     function tick(): Promise<void> {
       ticking ??= repository.advanceDueMonitors(new Date(), tickGraceMs)
         .then(() => investigations.launchPending())
+        .then(() => investigations.refreshRunning())
         .then(() => undefined)
         .catch((error: unknown) => { process.stderr.write(`Clock tick failed: ${error instanceof Error ? error.message : String(error)}\n`); })
         .finally(() => { ticking = undefined; });

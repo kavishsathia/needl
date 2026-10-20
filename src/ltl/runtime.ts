@@ -273,6 +273,12 @@ export interface RuntimeMonitorOptions {
   readonly store: MonitorStore;
   readonly assertions: readonly AssertionDefinition[];
   readonly maxCommitRetries?: number;
+  /**
+   * Providers do not deliver webhooks in order: Stripe can send an event a second after a newer one. An event
+   * older than the instance's clock by at most this much is applied at the clock's time instead of being dropped.
+   * Defaults to 0 (strict order).
+   */
+  readonly reorderToleranceMs?: number;
 }
 
 export class RuntimeMonitor {
@@ -280,9 +286,11 @@ export class RuntimeMonitor {
   readonly #assertions: readonly CompiledAssertion[];
   readonly #lookup = new Map<string, CompiledAssertion>();
   readonly #maxCommitRetries: number;
+  readonly #reorderToleranceMs: number;
 
   constructor(options: RuntimeMonitorOptions) {
     this.#store = options.store;
+    this.#reorderToleranceMs = Math.max(0, options.reorderToleranceMs ?? 0);
     this.#assertions = options.assertions.map(compileAssertion);
     this.#maxCommitRetries = options.maxCommitRetries ?? 5;
     for (const assertion of this.#assertions) {
@@ -317,13 +325,19 @@ export class RuntimeMonitor {
     instance: MonitorInstance,
     event: NormalizedEvent,
   ): Promise<MonitorProcessResult> {
-    const at = logicalTime(event);
+    const occurredAt = logicalTime(event);
     for (let attempt = 0; attempt < this.#maxCommitRetries; attempt += 1) {
       if (await this.#store.hasProcessedInput(instance.key, event.id)) return { ...instance, outcome: "duplicate" };
       const previous = await this.#store.loadCheckpoint(instance.key) ?? initialCheckpoint(assertion, instance);
       if (previous.finalized) return { ...instance, outcome: "closed" };
+      let at = occurredAt;
       if (previous.lastLogicalTime !== undefined && at < previous.lastLogicalTime) {
-        return { ...instance, outcome: "out_of_order", lastLogicalTime: previous.lastLogicalTime, inputTime: at };
+        const lateBy = new Date(previous.lastLogicalTime).getTime() - new Date(at).getTime();
+        if (lateBy > this.#reorderToleranceMs) {
+          return { ...instance, outcome: "out_of_order", lastLogicalTime: previous.lastLogicalTime, inputTime: at };
+        }
+        // Slightly late: the clock never runs backwards, so apply it now.
+        at = previous.lastLogicalTime;
       }
       const state = applyStateUpdates(assertion, event, previous.state);
       const evaluation = evaluatePropositions(assertion, event, state);

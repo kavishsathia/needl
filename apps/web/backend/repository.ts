@@ -94,7 +94,12 @@ function investigationFromRow(row: {
 }
 
 export class NeedlRepository implements DeduplicatingEventSink {
-  constructor(private readonly runtime: DatabaseRuntime, private readonly translationDailyLimit = 5) {}
+  constructor(
+    private readonly runtime: DatabaseRuntime,
+    private readonly translationDailyLimit = 5,
+    /** Webhooks arriving up to this late (by event time) are still applied; see RuntimeMonitorOptions. */
+    private readonly reorderToleranceMs = Number(process.env.NEEDL_REORDER_TOLERANCE_MS ?? 300_000),
+  ) {}
 
   private get db() { return this.runtime.db; }
 
@@ -168,7 +173,12 @@ export class NeedlRepository implements DeduplicatingEventSink {
 
   private async processLiveEvent(event: NormalizedEvent): Promise<void> {
     const monitor = await this.liveMonitor(event.tenantId);
-    if (monitor !== undefined) await monitor.process(event);
+    if (monitor === undefined) return;
+    for (const result of await monitor.process(event)) {
+      if (result.outcome === "out_of_order") {
+        process.stderr.write(`Dropped ${event.id} for ${result.assertionId}: it happened at ${result.inputTime}, more than the reorder tolerance before ${result.lastLogicalTime}\n`);
+      }
+    }
   }
 
   /** The tenant's monitoring assertions over its durable live store; undefined when nothing is monitoring. */
@@ -178,7 +188,7 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const drafts = validateProductAssertionCollection(rows.map((row) => JSON.parse(row.draftJson)), { allowNeedsReview: false });
     if (drafts.length === 0) return undefined;
     const definitions: AssertionDefinition[] = drafts.map((draft) => ({ ...draft.definition, tenantId }));
-    return new RuntimeMonitor({ store: new LiveMonitorStore(this.runtime, tenantId), assertions: definitions });
+    return new RuntimeMonitor({ store: new LiveMonitorStore(this.runtime, tenantId), assertions: definitions, reorderToleranceMs: this.reorderToleranceMs });
   }
 
   /**

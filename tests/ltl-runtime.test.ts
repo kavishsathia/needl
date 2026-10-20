@@ -98,6 +98,16 @@ describe("RuntimeMonitor ordinary LTL", () => {
     expect(await store.listCheckpoints()).toEqual([]);
   });
 
+  it("applies slightly late events at the current clock instead of dropping them", async () => {
+    const monitor = new RuntimeMonitor({ store: new InMemoryMonitorStore(), assertions: [recurrenceAssertion()], reorderToleranceMs: 2_000 });
+    const scope = { issue: "I-1", environment: "prod" } as const;
+    expect((await monitor.process(observation({ id: "deploy", at: "2026-01-01T00:00:05Z", kind: "fix.deployed", ...scope })))[0]).toMatchObject({ outcome: "applied" });
+    // Too late even for the tolerance: still refused.
+    expect((await monitor.process(observation({ id: "stale", at: "2026-01-01T00:00:01Z", kind: "error.recurred", ...scope })))[0]).toMatchObject({ outcome: "out_of_order" });
+    // A second late, as Stripe delivers them: applied, and it breaks the rule.
+    expect((await monitor.process(observation({ id: "late", at: "2026-01-01T00:00:04Z", kind: "error.recurred", ...scope })))[0]).toMatchObject({ outcome: "applied", verdict: "violated" });
+  });
+
   it("deduplicates inputs, rejects time regression, and resumes from checkpoints", async () => {
     const store = new InMemoryMonitorStore();
     const deploy = observation({ id: "deploy", at: "2026-01-01T00:00:05Z", kind: "fix.deployed", issue: "I-1", environment: "prod" });

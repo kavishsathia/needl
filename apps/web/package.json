@@ -17,7 +17,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",
     "better-auth": "^1.7.7",
-    "kysely": "^0.29.6",
+    "kysely": "^0.29.7",
     "openai": "^7.33.0",
     "pg": "^8.23.1",
     "react": "^19.2.0",

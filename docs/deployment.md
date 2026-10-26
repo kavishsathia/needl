@@ -5,8 +5,11 @@
 Needl runs on Google Cloud Run as service `needl` in project `quickstart-1711587858152`, region `us-east4` (next to the Neon database in AWS us-east-1):
 
 ```text
+https://needl.dev
 https://needl-455397901143.us-east4.run.app
 ```
+
+`needl.dev` and `www.needl.dev` are Cloud Run domain mappings (DNS at GoDaddy points to Google).
 
 The `Dockerfile` at the repository root builds the same app the local server runs (`apps/web/server.ts`: the built frontend plus the whole `/api` surface). Deploy from the repository root:
 
@@ -16,7 +19,7 @@ gcloud run deploy needl --source . --region us-east4 --project quickstart-171158
   --min-instances 0 --max-instances 2 --memory 1Gi --cpu-throttling
 ```
 
-`cloudrun.env.yaml` is kept out of the repository; it sets the variables listed under [Environment](#environment) with `BETTER_AUTH_URL` set to the URL people sign in at and `NEEDL_TRUSTED_ORIGINS` listing every URL that serves the app. The service scales to zero and only has CPU while handling a request, so it never keeps the database awake on its own. Time-bounded rules advance on requests, as on Vercel; point a scheduler (Cloud Scheduler or any cron) at `/api/cron/tick` with `Authorization: Bearer <CRON_SECRET>` to catch deadlines with nobody on the site.
+`cloudrun.env.yaml` is kept out of the repository; it sets the variables listed under [Environment](#environment) with `BETTER_AUTH_URL` set to the URL people sign in at and `NEEDL_TRUSTED_ORIGINS` listing every URL that serves the app. The service scales to zero and only has CPU while handling a request, so it never keeps the database awake on its own. Time-bounded rules advance on requests, as on Vercel; Cloud Scheduler job `needl-tick` (same project and region) calls `/api/cron/tick` with `Authorization: Bearer <CRON_SECRET>` at the top of every hour, so a missed deadline is caught within the hour with nobody on the site. Hourly keeps the database asleep most of the time; more frequent pings would keep Neon's compute awake.
 
 Cloud Run and Vercel share one database, so both serve the same workspaces, rules and connections.
 

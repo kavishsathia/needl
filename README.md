@@ -1,293 +1,193 @@
-# Needl integrations and LTL runtime
+<p align="center">
+  <a href="https://needl.dev">
+    <img src="docs/assets/logo.png" alt="needl." width="360">
+  </a>
+</p>
 
-`@needl/integrations` is a strict TypeScript package for authenticating webhook requests, turning selected provider events into evidence-bearing normalized observations, and monitoring those observations with a durable LTL runtime. It covers GitLab, Linear, LaunchDarkly, Sentry, PostHog, Intercom, and Stripe.
+<p align="center">
+  <strong>Assertions for your business, not just your code.</strong><br>
+  Say what must always be true across your tools. Needl watches every event and hands a broken rule straight to a GitLab Duo agent.
+</p>
 
-The published library package does not translate natural language or execute agents; assertions remain trusted validated JSON AST. The separate application in `apps/web` adds authenticated tenant workspaces, PostgreSQL/SQLite persistence, a [rule language](docs/rule-language.md) over each integration's native events with an OpenAI authoring agent whose output is checked before use, signed webhook ingestion, and an explicitly launched read-only GitLab investigation lifecycle. None of those application integrations silently fall back to a demo or launch without server-managed credentials. The product runs only safety properties (including time-bounded ones) even though the underlying library retains general LTL; see [the safety product policy](docs/safety-product-policy.md).
+<p align="center">
+  <a href="https://github.com/kavishsathia/needl/actions/workflows/ci.yml"><img src="https://github.com/kavishsathia/needl/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript strict">
+  <img src="https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white" alt="Node 22.13 or later">
+  <a href="https://needl.dev"><img src="https://img.shields.io/badge/live-needl.dev-fc6d26" alt="Live at needl.dev"></a>
+  <img src="https://img.shields.io/badge/GitLab%20Duo-agent%20flows-fc6d26?logo=gitlab&logoColor=white" alt="GitLab Duo agent flows">
+  <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
+</p>
 
-## Design
+<p align="center">
+  <a href="https://needl.dev">Website</a> ·
+  <a href="docs/use-cases.md">Use cases</a> ·
+  <a href="docs/rule-language.md">Rule language</a> ·
+  <a href="docs/providers.md">Integrations</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-The package keeps HTTP, provider parsing, and persistence separate:
+---
+
+## Why
+
+In the past few years, software development has shifted fast: coding agents now generate almost all of our code. The catch is that we can't keep up with how quickly that code gets produced. The agent writes code, we skim it, say "LGTM," and move on. The inevitable result is that we, as developers, lose our mental model of the codebase. And in a code-centric business, losing the map of your codebase means losing your intuition for how your business actually operates. Worse, you may not even know what you don't know, because the agent made the decision for you. Maybe it did ask, but the transcript was so long that you missed the question and just said "go ahead."
+
+On top of that, we're now handing agents the workflows we were doing by hand just six months ago: deployments, checking production error logs, flipping feature flags. It's like putting an agent in the driver's seat, except the destination isn't a simple address. It's something fuzzier, like "keep customers happy."
+
+It's easy to see how a business run this way becomes a black box to the people who are supposed to manage it. And the thing about a black box is that you never know what comes out of it... until it does. It could be a customer who never gets their refund, a "fixed" issue that's still happening in production, or something as simple as a push to production on a Friday evening.
+
+## What it does
+
+We've actually solved this problem before, in code. Developers use `assert` in places where a failure means their assumptions about the code were wrong.
+
+**Needl takes the same idea and zooms out to the level of the business.** You assert things that should always be true, and you get notified the moment one isn't, before it turns into churn, unhappy customers, or a hit to the bottom line.
+
+For example, say you track errors in Sentry and ship code through GitLab. You could assert that once a GitLab MR referencing a Sentry issue is merged, that issue shouldn't show up again. If it does, you find out before you tell a customer the fix is live when it actually fixed nothing. That protects more than your reputation and revenue. It protects your relationship with the customer, who comes to see you as the team that knows what it's doing: reliable and trustworthy.
+
+In Needl, that assertion reads like this:
 
 ```text
-raw HTTP bytes + headers
-          │
-          ▼
-tenant/provider route ──► tenant-specific keys
-          │
-          ▼
-provider authentication ──► strict payload validation
-          │
-          ├── valid but unsupported/disabled ──► acknowledged ignored result
-          │
-          ▼
-normalized observation ──► atomic scoped dedupe + durable sink ──► acknowledge
+rule "Once a fix for an issue is deployed to {environment}, errors tagged with that issue must never appear there again"
+input environment: text = "production"
+always (
+  gitlab.deployment(status = "success", environment = $environment) bind key = ref.issue_key
+  -> never sentry.error(tags.linear_issue.issue_key = key, environment = $environment)
+)
 ```
 
-The monitor layer starts after durable normalization:
+You don't have to write it by hand. Describe the rule in plain English and Needl's authoring agent drafts it, a checker verifies it, and it comes back to you in English with its choices as dropdowns, paused until you turn it on.
+
+## How it works
+
+Once a rule is on, nobody has to sit and watch it. Needl listens to the tools' own webhooks, checks each event against every rule as it arrives, and when a rule breaks it saves the evidence and hands the problem straight to a GitLab Duo agent. Nobody has to triage an alert, copy a stack trace into a chat or write a prompt. What the team comes back to is a draft merge request with the evidence behind it.
 
 ```text
-normalized observation
-        │
-        ├──► explicit scope binding ──► tenant/assertion/version/entity partition
-        │
-        └──► state updates + proposition extraction ──► LTL progression
-                                                       │
-                                                       ├── checkpoint + full trace
-                                                       └── counterexample + outbox
-                                                           (one transaction)
+  GitLab · Sentry · Linear · LaunchDarkly · PostHog · Stripe · Intercom
+                               │  signed webhooks
+                               ▼
+              verify signature ─► normalize event ─► dedupe + store
+                               │
+                               ▼
+                 check the event against every active rule
+                               │
+              ┌────────────────┴────────────────┐
+              ▼                                 ▼
+          rule holds                       rule breaks
+        (keep watching)                         │
+                                                ▼
+                              save the break + the events behind it
+                                                │
+                                                ▼
+                               start the team's GitLab Duo flow
+                                                │
+                                                ▼
+                               draft merge request, ready for review
 ```
 
-Important properties:
+Here is that loop on the Sentry example. A branch for issue `ENG-42` is merged and deployed to production. Needl sees GitLab's deployment event, and from then on it holds Sentry to the rule for that issue. Two days later, Sentry reports an error tagged `ENG-42` in production. That one event breaks the rule. Needl stores the break together with the events that led to it, and in the same request starts the GitLab Duo flow the team chose, with that record in the flow's instructions. The flow reads the record and the code, then opens a draft merge request with a fix and explains what it changed and why. The merge request appears on the rule's card. Needl doesn't mark the problem solved because an agent finished; the rule keeps watching.
 
-- Signatures are verified against the original bytes before JSON parsing.
-- Authentication never falls back implicitly. GitLab legacy token mode and PostHog custom-header mode must be selected explicitly.
-- Current and prior secrets can be supplied as `secrets: [current, previous]` during rotation.
-- Stable IDs and deduplication include tenant and provider scope. One tenant's delivery ID cannot suppress another tenant's event.
-- `occurredAt` is distinct from receiver time. Missing provider timestamps remain missing.
-- Relationships carry an `evidencePath`; the adapters do not infer that a mention, status, or co-occurrence proves a fix.
-- Stored evidence defaults to a bounded provider projection, a raw-body SHA-256 digest, and safe absolute links. Exact authenticated JSON retention is an explicit `payloadRetention: "full"` option for callers with a controlled store; raw customer payloads and secrets are never logged by default.
-- Valid unknown or unsubscribed events are different from malformed and unauthenticated requests.
-- Propositions and state updates use a closed JSON predicate language. No JavaScript, regular expressions, or string evaluation is supported.
-- Ordinary LTL finite prefixes have `satisfied`, `violated`, or `inconclusive` verdicts. Open eventualities do not time out. Complete finite-trace finalization is explicit.
-- Deadline obligations are a named Needl timed extension driven by observation times and explicit ticks, not silently presented as ordinary LTL.
-- Monitor partitions include tenant, assertion ID/version, and every configured correlation key. Missing bindings are ignored rather than guessed from timestamps.
-- SQLite atomically stores input dedupe, checkpoints, complete traces, counterexamples, and deterministic pending outbox items.
+**A person steps in at the point where judgement matters: reviewing the fix.** By default the agent is told not to merge or deploy, so its merge request goes through the team's normal review. Teams can rewrite those instructions, or turn automatic starts off and start the agent from a break with one click.
 
-See [provider coverage and setup](docs/providers.md) for exact event and security support.
-See [LTL runtime semantics](docs/ltl-semantics.md) for the operator, prefix, finalization, state, ordering, correlation, evidence, and resource contracts.
+## What you can assert
 
-## Requirements and installation
+Rules can span any of the seven integrations, joined on shared values like an issue key. A few from [the use-case catalogue](docs/use-cases.md):
 
-- Node.js 22.13 or later
-- npm
+| Area | Rule |
+| --- | --- |
+| Engineering | When a pipeline on `main` fails, a passing pipeline must follow within 1 hour |
+| Engineering | Once a branch for an issue is deployed, that Linear issue must be completed within 1 day |
+| Engineering | For 30 minutes after a flag is turned on in production, no critical metric alert may fire |
+| Billing | An invoice must never be paid by a second payment |
+| Billing | Once a payment is disputed, it must never be charged again |
+| Support | Every conversation a customer starts must get a teammate reply within 1 hour |
+| Privacy | Once a person deletes their account, no further analytics events may arrive for them |
+
+Needl only runs rules that a single event, or a time limit passing, can break, so every rule can actually fire. See the [safety policy](docs/safety-product-policy.md) for why.
+
+### Integrations
+
+| Tool | What Needl hears |
+| --- | --- |
+| **GitLab** | deployments, pipelines, pushes, merge requests, issues |
+| **Sentry** | errors, issues, issue and metric alerts |
+| **Linear** | issues, comments, SLA breaches |
+| **LaunchDarkly** | flag, environment and project changes |
+| **PostHog** | product analytics events |
+| **Stripe** | invoices, charges, payment intents, disputes, subscriptions |
+| **Intercom** | conversations, tickets, contacts |
+
+Every webhook is checked against its provider's real signing scheme before it is parsed. Details per provider are in [docs/providers.md](docs/providers.md).
+
+## Quick start
+
+You need Node.js 22.13 or later and a local Postgres.
 
 ```bash
-npm install
-npm run check
-```
-
-## Run the full-stack web application locally
-
-The app stores everything in Postgres. Create a local database (`createdb needl`) and put `DATABASE_URL=postgres://localhost:5432/needl` in the repository `.env`; the web scripts load it. Backend tests create and drop their own databases on the same server (`NEEDL_TEST_DATABASE_URL`, default `postgres://localhost:5432/postgres`). Then install the web dependencies and start the Vite client and local API process:
-
-```bash
+git clone https://github.com/kavishsathia/needl.git
+cd needl
+npm ci
 npm --prefix apps/web ci --legacy-peer-deps
+
+createdb needl
+echo 'DATABASE_URL=postgres://localhost:5432/needl' > .env
+
 npm run web:dev
 ```
 
-Open `http://127.0.0.1:5173`, create a local account, and use the deterministic replay controls without external credentials. Assertions and sessions persist in Postgres; the browser cache is tenant-scoped recovery state. Set `OPENAI_API_KEY` only in the API process to enable the rule-authoring agent (`OPENAI_TRANSLATION_MODEL` picks the model; `NEEDL_TRANSLATION_DAILY_LIMIT` caps requests per workspace, default 5). `npm run sim:web` also loads a git-ignored `.env` at the repository root. Live provider and GitLab controls remain unavailable until server-managed integration records reference configured secret environment variables. For a production-build preview use:
+Open <http://127.0.0.1:5173>, create an account, and start from one of the worked examples. To let Needl draft rules from plain English, add `OPENAI_API_KEY` to `.env`. All configuration options are in [.env.example](.env.example) and [docs/deployment.md](docs/deployment.md).
 
-```bash
-npm run web:build
-npm run web:serve
-```
+### Try it without real accounts
 
-The production-build server defaults to `127.0.0.1:4173`; set `HOST` and `PORT` in hosting. Public signup in production is closed unless `NEEDL_SIGNUP_ALLOWLIST` contains the email. Production runs on Vercel; see [deployment](docs/deployment.md) for the build, environment, and integration provisioning.
-
-The runtime package has one portable dependency, Zod. SQLite is an optional subpath backed by Node's `node:sqlite`; importing the core or receiver does not load it.
-
-## Demo with the webhook simulator
-
-`apps/simulator` is a local control panel that can send any event in the rule catalogue (all seven integrations, every field rules can use) as that provider's real webhook payload, signed with its real scheme, to Needl's `/api/hooks/<integration-id>` route. Forms are generated from the catalogue, and a round-trip test sends every event through the real adapters and checks each rule-visible field comes back as sent. Stories replay the example rules' break and keep paths. Secrets and routing are generated into `.simulator/` (git-ignored).
+The webhook simulator sends any event in the catalogue as that provider's real, signed webhook, and can replay a "break it" or "keep it" story for each example rule.
 
 ```bash
 npm run sim:setup                  # generate signing secrets
-npm run sim:web                    # start Needl holding those secrets
+npm run sim:web                    # start Needl with those secrets
 # sign up, then read your tenantId from GET /api/workspace
-npm run sim:setup -- <tenantId>    # optional: --needl http://127.0.0.1:4174
-npm run sim:register               # add the seven integrations to Needl's database
-npm run sim                        # http://127.0.0.1:4180
+npm run sim:setup -- <tenantId>
+npm run sim:register               # add the seven integrations
+npm run sim                        # open http://127.0.0.1:4180
 ```
 
-Each story ("break it" / "keep it") uses fresh identifiers, so every play is a new monitor instance. Single events can be sent with edited fields.
+## Project layout
 
-## Use an adapter directly
-
-```ts
-import { LinearAdapter } from "@needl/integrations/adapters";
-
-const adapter = new LinearAdapter();
-const result = await adapter.ingest(
-  {
-    tenantId: "acme",
-    sourceId: "linear-hook-production",
-    rawBody, // Uint8Array containing the untouched request body
-    headers,
-    receivedAt: new Date(),
-  },
-  {
-    secrets: [process.env.LINEAR_WEBHOOK_SECRET!],
-    enabledEvents: ["Issue.create", "Issue.update"],
-    kindMappings: { "Issue.update": "work.issue_changed" },
-  },
-);
-
-if (result.status === "accepted") {
-  // Persist result.event before acknowledging the provider.
-}
+```text
+src/              @needl/integrations: webhook adapters, receiver, rule language, LTL runtime
+apps/web/         the Needl app: React frontend + API (auth, rules, ingestion, GitLab Duo flows)
+apps/simulator/   local control panel that sends signed provider webhooks
+examples/         a minimal webhook server and an LTL demo
+tests/            unit, persistence and end-to-end tests for the package
+docs/             rule language, semantics, providers, deployment
 ```
 
-Do not reserialize parsed JSON to reconstruct `rawBody`. Even equivalent JSON can produce a different signature.
+Under the app is a standalone TypeScript package, `@needl/integrations`, which does signature verification, event normalization and durable LTL monitoring. You can use it on its own; see [docs/library.md](docs/library.md).
 
-## Use the receiver
+## Documentation
 
-`WebhookReceiver` resolves an adapter and its keys from `(tenantId, provider)`, enforces a payload limit, and acknowledges accepted input only after a `DeduplicatingEventSink` reports durable storage.
+- [Rule language](docs/rule-language.md): how rules are written and checked
+- [Use cases](docs/use-cases.md): rules you can paste in today
+- [Integrations](docs/providers.md): events, signing schemes and setup per provider
+- [LTL semantics](docs/ltl-semantics.md): exactly what the monitor guarantees
+- [Safety policy](docs/safety-product-policy.md): which rules Needl accepts and why
+- [Deployment](docs/deployment.md): hosting on Vercel, environment and secrets
+- [Library](docs/library.md): using `@needl/integrations` directly
 
-```ts
-import {
-  LinearAdapter,
-  StaticRouteResolver,
-  WebhookReceiver,
-} from "@needl/integrations";
-import { SqliteEventStore } from "@needl/integrations/sqlite";
-
-const routes = new StaticRouteResolver().register(
-  "acme",
-  "linear",
-  new LinearAdapter(),
-  { secrets: [process.env.LINEAR_WEBHOOK_SECRET!] },
-);
-
-const store = new SqliteEventStore("./needl-events.sqlite");
-const receiver = new WebhookReceiver({
-  routes,
-  sink: store,
-  maxPayloadBytes: 1_048_576,
-});
-
-const outcome = await receiver.receive({
-  tenantId: "acme",
-  provider: "linear",
-  rawBody,
-  headers,
-});
-
-// Map outcome.statusCode to the HTTP response.
-```
-
-Receiver outcomes:
-
-| Input/result | HTTP | Meaning |
-| --- | ---: | --- |
-| Stored or duplicate | 200 | Durable or already durably recorded |
-| Valid ignored | 200 | Authenticated but unknown, disabled, or non-observational |
-| Malformed | 400 | Authentication passed, schema did not |
-| Missing/invalid/stale authentication | 401 | Do not process |
-| Payload too large | 413 | Rejected before parsing |
-| Unknown tenant/provider route | 404 | No keys or adapter exposed |
-| Persistence failure | 503 | Not acknowledged; provider should retry |
-
-`SqliteEventStore.list()` and `.replay()` read persisted observations in insertion order. Replay calls a consumer; it does not execute actions or mutate provider state.
-
-## Define and run an assertion
-
-The text parser is a convenience for human-authored ordinary LTL. A future authoring layer can emit the same typed JSON AST directly.
-
-```ts
-import {
-  RuntimeMonitor,
-  parseFormula,
-  type AssertionDefinition,
-} from "@needl/integrations/ltl";
-import { SqliteMonitorStore } from "@needl/integrations/ltl/sqlite";
-
-const assertion: AssertionDefinition = {
-  id: "no-recurrence",
-  version: 1,
-  tenantId: "acme",
-  name: "A deployed issue must not recur",
-  formula: parseFormula("G (deployed -> G !recurrence)"),
-  scope: {
-    keys: [
-      { name: "issue", extractors: [{ from: "relationship", type: "issue" }] },
-      { name: "environment", extractors: [{ from: "relationship", type: "environment" }] },
-    ],
-  },
-  propositions: [
-    {
-      name: "deployed",
-      predicate: { op: "equal", path: { root: "event", segments: ["kind"] }, value: "fix.deployed" },
-    },
-    {
-      name: "recurrence",
-      predicate: { op: "equal", path: { root: "event", segments: ["kind"] }, value: "error.recurred" },
-    },
-  ],
-};
-
-const store = new SqliteMonitorStore("./needl-events.sqlite");
-const monitor = new RuntimeMonitor({ store, assertions: [assertion] });
-const results = await monitor.process(normalizedEvent);
-```
-
-`process()` applies every assertion registered for the event tenant. A result is `applied`, `duplicate`, `out_of_order`, `missing_scope`, or `closed`. A deadline is advanced with an explicit `advanceTime()` tick. `finalize()` closes one exact partition using the documented complete finite-trace semantics. New assertion versions create fresh partitions and never inherit prior state implicitly.
-
-The reusable presets in `@needl/integrations/ltl` demonstrate three explicit correlation contracts:
-
-- Linear Done + linked GitLab deployment, followed by matching Sentry recurrence;
-- persisted LaunchDarkly enabled/disabled state + an explicitly attributed Sentry feature error; and
-- Stripe payment + explicit PostHog provisioning failure, followed by a matching Intercom ticket within a deadline.
-
-Provider adapters do not natively guarantee every cross-provider relationship used by these examples. The backend must attach a relationship only when it has explicit mapping evidence. The presets intentionally refuse unbound observations.
-
-## Run the local HTTP example
-
-Copy `.env.example` values into your own secret-management mechanism or shell environment. The example deliberately does not load `.env` files itself.
+## Development
 
 ```bash
-export NEEDL_TENANT_ID=local-demo
-export LINEAR_WEBHOOK_SECRET='...'
-# Set the remaining provider variables shown in .env.example.
-npm run example
+npm run check        # package: typecheck, tests, build, smoke test
+npm run web:test     # app tests (needs a local Postgres)
+npm run web:build    # app typecheck + production build
+npm run web:e2e      # browser tests with Playwright
 ```
 
-Routes are `POST /webhooks/:tenant/:provider`, for example `POST /webhooks/local-demo/stripe`. Configured Intercom routes also answer the unsigned `HEAD` validation request required during Intercom setup; other provider routes do not. `GET /healthz` is available for local checks. The server binds to `127.0.0.1`; this assignment does not deploy it or register webhooks.
+CI runs all of these on every push and pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
-The example registers all seven providers and persists to `NEEDL_DB_PATH` (default `./needl-events.sqlite`). It never logs bodies, signature headers, or secrets.
+## Contributing
 
-## Run the LTL demonstration
+Issues and pull requests are welcome. Please read the [contributing guide](CONTRIBUTING.md) and follow the [code of conduct](CODE_OF_CONDUCT.md). To report a security issue, see [SECURITY.md](SECURITY.md).
 
-```bash
-npm run demo:ltl
-```
+## License
 
-The command uses in-memory SQLite and clearly labeled synthetic normalized observations. It prints three real persisted counterexample records and their pending deterministic outbox requests. It contacts no provider and dispatches no external action.
-
-## Tests and fixtures
-
-Synthetic fixtures in [tests/fixtures](tests/fixtures/README.md) are shaped from cited provider documentation. They are not captured production traffic.
-
-```bash
-npm run typecheck
-npm test
-npm run build
-npm run check
-```
-
-The integration tests cover documented signature algorithms, raw-body tampering, missing/wrong authentication, replay windows, malformed and unknown input, provider normalization, duplicate delivery, tenant separation, persistence failure/retry, SQLite restart/replay, and a signed HTTP request through real SQLite.
-
-The LTL suites cover every operator, nested formulas, empty and complete traces, pending eventualities, strong next, deadline boundaries, malformed/injection-shaped ASTs, missing predicate paths, persistent state, repeated delivery, partition isolation, wrong/missing relationships, event-time regression, assertion versions, checkpoint restart, durable trace retention, SQLite outbox recovery, and all three cross-provider scenarios. Short traces are exhaustively checked against a separately implemented recursive evaluator rather than against progression itself.
-
-## Package entrypoints
-
-- `@needl/integrations` — adapters, contracts, and receiver
-- `@needl/integrations/adapters` — provider adapters
-- `@needl/integrations/receiver` — storage-independent routing and receiver contracts
-- `@needl/integrations/sqlite` — optional local SQLite store
-- `@needl/integrations/ltl` — formula, extraction, monitor runtime, memory store, and demo presets
-- `@needl/integrations/ltl/sqlite` — optional durable monitor/checkpoint/trace/outbox store
-
-## Repository map
-
-- `src/core` — common event/result contracts and safe helpers
-- `src/adapters` — seven provider implementations
-- `src/receiver` — routing, acknowledgment, dedupe, memory, and SQLite implementations
-- `src/ltl` — typed formulas, parser/formatter, predicates, progression, partitions, stores, and presets
-- `examples/server.ts` — thin Node HTTP backend example
-- `examples/ltl-demo.ts` — deterministic synthetic cross-provider monitoring demo
-- `docs/providers.md` — setup, coverage, delivery, and source details
-- `docs/ltl-semantics.md` — normative monitor semantics and operational policies
-- `docs/deployment.md` — authenticated hosting, secrets, integration records, and hosted acceptance
-- `apps/web/backend` — auth, persistence, translation, signed ingestion, live monitor store, and GitLab investigation service
-- `tests` — unit, persistence, and HTTP end-to-end tests
-- `FINAL.md` — verified handoff and remaining limitations
+[MIT](LICENSE) © Kavish Sathia

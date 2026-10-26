@@ -1,61 +1,61 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="720" viewBox="0 0 1440 720" role="img" aria-labelledby="t d"><title id="t">Needl's hands-off loop</title><desc id="d">A rule set once is watched continuously. When it breaks, Needl saves the evidence and starts the chosen GitLab Duo flow, which opens a draft merge request for the team to review. The rule keeps watching.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="720" fill="#FFFFFF"/>
-<text class="title" x="48" y="62" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="34" font-weight="bold" fill="#1F1E24" text-anchor="start">Needl's hands-off loop</text>
-<text class="subtitle" x="48" y="100" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="21" font-weight="normal" fill="#55535F" text-anchor="start">From a rule you set once to a draft fix you review</text>
+<text class="title" x="48" y="64" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="38" font-weight="bold" fill="#1F1E24" text-anchor="start">Needl's hands-off loop</text>
+<text class="subtitle" x="48" y="106" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24" font-weight="normal" fill="#55535F" text-anchor="start">From a rule you set once to a draft fix you review</text>
 <g class="box" id="set" data-x="64" data-y="186" data-w="380" data-h="168">
 <rect x="64" y="186" width="380" height="168" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
-<text class="label" x="88" y="228" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#124A41" text-anchor="start">1  Set a rule</text>
-<text class="label" x="88" y="264" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Describe it in English.</text>
-<text class="label" x="88" y="292" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Needl writes and checks</text>
-<text class="label" x="88" y="320" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">the rule; you turn it on.</text>
+<text class="label" x="86" y="232" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#124A41" text-anchor="start">1  Set a rule</text>
+<text class="label" x="86" y="272" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Describe it in English.</text>
+<text class="label" x="86" y="303" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Needl writes and checks</text>
+<text class="label" x="86" y="334" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the rule; you turn it on.</text>
 </g>
-<text class="tag" x="68" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#124A41" text-anchor="start">YOU · ONCE</text>
+<text class="tag" x="68" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#124A41" text-anchor="start">YOU · ONCE</text>
 <g class="box" id="watch" data-x="530" data-y="186" data-w="380" data-h="168">
 <rect x="530" y="186" width="380" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
-<text class="label" x="554" y="228" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#3B2A7A" text-anchor="start">2  Watch</text>
-<text class="label" x="554" y="264" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Webhooks from seven</text>
-<text class="label" x="554" y="292" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">tools, checked against</text>
-<text class="label" x="554" y="320" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">every rule on arrival.</text>
+<text class="label" x="552" y="232" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">2  Watch</text>
+<text class="label" x="552" y="272" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Webhooks from seven</text>
+<text class="label" x="552" y="303" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">tools, checked against</text>
+<text class="label" x="552" y="334" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">every rule on arrival.</text>
 </g>
-<text class="tag" x="534" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#3B2A7A" text-anchor="start">NEEDL · ALWAYS ON</text>
+<text class="tag" x="534" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#3B2A7A" text-anchor="start">NEEDL · ALWAYS ON</text>
 <g class="box" id="break" data-x="996" data-y="186" data-w="380" data-h="168">
 <rect x="996" y="186" width="380" height="168" rx="14" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2.5"/>
-<text class="label" x="1020" y="228" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7F1D1D" text-anchor="start">3  Rule breaks</text>
-<text class="label" x="1020" y="264" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">The break and the events</text>
-<text class="label" x="1020" y="292" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">behind it are saved</text>
-<text class="label" x="1020" y="320" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">in one transaction.</text>
+<text class="label" x="1018" y="232" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7F1D1D" text-anchor="start">3  Rule breaks</text>
+<text class="label" x="1018" y="272" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">The break and the events</text>
+<text class="label" x="1018" y="303" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">behind it are saved</text>
+<text class="label" x="1018" y="334" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">in one transaction.</text>
 </g>
-<text class="tag" x="1000" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#7F1D1D" text-anchor="start">NEEDL · SAME REQUEST</text>
+<text class="tag" x="1000" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7F1D1D" text-anchor="start">NEEDL · SAME REQUEST</text>
 <g class="box" id="flow" data-x="996" data-y="470" data-w="380" data-h="168">
 <rect x="996" y="470" width="380" height="168" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
-<text class="label" x="1020" y="512" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7A3410" text-anchor="start">4  Duo flow starts</text>
-<text class="label" x="1020" y="548" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Your chosen GitLab flow,</text>
-<text class="label" x="1020" y="576" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">with the violation record</text>
-<text class="label" x="1020" y="604" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">in its instructions.</text>
+<text class="label" x="1018" y="516" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7A3410" text-anchor="start">4  Duo flow starts</text>
+<text class="label" x="1018" y="556" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Your chosen GitLab flow,</text>
+<text class="label" x="1018" y="587" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">with the violation record</text>
+<text class="label" x="1018" y="618" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">in its instructions.</text>
 </g>
-<text class="tag" x="1000" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB DUO · NO PROMPTING</text>
+<text class="tag" x="1000" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB DUO · NO PROMPTING</text>
 <g class="box" id="mr" data-x="530" data-y="470" data-w="380" data-h="168">
 <rect x="530" y="470" width="380" height="168" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
-<text class="label" x="554" y="512" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7A3410" text-anchor="start">5  Draft merge request</text>
-<text class="label" x="554" y="548" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">A fix and what it changed</text>
-<text class="label" x="554" y="576" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">and why, linked on the</text>
-<text class="label" x="554" y="604" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">rule's card in Needl.</text>
+<text class="label" x="552" y="516" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7A3410" text-anchor="start">5  Draft MR</text>
+<text class="label" x="552" y="556" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">A merge request with the</text>
+<text class="label" x="552" y="587" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">fix and why, linked on</text>
+<text class="label" x="552" y="618" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the rule's card in Needl.</text>
 </g>
-<text class="tag" x="534" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB DUO</text>
+<text class="tag" x="534" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB DUO</text>
 <g class="box" id="review" data-x="64" data-y="470" data-w="380" data-h="168">
 <rect x="64" y="470" width="380" height="168" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
-<text class="label" x="88" y="512" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#124A41" text-anchor="start">6  Team reviews</text>
-<text class="label" x="88" y="548" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Normal MR review. By</text>
-<text class="label" x="88" y="576" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">default the agent is told</text>
-<text class="label" x="88" y="604" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">not to merge or deploy.</text>
+<text class="label" x="86" y="516" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#124A41" text-anchor="start">6  Team reviews</text>
+<text class="label" x="86" y="556" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Normal MR review. By</text>
+<text class="label" x="86" y="587" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">default the agent is told</text>
+<text class="label" x="86" y="618" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">not to merge or deploy.</text>
 </g>
-<text class="tag" x="68" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#124A41" text-anchor="start">YOU · AT REVIEW</text>
+<text class="tag" x="68" y="456" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#124A41" text-anchor="start">YOU · AT REVIEW</text>
 <path class="arrow" d="M 444 270.0 L 524 270.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 910 270.0 L 990 270.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 1376 270.0 L 1408 270.0 L 1408 554.0 L 1382 554.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 996 554.0 L 916 554.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 530 554.0 L 450 554.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 720.0 470 L 720.0 360" fill="none" stroke="#6B4FBB" stroke-width="3" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#head-loop)"/>
-<text class="note" x="738.0" y="398" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#3B2A7A" text-anchor="start">The rule keeps watching;</text>
-<text class="note" x="738.0" y="424" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#3B2A7A" text-anchor="start">a finished agent isn't a fix.</text>
+<text class="note" x="738.0" y="398" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3B2A7A" text-anchor="start">The rule keeps watching;</text>
+<text class="note" x="738.0" y="424" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3B2A7A" text-anchor="start">a finished agent isn't a fix.</text>
 <text class="footer" x="48" y="690" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">Steps 2–5 need no one: no alert to triage, no stack trace to paste, no prompt to write.</text>
 </svg>

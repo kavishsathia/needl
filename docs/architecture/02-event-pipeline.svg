@@ -1,95 +1,96 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="840" viewBox="0 0 1440 840" role="img" aria-labelledby="t d"><title id="t">Needl's event pipeline</title><desc id="d">Seven tools send webhooks to a per-connection URL. Needl checks the signature or secret token before parsing, keeps the tool's own event name, runs the live rules per issue or customer, stores the event once and only then answers the tool.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="840" fill="#FFFFFF"/>
-<text class="title" x="48" y="62" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="34" font-weight="bold" fill="#1F1E24" text-anchor="start">Event pipeline</text>
-<text class="subtitle" x="48" y="100" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="21" font-weight="normal" fill="#55535F" text-anchor="start">One webhook, from the tool to a stored, checked observation</text>
-<g class="box" id="tool-0" data-x="48" data-y="156" data-w="220" data-h="52">
-<rect x="48" y="156" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="189.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">GitLab</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="870" viewBox="0 0 1440 870" role="img" aria-labelledby="t d"><title id="t">Needl's event pipeline</title><desc id="d">Seven tools send webhooks to a per-connection URL. Needl checks the signature or secret token before parsing, keeps the tool's own event name, runs the live rules per issue or customer, stores the event once and only then answers the tool.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="870" fill="#FFFFFF"/>
+<text class="title" x="48" y="64" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="38" font-weight="bold" fill="#1F1E24" text-anchor="start">Event pipeline</text>
+<text class="subtitle" x="48" y="106" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24" font-weight="normal" fill="#55535F" text-anchor="start">One webhook, from the tool to a stored, checked observation</text>
+<g class="box" id="tool-0" data-x="48" data-y="170" data-w="220" data-h="52">
+<rect x="48" y="170" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="203.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">GitLab</text>
 </g>
-<g class="box" id="tool-1" data-x="48" data-y="222" data-w="220" data-h="52">
-<rect x="48" y="222" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="255.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">Linear</text>
+<g class="box" id="tool-1" data-x="48" data-y="236" data-w="220" data-h="52">
+<rect x="48" y="236" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="269.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">Linear</text>
 </g>
-<g class="box" id="tool-2" data-x="48" data-y="288" data-w="220" data-h="52">
-<rect x="48" y="288" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="321.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">LaunchDarkly</text>
+<g class="box" id="tool-2" data-x="48" data-y="302" data-w="220" data-h="52">
+<rect x="48" y="302" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="335.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">LaunchDarkly</text>
 </g>
-<g class="box" id="tool-3" data-x="48" data-y="354" data-w="220" data-h="52">
-<rect x="48" y="354" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="387.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">Sentry</text>
+<g class="box" id="tool-3" data-x="48" data-y="368" data-w="220" data-h="52">
+<rect x="48" y="368" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="401.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">Sentry</text>
 </g>
-<g class="box" id="tool-4" data-x="48" data-y="420" data-w="220" data-h="52">
-<rect x="48" y="420" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="453.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">PostHog</text>
+<g class="box" id="tool-4" data-x="48" data-y="434" data-w="220" data-h="52">
+<rect x="48" y="434" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="467.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">PostHog</text>
 </g>
-<g class="box" id="tool-5" data-x="48" data-y="486" data-w="220" data-h="52">
-<rect x="48" y="486" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="519.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">Intercom</text>
+<g class="box" id="tool-5" data-x="48" data-y="500" data-w="220" data-h="52">
+<rect x="48" y="500" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="533.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">Intercom</text>
 </g>
-<g class="box" id="tool-6" data-x="48" data-y="552" data-w="220" data-h="52">
-<rect x="48" y="552" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="158.0" y="585.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">Stripe</text>
+<g class="box" id="tool-6" data-x="48" data-y="566" data-w="220" data-h="52">
+<rect x="48" y="566" width="220" height="52" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="158.0" y="599.92" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="22" font-weight="bold" fill="#1F1E24" text-anchor="middle">Stripe</text>
 </g>
-<text class="tag" x="48" y="138" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="16" font-weight="bold" fill="#55535F" text-anchor="start">WEBHOOK PER CONNECTION</text>
-<path class="arrow" d="M 268 182.0 L 302 182.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 248.0 L 302 248.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 314.0 L 302 314.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 380.0 L 302 380.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 446.0 L 302 446.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 512.0 L 302 512.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 268 578.0 L 302 578.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
-<path class="arrow" d="M 302 182.0 L 302 578.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<text class="tag" x="48" y="156" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#55535F" text-anchor="start">WEBHOOK PER CONNECTION</text>
+<path class="arrow" d="M 268 196.0 L 302 196.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 262.0 L 302 262.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 328.0 L 302 328.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 394.0 L 302 394.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 460.0 L 302 460.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 526.0 L 302 526.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 268 592.0 L 302 592.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
+<path class="arrow" d="M 302 196.0 L 302 592.0" fill="none" stroke="#55535F" stroke-width="2.5" stroke-linejoin="round"/>
 <path class="arrow" d="M 302 270.0 L 346 270.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <g class="box" id="verify" data-x="352" data-y="186" data-w="488" data-h="168">
 <rect x="352" y="186" width="488" height="168" rx="14" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2.5"/>
-<text class="label" x="376" y="228" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#203A52" text-anchor="start">1  Check it's genuine</text>
-<text class="label" x="376" y="264" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Signature or secret token,</text>
-<text class="label" x="376" y="292" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">checked before parsing, with the</text>
-<text class="label" x="376" y="320" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">connection's sealed secret.</text>
+<text class="label" x="374" y="232" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#203A52" text-anchor="start">1  Check it's genuine</text>
+<text class="label" x="374" y="272" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Signature or secret token,</text>
+<text class="label" x="374" y="303" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">checked before parsing, with the</text>
+<text class="label" x="374" y="334" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">connection's sealed secret.</text>
 </g>
 <g class="box" id="adapt" data-x="900" data-y="186" data-w="488" data-h="168">
 <rect x="900" y="186" width="488" height="168" rx="14" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2.5"/>
-<text class="label" x="924" y="228" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#203A52" text-anchor="start">2  Keep the tool's event</text>
-<text class="label" x="924" y="264" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">An adapter turns it into an</text>
-<text class="label" x="924" y="292" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">observation named as the tool</text>
-<text class="label" x="924" y="320" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">names it: gitlab.deployment</text>
+<text class="label" x="922" y="232" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#203A52" text-anchor="start">2  Keep the tool's event</text>
+<text class="label" x="922" y="272" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">An adapter turns it into an</text>
+<text class="label" x="922" y="303" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">observation named as the tool</text>
+<text class="label" x="922" y="334" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">names it: gitlab.deployment</text>
 </g>
 <g class="box" id="check" data-x="352" data-y="452" data-w="488" data-h="168">
 <rect x="352" y="452" width="488" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
-<text class="label" x="376" y="494" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#3B2A7A" text-anchor="start">3  Check live rules</text>
-<text class="label" x="376" y="530" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Every monitoring rule, tracked</text>
-<text class="label" x="376" y="558" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">per issue or customer. Events up</text>
-<text class="label" x="376" y="586" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">to 5 minutes late still apply.</text>
+<text class="label" x="374" y="498" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">3  Check live rules</text>
+<text class="label" x="374" y="538" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Every monitoring rule, tracked</text>
+<text class="label" x="374" y="569" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">per issue or customer. Events up</text>
+<text class="label" x="374" y="600" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">to 5 minutes late still apply.</text>
 </g>
 <g class="box" id="store" data-x="900" data-y="452" data-w="488" data-h="168">
 <rect x="900" y="452" width="488" height="168" rx="14" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2.5"/>
-<text class="label" x="924" y="494" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#203A52" text-anchor="start">4  Store it once</text>
-<text class="label" x="924" y="530" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Duplicates dropped per workspace.</text>
-<text class="label" x="924" y="558" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Event time is kept apart from</text>
-<text class="label" x="924" y="586" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">the time Needl received it.</text>
+<text class="label" x="922" y="498" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#203A52" text-anchor="start">4  Store it once</text>
+<text class="label" x="922" y="538" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Duplicates dropped per workspace.</text>
+<text class="label" x="922" y="569" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Event time is kept apart from</text>
+<text class="label" x="922" y="600" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the time Needl received it.</text>
 </g>
 <path class="arrow" d="M 840 270.0 L 894 270.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 1144.0 354 L 1144.0 403.0 L 596.0 403.0 L 596.0 446" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <path class="arrow" d="M 840 536.0 L 894 536.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
 <text class="footer" x="352" y="692" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="start">Then Needl answers the tool, and the Connections page shows the result:</text>
-<g class="box" id="out-0" data-x="352" data-y="714" data-w="212" data-h="46">
-<rect x="352" y="714" width="212" height="46" rx="10" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2"/>
-<text class="label" x="458.0" y="743.48" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7F1D1D" text-anchor="middle">401 not genuine</text>
+<g class="box" id="out-0" data-x="352" data-y="714" data-w="184" data-h="46">
+<rect x="352" y="714" width="184" height="46" rx="10" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2"/>
+<text class="label" x="444.0" y="744.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#7F1D1D" text-anchor="middle">401 rejected</text>
 </g>
-<g class="box" id="out-1" data-x="578" data-y="714" data-w="206" data-h="46">
-<rect x="578" y="714" width="206" height="46" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="681.0" y="743.48" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1F1E24" text-anchor="middle">200 unused event</text>
+<g class="box" id="out-1" data-x="550" data-y="714" data-w="172" data-h="46">
+<rect x="550" y="714" width="172" height="46" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="636.0" y="744.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">200 ignored</text>
 </g>
-<g class="box" id="out-2" data-x="798" data-y="714" data-w="178" data-h="46">
-<rect x="798" y="714" width="178" height="46" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
-<text class="label" x="887.0" y="743.48" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#1F1E24" text-anchor="middle">200 duplicate</text>
+<g class="box" id="out-2" data-x="736" data-y="714" data-w="186" data-h="46">
+<rect x="736" y="714" width="186" height="46" rx="10" fill="#F6F6F8" stroke="#B9B7C4" stroke-width="2"/>
+<text class="label" x="829.0" y="744.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1F1E24" text-anchor="middle">200 duplicate</text>
 </g>
-<g class="box" id="out-3" data-x="990" data-y="714" data-w="252" data-h="46">
-<rect x="990" y="714" width="252" height="46" rx="10" fill="#FDF0E6" stroke="#D9622B" stroke-width="2"/>
-<text class="label" x="1116.0" y="743.48" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7A3410" text-anchor="middle">503 not stored: retry</text>
+<g class="box" id="out-3" data-x="936" data-y="714" data-w="214" data-h="46">
+<rect x="936" y="714" width="214" height="46" rx="10" fill="#FDF0E6" stroke="#D9622B" stroke-width="2"/>
+<text class="label" x="1043.0" y="744.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#7A3410" text-anchor="middle">503 retry later</text>
 </g>
-<g class="box" id="out-4" data-x="1256" data-y="714" data-w="160" data-h="46">
-<rect x="1256" y="714" width="160" height="46" rx="10" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2"/>
-<text class="label" x="1336.0" y="743.48" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#124A41" text-anchor="middle">200 stored</text>
+<g class="box" id="out-4" data-x="1164" data-y="714" data-w="160" data-h="46">
+<rect x="1164" y="714" width="160" height="46" rx="10" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2"/>
+<text class="label" x="1244.0" y="744.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#124A41" text-anchor="middle">200 stored</text>
 </g>
-<text class="footer" x="352" y="806" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="normal" fill="#55535F" text-anchor="start">A stored event that breaks a rule starts the GitLab Duo flow before the answer is sent.</text>
+<text class="footer" x="352" y="806" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">Ignored: an event type no rule uses. 503: not stored yet, so the tool retries.</text>
+<text class="footer" x="352" y="836" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">A stored event that breaks a rule starts the Duo flow before Needl answers.</text>
 </svg>

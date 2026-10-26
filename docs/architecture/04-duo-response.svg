@@ -1,71 +1,74 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="880" viewBox="0 0 1440 880" role="img" aria-labelledby="t d"><title id="t">How Needl hands a break to GitLab Duo</title><desc id="d">When a rule breaks, Needl starts the GitLab Duo flow the team chose, at most once per break, with the violation record in the flow's instructions. The flow runs without asking for input and opens a draft merge request. Needl checks the flow's progress on each clock tick and shows the result on the rule. The team reviews the merge request; the rule keeps watching.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="880" fill="#FFFFFF"/>
-<text class="title" x="48" y="62" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="34" font-weight="bold" fill="#1F1E24" text-anchor="start">Handing a break to GitLab Duo</text>
-<text class="subtitle" x="48" y="100" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="21" font-weight="normal" fill="#55535F" text-anchor="start">No alert triage and no prompt writing between the break and the draft fix</text>
-<rect x="24" y="140" width="1392" height="250" rx="16" fill="#FAF8FE" stroke="#E3E1EA" stroke-width="1.5"/>
-<text class="tag" x="44" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="bold" fill="#3B2A7A" text-anchor="start">NEEDL</text>
-<rect x="24" y="410" width="1392" height="250" rx="16" fill="#FFF9F4" stroke="#E3E1EA" stroke-width="1.5"/>
-<text class="tag" x="44" y="442" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB</text>
-<rect x="24" y="680" width="1392" height="170" rx="16" fill="#F5FBF9" stroke="#E3E1EA" stroke-width="1.5"/>
-<text class="tag" x="44" y="712" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="bold" fill="#124A41" text-anchor="start">YOU</text>
-<g class="box" id="violation" data-x="46" data-y="196" data-w="300" data-h="168">
-<rect x="46" y="196" width="300" height="168" rx="14" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2.5"/>
-<text class="label" x="70" y="238" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7F1D1D" text-anchor="start">Break saved</text>
-<text class="label" x="70" y="274" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Rule and version, the</text>
-<text class="label" x="70" y="302" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">issue or customer, and</text>
-<text class="label" x="70" y="330" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">the last 20 events.</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="970" viewBox="0 0 1440 970" role="img" aria-labelledby="t d"><title id="t">How Needl hands a break to GitLab Duo</title><desc id="d">When a rule breaks, Needl starts the GitLab Duo flow the team chose, at most once per break, with the violation record in the flow's instructions. The flow runs without asking for input and opens a draft merge request. Needl checks the flow's progress on each clock tick and shows the result on the rule. The team reviews the merge request; the rule keeps watching.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="970" fill="#FFFFFF"/>
+<text class="title" x="48" y="64" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="38" font-weight="bold" fill="#1F1E24" text-anchor="start">Handing a break to GitLab Duo</text>
+<text class="subtitle" x="48" y="106" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24" font-weight="normal" fill="#55535F" text-anchor="start">No alert triage and no prompt writing between the break and the draft fix</text>
+<rect x="24" y="140" width="1392" height="286" rx="16" fill="#FAF8FE" stroke="#E3E1EA" stroke-width="1.5"/>
+<text class="tag" x="44" y="172" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#3B2A7A" text-anchor="start">NEEDL</text>
+<rect x="24" y="446" width="1392" height="286" rx="16" fill="#FFF9F4" stroke="#E3E1EA" stroke-width="1.5"/>
+<text class="tag" x="44" y="478" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#7A3410" text-anchor="start">GITLAB</text>
+<rect x="24" y="752" width="1392" height="190" rx="16" fill="#F5FBF9" stroke="#E3E1EA" stroke-width="1.5"/>
+<text class="tag" x="44" y="784" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#124A41" text-anchor="start">YOU</text>
+<g class="box" id="violation" data-x="46" data-y="196" data-w="300" data-h="206">
+<rect x="46" y="196" width="300" height="206" rx="14" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2.5"/>
+<text class="label" x="68" y="242" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7F1D1D" text-anchor="start">Break saved</text>
+<text class="label" x="68" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Rule and version, the</text>
+<text class="label" x="68" y="313" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">issue or customer, and</text>
+<text class="label" x="68" y="344" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the last 20 events.</text>
 </g>
-<g class="box" id="launch" data-x="398" data-y="196" data-w="300" data-h="168">
-<rect x="398" y="196" width="300" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
-<text class="label" x="422" y="238" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#3B2A7A" text-anchor="start">Start the flow</text>
-<text class="label" x="422" y="274" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">With the break's request</text>
-<text class="label" x="422" y="302" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">or the next clock tick;</text>
-<text class="label" x="422" y="330" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">at most once per break.</text>
+<g class="box" id="launch" data-x="398" data-y="196" data-w="300" data-h="206">
+<rect x="398" y="196" width="300" height="206" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
+<text class="label" x="420" y="242" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">Start the flow</text>
+<text class="label" x="420" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">With the break's</text>
+<text class="label" x="420" y="313" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">request or the next</text>
+<text class="label" x="420" y="344" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">clock tick; at most</text>
+<text class="label" x="420" y="375" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">once per break.</text>
 </g>
-<g class="box" id="track" data-x="750" data-y="196" data-w="300" data-h="168">
-<rect x="750" y="196" width="300" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
-<text class="label" x="774" y="238" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#3B2A7A" text-anchor="start">Track the flow</text>
-<text class="label" x="774" y="274" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">On each clock tick, asks</text>
-<text class="label" x="774" y="302" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">GitLab's GraphQL API how</text>
-<text class="label" x="774" y="330" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">the flow is doing.</text>
+<g class="box" id="track" data-x="750" data-y="196" data-w="300" data-h="206">
+<rect x="750" y="196" width="300" height="206" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
+<text class="label" x="772" y="242" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">Track the flow</text>
+<text class="label" x="772" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">On each clock tick,</text>
+<text class="label" x="772" y="313" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">asks GitLab's GraphQL</text>
+<text class="label" x="772" y="344" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">API how the flow</text>
+<text class="label" x="772" y="375" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">is doing.</text>
 </g>
-<g class="box" id="show" data-x="1102" data-y="196" data-w="300" data-h="168">
-<rect x="1102" y="196" width="300" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
-<text class="label" x="1126" y="238" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#3B2A7A" text-anchor="start">Result in Needl</text>
-<text class="label" x="1126" y="274" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Status, the merge</text>
-<text class="label" x="1126" y="302" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">request and the flow's</text>
-<text class="label" x="1126" y="330" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">final answer.</text>
+<g class="box" id="show" data-x="1102" data-y="196" data-w="300" data-h="206">
+<rect x="1102" y="196" width="300" height="206" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
+<text class="label" x="1124" y="242" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">Result in Needl</text>
+<text class="label" x="1124" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Status, the merge</text>
+<text class="label" x="1124" y="313" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">request and the flow's</text>
+<text class="label" x="1124" y="344" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">final answer.</text>
 </g>
-<g class="box" id="flow" data-x="398" data-y="466" data-w="300" data-h="168">
-<rect x="398" y="466" width="300" height="168" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
-<text class="label" x="422" y="508" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7A3410" text-anchor="start">Duo flow runs</text>
-<text class="label" x="422" y="544" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Your instructions, with</text>
-<text class="label" x="422" y="572" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">the record inside. It runs</text>
-<text class="label" x="422" y="600" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">without asking for input.</text>
+<g class="box" id="flow" data-x="398" data-y="502" data-w="300" data-h="206">
+<rect x="398" y="502" width="300" height="206" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
+<text class="label" x="420" y="548" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7A3410" text-anchor="start">Duo flow runs</text>
+<text class="label" x="420" y="588" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Your instructions,</text>
+<text class="label" x="420" y="619" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">with the record</text>
+<text class="label" x="420" y="650" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">inside. It runs without</text>
+<text class="label" x="420" y="681" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">asking for input.</text>
 </g>
-<g class="box" id="mr" data-x="750" data-y="466" data-w="300" data-h="168">
-<rect x="750" y="466" width="300" height="168" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
-<text class="label" x="774" y="508" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#7A3410" text-anchor="start">Draft MR</text>
-<text class="label" x="774" y="544" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Reads the record and the</text>
-<text class="label" x="774" y="572" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">code, then opens a fix</text>
-<text class="label" x="774" y="600" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">and explains it.</text>
+<g class="box" id="mr" data-x="750" data-y="502" data-w="300" data-h="206">
+<rect x="750" y="502" width="300" height="206" rx="14" fill="#FDF0E6" stroke="#D9622B" stroke-width="2.5"/>
+<text class="label" x="772" y="548" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7A3410" text-anchor="start">Draft MR</text>
+<text class="label" x="772" y="588" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Reads the record and</text>
+<text class="label" x="772" y="619" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the code, then opens</text>
+<text class="label" x="772" y="650" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">a fix and explains it.</text>
 </g>
-<g class="box" id="review" data-x="1102" data-y="698" data-w="300" data-h="136">
-<rect x="1102" y="698" width="300" height="136" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
-<text class="label" x="1126" y="740" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="25" font-weight="bold" fill="#124A41" text-anchor="start">You review it</text>
-<text class="label" x="1126" y="776" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">Default instructions:</text>
-<text class="label" x="1126" y="804" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3A3944" text-anchor="start">don't merge or deploy.</text>
+<g class="box" id="review" data-x="1102" data-y="776" data-w="300" data-h="142">
+<rect x="1102" y="776" width="300" height="142" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
+<text class="label" x="1124" y="822" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#124A41" text-anchor="start">You review it</text>
+<text class="label" x="1124" y="862" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Default instructions:</text>
+<text class="label" x="1124" y="893" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">don't merge or deploy.</text>
 </g>
-<path class="arrow" d="M 346 280.0 L 392 280.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<path class="arrow" d="M 548.0 364 L 548.0 460" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<text class="note" x="562.0" y="408" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="normal" fill="#55535F" text-anchor="start">Flows API</text>
-<path class="arrow" d="M 698 550.0 L 744 550.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<path class="arrow" d="M 900.0 466 L 900.0 370" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<text class="note" x="914.0" y="408" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="17" font-weight="normal" fill="#55535F" text-anchor="start">status, MR link</text>
-<path class="arrow" d="M 1050 280.0 L 1096 280.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<path class="arrow" d="M 1252.0 364 L 1252.0 692" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
-<text class="note" x="64" y="740" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#124A41" text-anchor="start">The rule keeps monitoring. An agent finishing</text>
-<text class="note" x="64" y="768" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#124A41" text-anchor="start">doesn't mark the problem solved; the next</text>
-<text class="note" x="64" y="796" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#124A41" text-anchor="start">break starts this again.</text>
-<text class="note" x="698" y="740" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#55535F" text-anchor="start">Or turn automatic starts off and start</text>
-<text class="note" x="698" y="768" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="19" font-weight="normal" fill="#55535F" text-anchor="start">the flow from a break with one click.</text>
+<path class="arrow" d="M 346 299.0 L 392 299.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 548.0 402 L 548.0 496" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<text class="note" x="562.0" y="446" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">Flows API</text>
+<path class="arrow" d="M 698 605.0 L 744 605.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 900.0 502 L 900.0 408" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<text class="note" x="914.0" y="446" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">status, MR link</text>
+<path class="arrow" d="M 1050 299.0 L 1096 299.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 1252.0 402 L 1252.0 770" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<text class="note" x="64" y="820" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#124A41" text-anchor="start">The rule keeps monitoring. An agent finishing</text>
+<text class="note" x="64" y="850" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#124A41" text-anchor="start">doesn't mark the problem solved; the next</text>
+<text class="note" x="64" y="880" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#124A41" text-anchor="start">break starts this again.</text>
+<text class="note" x="698" y="820" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">Or turn automatic starts off and start</text>
+<text class="note" x="698" y="850" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">the flow from a break with one click.</text>
 </svg>

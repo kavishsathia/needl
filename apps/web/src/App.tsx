@@ -13,6 +13,7 @@ import type { CounterexampleRecord, MonitorTraceItem } from "../../../src/ltl/ru
 import { checkRule, type CheckedRule, type RuleIssue } from "../../../src/rules/check.js";
 import { choiceIssues, effectiveValues, type ParamValue, type ParamValues } from "../../../src/rules/compile.js";
 import { choiceText, readRule, readingText, type ReadingMode, type ReadingSegment } from "../../../src/rules/render.js";
+import { breakingExamples, type BreakEvent, type BreakExample } from "../../../src/rules/breaks.js";
 import { eventMatches, readField } from "../../../src/rules/suggest.js";
 import type { CatalogueField } from "../../../src/rules/catalogue.js";
 import { parseDuration } from "../../../src/rules/syntax.js";
@@ -43,7 +44,9 @@ import { checkedRule, createDraftFromRule, exampleDraft, ruleProviders, updateRu
 type Section = "assertions" | "activity" | "connections" | "settings";
 type Filter = "all" | "attention" | "monitoring" | "paused";
 type SortMode = "attention" | "recent" | "name";
-type DetailTab = "overview" | "counterexamples" | "investigation" | "activity";
+type DetailTab = "overview" | "breaks" | "counterexamples" | "investigation" | "activity";
+
+const detailTabLabels: Readonly<Record<DetailTab, string>> = { overview: "Overview", breaks: "How it breaks", counterexamples: "Counterexamples", investigation: "Investigation", activity: "Activity" };
 
 const providerNames: Readonly<Record<Provider, string>> = {
   gitlab: "GitLab",
@@ -583,6 +586,49 @@ function TraceTimeline({ trace, sample }: {
   </ol>;
 }
 
+/** A pattern's words, with the values it checks set apart from the connecting text. */
+function PatternText({ segments }: { readonly segments: readonly ReadingSegment[] }) {
+  return <>{segments.map((segment, index) => segment.kind === "text" ? <span key={index}>{index === 0 ? segment.text.charAt(0).toUpperCase() + segment.text.slice(1) : segment.text}</span> : <b key={index}>{segment.kind === "choice" ? segment.text ?? segment.label : segment.text}</b>)}</>;
+}
+
+function BreakEventLine({ event }: { readonly event: BreakEvent }) {
+  return <p className="break-pattern"><PatternText segments={event.segments}/></p>;
+}
+
+/** The shortest sequences of events that would break a rule, worked out from the rule itself. */
+function BreakExamples({ source, values }: { readonly source: string; readonly values: ParamValues }) {
+  const examples = useMemo((): readonly BreakExample[] => {
+    try { return breakingExamples(checkedRule(source), values); } catch { return []; }
+  }, [source, values]);
+  if (examples.length === 0) return <EmptyState title="No short way to break this rule">Needl found no sequence of up to four events that breaks it.</EmptyState>;
+  return <section className="break-examples">
+    <p className="reading-hint">The shortest ways this rule can break, worked out from the rule itself. Events in a way are about the same flag, issue or customer; anything else can happen in between.</p>
+    {examples.map((example, index) => <article className="break-example" key={index}>
+      <h3>Way {index + 1}</h3>
+      <ol className="trace-timeline">
+        {example.steps.map((step, stepIndex) => {
+          const breaking = stepIndex === example.steps.length - 1;
+          return <li key={stepIndex} className={breaking ? "is-breaking" : ""}>
+            {step.kind === "event"
+              ? <span className={`timeline-mark provider-icon--${step.provider}`} aria-hidden="true">{providerGlyphs[step.provider]}</span>
+              : step.kind === "anyOf"
+                ? <span className="timeline-mark timeline-mark--any" aria-hidden="true">{step.events.length}</span>
+                : <span className="timeline-mark timeline-mark--tick" aria-hidden="true"><Icon name="clock"/></span>}
+            <div className="trace-main">
+              <div className="trace-line">
+                {step.kind === "event" ? <BreakEventLine event={step}/>
+                  : step.kind === "anyOf" ? <div className="break-any"><p><strong>Any one of</strong></p><ul>{step.events.map((event, eventIndex) => <li key={eventIndex}><span className={`provider-dot provider-icon--${event.provider}`} aria-hidden="true">{providerGlyphs[event.provider]}</span><BreakEventLine event={event}/></li>)}</ul></div>
+                  : <p><strong>{step.text}</strong></p>}
+              </div>
+              {breaking ? <p className="trace-verdict"><StatusIcon tone="violated"/>The rule breaks here</p> : null}
+            </div>
+          </li>;
+        })}
+      </ol>
+    </article>)}
+  </section>;
+}
+
 /** What a break was about, e.g. issue ENG-890 and environment production; empty for rules watched as one. */
 function breakScope(violation: CounterexampleRecord): [string, string][] {
   return Object.entries(violation.scope).filter(([key]) => key !== "rule").map(([key, value]) => [key, String(value)]);
@@ -758,7 +804,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
         <span><small>Evidence</small>{checkpoint?.processedCount ?? 0} event{checkpoint?.processedCount === 1 ? "" : "s"}</span>
       </div>
       <nav className="detail-tabs" aria-label="Assertion detail sections">
-        {(["overview", "counterexamples", "investigation", "activity"] as const).map((item) => <button key={item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{item[0]!.toUpperCase() + item.slice(1)}{item === "counterexamples" && violations.length > 0 ? <span className="tab-count">{violations.length}</span> : null}</button>)}
+        {(["overview", "breaks", "counterexamples", "investigation", "activity"] as const).filter((item) => item !== "breaks" || draft.rule !== undefined).map((item) => <button key={item} className={tab === item ? "is-active" : ""} onClick={() => setTab(item)}>{detailTabLabels[item]}{item === "counterexamples" && violations.length > 0 ? <span className="tab-count">{violations.length}</span> : null}</button>)}
       </nav>
       <div className="detail-content">
         {tab === "overview" ? <section className="rule-overview expectation-section">
@@ -770,6 +816,7 @@ function AssertionDetail({ draft, replay, investigations, investigationReady, on
           <div className="provider-list">{providersFor(draft).map((provider) => <ProviderBadge provider={provider} key={provider}/>)}</div>
           {draft.rule !== undefined ? <details className="rule-source"><summary>Rule source</summary><pre>{draft.rule.source}</pre></details> : null}
         </section> : null}
+        {tab === "breaks" && draft.rule !== undefined ? <BreakExamples source={draft.rule.source} values={draft.rule.values}/> : null}
         {tab === "counterexamples" ? violations.length > 0
           ? <div className="break-list">{[...violations].reverse().map((violation, index) => <CounterexampleView key={violation.id} violation={violation} open={index === 0}/>)}</div>
           : <EmptyState title="No counterexamples">{tone === "unavailable" ? "No matching evidence yet. That is not proof the rule holds." : "No breaking event has been observed. Quiet sources are not treated as proof."}</EmptyState> : null}

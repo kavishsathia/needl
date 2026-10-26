@@ -65,27 +65,14 @@ const opWords: Readonly<Record<Condition["op"], string>> = {
   contains: "contains", starts_with: "starts with", in: "is",
 };
 
-export function readRule(rule: CheckedRule, chosen: ParamValues, mode: ReadingMode = "sentence"): ReadingSegment[] {
+/** The parts of a reading that describe single events, shared by full readings and by step-by-step examples. */
+function readers(rule: CheckedRule, chosen: ParamValues) {
   const values = effectiveValues(rule, chosen);
   const text = (value: string): ReadingSegment => ({ kind: "text", text: value });
   const choice = (param: ParamInfo): ReadingSegment => {
     const shown = choiceText(param, values[param.name]);
     return { kind: "choice", param: param.name, label: param.label, ...(shown === undefined ? {} : { text: shown }) };
   };
-
-  if (mode === "sentence" && rule.sentence !== undefined) {
-    const template = rule.sentence.text;
-    const output: ReadingSegment[] = [];
-    let last = 0;
-    for (const match of template.matchAll(sentenceSlot)) {
-      if (match.index > last) output.push(text(template.slice(last, match.index)));
-      const param = rule.params.find((candidate) => candidate.name === match[1]);
-      output.push(param === undefined ? text(match[0]) : choice(param));
-      last = match.index + match[0].length;
-    }
-    if (last < template.length) output.push(text(template.slice(last)));
-    return sentence(output);
-  }
 
   const valueSegments = (value: Value, field: CatalogueField | undefined): ReadingSegment[] => {
     switch (value.type) {
@@ -106,7 +93,7 @@ export function readRule(rule: CheckedRule, chosen: ParamValues, mode: ReadingMo
   const fieldOf = (expr: Extract<Expr, { type: "event" }>, condition: Condition): CatalogueField | undefined =>
     rule.events.get(expr)?.conditions.find((entry) => entry.condition === condition)?.field;
 
-  const eventSegments = (expr: Extract<Expr, { type: "event" }>): ReadingSegment[] => {
+  const eventSegments = (expr: Extract<Expr, { type: "event" }>, withBinds = true): ReadingSegment[] => {
     const resolved = rule.events.get(expr);
     const output: ReadingSegment[] = [text(resolved?.event.phrase ?? `${expr.provider}.${expr.event}`)];
     expr.conditions.forEach((condition, index) => {
@@ -114,11 +101,36 @@ export function readRule(rule: CheckedRule, chosen: ParamValues, mode: ReadingMo
       output.push(text(`${index === 0 ? " where " : " and "}${field?.label ?? condition.field} ${opWords[condition.op]} ${condition.op === "in" ? "one of " : ""}`));
       output.push(...valueSegments(condition.value, field));
     });
-    for (const bind of resolved?.binds ?? []) {
+    for (const bind of withBinds ? resolved?.binds ?? [] : []) {
       output.push(text(`, whose ${bind.field.label} is called `), { kind: "bound", name: bind.name, text: `“${humanize(bind.name)}”` });
     }
     return output;
   };
+
+  return { values, text, choice, durationSegment, eventSegments };
+}
+
+/** One event pattern read as a noun phrase, e.g. "a Stripe payment failure where …". */
+export function readEventPattern(rule: CheckedRule, chosen: ParamValues, expr: Extract<Expr, { type: "event" }>): ReadingSegment[] {
+  return readers(rule, chosen).eventSegments(expr, false);
+}
+
+export function readRule(rule: CheckedRule, chosen: ParamValues, mode: ReadingMode = "sentence"): ReadingSegment[] {
+  const { text, choice, durationSegment, eventSegments } = readers(rule, chosen);
+
+  if (mode === "sentence" && rule.sentence !== undefined) {
+    const template = rule.sentence.text;
+    const output: ReadingSegment[] = [];
+    let last = 0;
+    for (const match of template.matchAll(sentenceSlot)) {
+      if (match.index > last) output.push(text(template.slice(last, match.index)));
+      const param = rule.params.find((candidate) => candidate.name === match[1]);
+      output.push(param === undefined ? text(match[0]) : choice(param));
+      last = match.index + match[0].length;
+    }
+    if (last < template.length) output.push(text(template.slice(last)));
+    return sentence(output);
+  }
 
   const read = (expr: Expr): ReadingSegment[] => {
     switch (expr.type) {

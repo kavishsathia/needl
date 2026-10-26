@@ -87,6 +87,15 @@ export function compileRule(
   chosen: ParamValues,
   identity: { readonly id: string; readonly version: number; readonly tenantId: string; readonly name: string },
 ): AssertionDefinition {
+  return compileRuleWithAtoms(rule, chosen, identity).definition;
+}
+
+/** Compiles a rule and also reports which event pattern each atom of the formula stands for. */
+export function compileRuleWithAtoms(
+  rule: CheckedRule,
+  chosen: ParamValues,
+  identity: { readonly id: string; readonly version: number; readonly tenantId: string; readonly name: string },
+): { readonly definition: AssertionDefinition; readonly atoms: ReadonlyMap<string, Extract<Expr, { type: "event" }>> } {
   const issues = choiceIssues(rule, chosen);
   const values = effectiveValues(rule, chosen);
   if (issues.length > 0) throw new RuleChoiceError(issues.map((issue) => issue.message).join("; "), issues.map((issue) => issue.param));
@@ -151,7 +160,8 @@ export function compileRule(
   };
 
   const formula = translate(rule.ast);
-  return {
+  const atoms = new Map([...atomFor].map(([expr, name]) => [name, expr as Extract<Expr, { type: "event" }>]));
+  const definition: AssertionDefinition = {
     id: identity.id,
     version: identity.version,
     tenantId: identity.tenantId,
@@ -163,6 +173,7 @@ export function compileRule(
     ...(bindings.length === 0 ? {} : { bindings }),
     propositions: propositions.length === 0 ? [{ name: "never_used", predicate: { op: "false" } }] : propositions,
   };
+  return { definition, atoms };
 }
 
 export function paramByName(rule: CheckedRule, name: string): ParamInfo | undefined {

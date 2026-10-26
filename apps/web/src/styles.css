@@ -283,6 +283,20 @@ h1, h2, h3, p { margin-top: 0; }
 
 /* Breaks: rows that open into their evidence, like GitLab pipeline rows opening into jobs. */
 .break-list { padding: 16px 0; display: grid; gap: 8px; }
+.break-examples { padding: 16px 0; display: grid; gap: 14px; }
+.break-examples > .reading-hint { margin: 0; }
+.break-example { padding: 16px 18px 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.break-example h3 { margin: 0 0 14px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.break-example .trace-line p { margin: 3px 0 0; line-height: 1.45; }
+.break-pattern { color: var(--ink); }
+.break-pattern b { font-weight: 600; color: var(--ink-strong); }
+.timeline-mark--any { font-weight: 700; color: var(--red-text); }
+.break-any p { margin: 3px 0 6px; }
+.break-any ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.trace-timeline .break-any li { position: static; padding: 0; display: flex; align-items: flex-start; gap: 8px; }
+.trace-timeline .break-any li::before { display: none; }
+.break-any li p { margin: 0; }
+.provider-dot { flex: none; width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); font-size: 10px; }
 .counterexample { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .counterexample[open] { border-color: var(--red-line); box-shadow: var(--shadow-sm); }
 .counterexample > summary { padding: 11px 12px; display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; align-items: start; gap: 10px; list-style: none; cursor: pointer; }

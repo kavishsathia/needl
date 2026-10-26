@@ -13,6 +13,8 @@ import {
   stripNotes,
   upgradeRuleSource,
   type CheckedRule,
+  breakingExamples,
+  type BreakExample,
 } from "../src/rules/index.js";
 
 const tenantId = "acme";
@@ -355,5 +357,38 @@ describe("catalogue", () => {
         }
       }
     }
+  });
+});
+
+describe("breaking examples", () => {
+  const events = (example: BreakExample): string[] => example.steps.map((step) =>
+    step.kind === "time" ? "time" : step.kind === "anyOf" ? `any(${step.events.map((event) => event.provider).join(",")})` : step.provider);
+
+  it("shows each shortest way a launch rule breaks, grouping alternatives", () => {
+    const rule = ok(`rule "When a flag goes on in {environment}, its Linear issue must reach Done within {time_limit}, with no failed payment"
+input environment: text = "production"
+input time_limit: duration = 1h
+always (
+  launchdarkly.flag(actions contains "updateOn", environment = $environment) bind f = flag
+  -> (eventually within $time_limit linear.issue(identifier = f, state = "Done"))
+     and (always within $time_limit not (stripe.payment_intent.payment_failed or stripe.charge.failed))
+)`);
+    const examples = breakingExamples(rule, {});
+    expect(examples.map(events)).toEqual([["launchdarkly", "any(stripe,stripe)"], ["launchdarkly", "time"]]);
+    const time = examples[1]!.steps[1]!;
+    expect(time.kind === "time" && time.text).toBe("The time limit runs out (1 hour later)");
+  });
+
+  it("drops examples that only repeat a step of a shorter one", () => {
+    const rule = ok(`rule "A critical metric alert must be resolved within {time_limit}"
+input time_limit: duration = 1h
+always (sentry.metric_alert(action = "critical") -> eventually within $time_limit sentry.metric_alert(action = "resolved"))`);
+    expect(breakingExamples(rule, {}).map(events)).toEqual([["sentry", "time"]]);
+  });
+
+  it("finds nothing for a rule no short sequence can break", () => {
+    const rule = ok(`rule "Anything goes"
+always (stripe.charge.succeeded -> true)`);
+    expect(breakingExamples(rule, {})).toEqual([]);
   });
 });

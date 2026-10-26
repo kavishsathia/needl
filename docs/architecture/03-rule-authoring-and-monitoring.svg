@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="860" viewBox="0 0 1440 860" role="img" aria-labelledby="t d"><title id="t">How a Needl rule is written and monitored</title><desc id="d">A person describes a rule in English. An authoring model writes it in Needl's rule language, a typed checker sends errors back for up to three attempts, and the rule starts paused for review. Once turned on, it progresses with each event separately per issue or customer, clock ticks catch missed deadlines, and a break is saved with its trace in one transaction.</desc><defs><marker id="head-main" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#55535F"/></marker><marker id="head-loop" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FBB"/></marker></defs><rect width="1440" height="860" fill="#FFFFFF"/>
+<text class="title" x="48" y="64" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="38" font-weight="bold" fill="#1F1E24" text-anchor="start">Rules: written in English, checked, then monitored</text>
+<text class="subtitle" x="48" y="106" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="24" font-weight="normal" fill="#55535F" text-anchor="start">Authoring happens once; monitoring never stops</text>
+<text class="tag" x="48" y="168" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#55535F" text-anchor="start">WRITE  (ONCE)</text>
+<g class="box" id="english" data-x="48" data-y="236" data-w="400" data-h="168">
+<rect x="48" y="236" width="400" height="168" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
+<text class="label" x="70" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#124A41" text-anchor="start">You describe it</text>
+<text class="label" x="70" y="322" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">“Once a fix for an issue</text>
+<text class="label" x="70" y="353" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">is deployed, its errors must</text>
+<text class="label" x="70" y="384" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">never appear there again.”</text>
+</g>
+<g class="box" id="model" data-x="520" data-y="236" data-w="400" data-h="168">
+<rect x="520" y="236" width="400" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
+<text class="label" x="542" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">Authoring model</text>
+<text class="label" x="542" y="322" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Writes a rule over the events</text>
+<text class="label" x="542" y="353" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">your tools really send, with</text>
+<text class="label" x="542" y="384" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">a sentence and inputs.</text>
+</g>
+<g class="box" id="checker" data-x="992" data-y="236" data-w="400" data-h="168">
+<rect x="992" y="236" width="400" height="168" rx="14" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2.5"/>
+<text class="label" x="1014" y="282" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#203A52" text-anchor="start">Typed checker</text>
+<text class="label" x="1014" y="322" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Events, fields, types, time</text>
+<text class="label" x="1014" y="353" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">limits, and only rules that</text>
+<text class="label" x="1014" y="384" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">can be caught breaking.</text>
+</g>
+<path class="arrow" d="M 448 320.0 L 514 320.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 920 320.0 L 986 320.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 1192.0 236 L 1192.0 200 L 780.0 200 L 780.0 230" fill="none" stroke="#6B4FBB" stroke-width="3" stroke-linejoin="round" stroke-dasharray="10 8" marker-end="url(#head-loop)"/>
+<text class="note" x="800.0" y="188" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#3B2A7A" text-anchor="start">errors with a suggestion · up to 3 tries</text>
+<text class="tag" x="48" y="476" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="18" font-weight="bold" fill="#55535F" text-anchor="start">RUN  (ALWAYS)</text>
+<g class="box" id="review" data-x="48" data-y="520" data-w="400" data-h="168">
+<rect x="48" y="520" width="400" height="168" rx="14" fill="#E7F4F0" stroke="#1F7A6D" stroke-width="2.5"/>
+<text class="label" x="70" y="566" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#124A41" text-anchor="start">Paused for review</text>
+<text class="label" x="70" y="606" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Reads as one sentence; “Show</text>
+<text class="label" x="70" y="637" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">exact reading” shows the</text>
+<text class="label" x="70" y="668" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">logic. You turn it on.</text>
+</g>
+<g class="box" id="monitor" data-x="520" data-y="520" data-w="400" data-h="168">
+<rect x="520" y="520" width="400" height="168" rx="14" fill="#F1EDFB" stroke="#6B4FBB" stroke-width="2.5"/>
+<text class="label" x="542" y="566" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#3B2A7A" text-anchor="start">Monitoring</text>
+<text class="label" x="542" y="606" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">Updates the rule at every</text>
+<text class="label" x="542" y="637" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">event, separately for each</text>
+<text class="label" x="542" y="668" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">issue or customer.</text>
+</g>
+<g class="box" id="ce" data-x="992" data-y="520" data-w="400" data-h="168">
+<rect x="992" y="520" width="400" height="168" rx="14" fill="#FCEBEB" stroke="#C03A3A" stroke-width="2.5"/>
+<text class="label" x="1014" y="566" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="28" font-weight="bold" fill="#7F1D1D" text-anchor="start">Break + evidence</text>
+<text class="label" x="1014" y="606" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">The break, its events and</text>
+<text class="label" x="1014" y="637" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">the counterexample, saved in</text>
+<text class="label" x="1014" y="668" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="23" font-weight="normal" fill="#3A3944" text-anchor="start">one transaction.</text>
+</g>
+<path class="arrow" d="M 1192.0 404 L 1192.0 444.0 L 248.0 444.0 L 248.0 514" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<text class="note" x="1208.0" y="438" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">only a passing rule</text>
+<path class="arrow" d="M 448 604.0 L 514 604.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 920 604.0 L 986 604.0" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<g class="box" id="events" data-x="520" data-y="764" data-w="190" data-h="50">
+<rect x="520" y="764" width="190" height="50" rx="10" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2"/>
+<text class="label" x="615.0" y="796.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#203A52" text-anchor="middle">Signed events</text>
+</g>
+<g class="box" id="ticks" data-x="726" data-y="764" data-w="194" data-h="50">
+<rect x="726" y="764" width="194" height="50" rx="10" fill="#EDF2F7" stroke="#4A6B8A" stroke-width="2"/>
+<text class="label" x="823.0" y="796.2" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="bold" fill="#203A52" text-anchor="middle">Clock ticks</text>
+</g>
+<path class="arrow" d="M 615 764 L 615 694" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<path class="arrow" d="M 823 764 L 823 694" fill="none" stroke="#55535F" stroke-width="3" stroke-linejoin="round" marker-end="url(#head-main)"/>
+<text class="note" x="992" y="782" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">A tick arrives when a time limit</text>
+<text class="note" x="992" y="812" font-family="'DejaVu Sans', Verdana, Arial, sans-serif" font-size="20" font-weight="normal" fill="#55535F" text-anchor="start">passes, so silence can break a rule.</text>
+</svg>

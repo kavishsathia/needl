@@ -179,6 +179,33 @@ describe("StripeAdapter", () => {
     expect(failed.status === "accepted" && failed.event.relationships).toContainEqual(expect.objectContaining({ type: "subscription", id: "sub_4" }));
   });
 
+  it("keeps why a payment or charge failed, without the merchant's metadata", async () => {
+    const secret = "whsec_stripe_test";
+    const timestamp = "1791968400";
+    const ingest = (body: unknown) => {
+      const rawBody = Buffer.from(JSON.stringify(body));
+      const signature = createHmac("sha256", secret).update(`${timestamp}.${rawBody.toString()}`).digest("hex");
+      return new StripeAdapter().ingest(request(rawBody, { "Stripe-Signature": `t=${timestamp},v1=${signature}` }), { secrets: [secret] });
+    };
+    const intent = await ingest({ id: "evt_pf", object: "event", type: "payment_intent.payment_failed", created: 1791968400, livemode: false, data: { object: {
+      id: "pi_9", object: "payment_intent", customer: "cus_7", status: "requires_payment_method", amount: 1800, currency: "usd",
+      metadata: { order: "secret-order" },
+      last_payment_error: { code: "authentication_required", decline_code: "authentication_required", message: "This payment requires authentication." },
+    } } });
+    expect(intent.status === "accepted" && intent.event.evidence.providerPayload).toMatchObject({
+      failure: { code: "authentication_required", declineCode: "authentication_required", message: "This payment requires authentication." },
+    });
+    expect(JSON.stringify(intent)).not.toContain("secret-order");
+    const charge = await ingest({ id: "evt_cf", object: "event", type: "charge.failed", created: 1791968400, livemode: false, data: { object: {
+      id: "ch_9", object: "charge", status: "failed", failure_code: "card_declined", failure_message: "Your card was declined.", outcome: { reason: "generic_decline" },
+    } } });
+    expect(charge.status === "accepted" && charge.event.evidence.providerPayload).toMatchObject({
+      failure: { code: "card_declined", declineCode: "generic_decline", message: "Your card was declined." },
+    });
+    const paid = await ingest({ id: "evt_ok", object: "event", type: "payment_intent.succeeded", created: 1791968400, livemode: false, data: { object: { id: "pi_8", object: "payment_intent", status: "succeeded" } } });
+    expect(paid.status === "accepted" && paid.event.evidence.providerPayload).not.toHaveProperty("failure");
+  });
+
   it("rejects stale deliveries before parsing", async () => {
     const rawBody = await fixture("stripe-payment.json");
     const secret = "whsec_stripe_test";

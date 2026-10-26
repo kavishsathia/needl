@@ -54,6 +54,18 @@ function parseSignature(value: string): { timestamp?: string; signatures: string
   return { ...(timestamp === undefined ? {} : { timestamp }), signatures };
 }
 
+/** Why a payment or charge failed, from Stripe's own error fields: the evidence most worth having when one does. */
+function failureReason(entity: Record<string, unknown>): { code?: string; declineCode?: string; message?: string } | undefined {
+  const error = objectValue(entity.last_payment_error);
+  const reason = {
+    code: stringValue(error?.code) ?? stringValue(entity.failure_code),
+    declineCode: stringValue(error?.decline_code) ?? stringValue(objectValue(entity.outcome)?.reason),
+    message: stringValue(error?.message) ?? stringValue(entity.failure_message),
+  };
+  const present = Object.fromEntries(Object.entries(reason).filter(([, value]) => value !== undefined));
+  return Object.keys(present).length === 0 ? undefined : present;
+}
+
 function relation(type: string, id: unknown, path: string): RelationshipEvidence[] {
   const value = stringValue(id);
   return value === undefined ? [] : [{ type, id: value, evidencePath: path }];
@@ -117,6 +129,7 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
     const sourceScope = payload.context ?? payload.account;
     const occurredAt = unixSeconds(payload.created);
     const subjectName = stringValue(entity.description);
+    const failure = failureReason(entity);
     return {
       status: "accepted",
       event: normalizedEvent(this.provider, request, {
@@ -143,6 +156,7 @@ export class StripeAdapter implements WebhookAdapter<StripeAdapterConfig> {
             ...(entity.status === undefined ? {} : { status: entity.status }),
             ...(entity.amount === undefined ? (entity.amount_paid === undefined ? {} : { amount: entity.amount_paid }) : { amount: entity.amount }),
             ...(entity.currency === undefined ? {} : { currency: entity.currency }),
+            ...(failure === undefined ? {} : { failure }),
             ...(payload.data.previous_attributes === undefined ? {} : { previousAttributes: payload.data.previous_attributes }),
           },
           links: absoluteLinks([{ rel: "subject", url }]),

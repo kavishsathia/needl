@@ -2,6 +2,14 @@
   "name": "@needl/integrations",
   "version": "0.1.0",
   "description": "Needl webhook integrations and durable LTL runtime monitoring",
+  "homepage": "https://needl.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kavishsathia/needl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kavishsathia/needl/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.13"
@@ -9,6 +17,7 @@
   "files": [
     "dist",
     "README.md",
+    "LICENSE",
     "docs"
   ],
   "exports": {
@@ -69,7 +78,7 @@
     "ltl",
     "runtime-verification"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
   "dependencies": {
     "zod": "^4.1.12"
   },

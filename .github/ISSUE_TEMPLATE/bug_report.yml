@@ -1,0 +1,23 @@
+name: Bug report
+description: Something in Needl doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How can we reproduce it?
+      description: Steps, the rule you used, and which integration sent the event. Never paste real secrets or customer payloads.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: needl.dev, a local run, or the integrations package (with version)

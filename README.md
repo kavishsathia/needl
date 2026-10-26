@@ -62,27 +62,37 @@ You don't have to write it by hand. Describe the rule in plain English and Needl
 
 Once a rule is on, nobody has to sit and watch it. Needl listens to the tools' own webhooks, checks each event against every rule as it arrives, and when a rule breaks it saves the evidence and hands the problem straight to a GitLab Duo agent. Nobody has to triage an alert, copy a stack trace into a chat or write a prompt. What the team comes back to is a draft merge request with the evidence behind it.
 
-```text
-  GitLab · Sentry · Linear · LaunchDarkly · PostHog · Stripe · Intercom
-                               │  signed webhooks
-                               ▼
-              verify signature ─► normalize event ─► dedupe + store
-                               │
-                               ▼
-                 check the event against every active rule
-                               │
-              ┌────────────────┴────────────────┐
-              ▼                                 ▼
-          rule holds                       rule breaks
-        (keep watching)                         │
-                                                ▼
-                              save the break + the events behind it
-                                                │
-                                                ▼
-                               start the team's GitLab Duo flow
-                                                │
-                                                ▼
-                               draft merge request, ready for review
+```mermaid
+flowchart LR
+    tools["GitLab · Sentry · Linear<br/>LaunchDarkly · PostHog<br/>Stripe · Intercom"]
+
+    subgraph needl ["Needl"]
+        direction TB
+        verify["Verify signature<br/>+ normalize"] --> store[("Dedupe + store")]
+        store --> check{"Check every<br/>active rule"}
+        check -- holds --> watch["Keep watching"]
+        check -- breaks --> evidence[("Save the break<br/>+ its evidence")]
+    end
+
+    subgraph duo ["GitLab Duo"]
+        direction TB
+        flow["Team's agent flow<br/>reads evidence + code"] --> mr["Draft merge request"]
+    end
+
+    tools -- signed webhooks --> verify
+    evidence -- starts --> flow
+    mr --> review(["Human review"])
+
+    classDef ext fill:#fff4ed,stroke:#fc6d26,color:#1f1e24
+    classDef core fill:#ffffff,stroke:#89888d,color:#1f1e24
+    classDef bad fill:#fdecea,stroke:#dd2b0e,color:#1f1e24
+    classDef good fill:#ecf4ee,stroke:#108548,color:#1f1e24
+    class tools ext
+    class verify,store,check,watch core
+    class evidence,flow,mr bad
+    class review good
+    style needl fill:#fafafa,stroke:#dcdcde,color:#1f1e24
+    style duo fill:#f7f5fc,stroke:#7759c2,color:#1f1e24
 ```
 
 Here is that loop on the Sentry example. A branch for issue `ENG-42` is merged and deployed to production. Needl sees GitLab's deployment event, and from then on it holds Sentry to the rule for that issue. Two days later, Sentry reports an error tagged `ENG-42` in production. That one event breaks the rule. Needl stores the break together with the events that led to it, and in the same request starts the GitLab Duo flow the team chose, with that record in the flow's instructions. The flow reads the record and the code, then opens a draft merge request with a fix and explains what it changed and why. The merge request appears on the rule's card. Needl doesn't mark the problem solved because an agent finished; the rule keeps watching.

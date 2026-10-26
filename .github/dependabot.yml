@@ -1,13 +1,18 @@
 version: 2
 updates:
   - package-ecosystem: npm
-    directory: /
+    directories: [/, /apps/web]
     schedule: { interval: weekly }
-    open-pull-requests-limit: 5
-  - package-ecosystem: npm
-    directory: /apps/web
-    schedule: { interval: weekly }
-    open-pull-requests-limit: 5
+    groups:
+      dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
+    groups:
+      actions:
+        patterns: ["*"]

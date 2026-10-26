@@ -161,8 +161,9 @@ export function createDatabaseRuntime(environment: NodeJS.ProcessEnv = process.e
   if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
     throw new Error("DATABASE_URL must use PostgreSQL");
   }
-  const local = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
-  const pool = new Pool({ connectionString, max: Number(environment.NEEDL_DB_POOL_MAX ?? 10), ssl: local ? undefined : { rejectUnauthorized: true } });
+  // Remote databases need verified TLS; local servers and an explicit sslmode=disable (CI service containers) do not.
+  const plain = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.searchParams.get("sslmode") === "disable";
+  const pool = new Pool({ connectionString, max: Number(environment.NEEDL_DB_POOL_MAX ?? 10), ssl: plain ? undefined : { rejectUnauthorized: true } });
   return {
     db: new Kysely<NeedlDatabase>({ dialect: new PostgresDialect({ pool }), plugins: [new CamelCasePlugin()] }),
     type: "postgres",

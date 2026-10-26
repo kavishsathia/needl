@@ -24,7 +24,7 @@ web:
       alias: postgres
   variables:
     POSTGRES_HOST_AUTH_METHOD: trust
-    NEEDL_TEST_DATABASE_URL: postgres://postgres@postgres:5432/postgres
+    NEEDL_TEST_DATABASE_URL: postgres://postgres@postgres:5432/postgres?sslmode=disable
   script:
     - npm ci
     - npm --prefix apps/web ci --legacy-peer-deps

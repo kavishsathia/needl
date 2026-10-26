@@ -19,3 +19,4 @@ test-results/
 .vercel/
 .vercel
 .env*
+cloudrun.env.yaml

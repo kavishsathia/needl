@@ -15,6 +15,7 @@
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white" alt="Node 22.13 or later">
   <a href="https://needl.dev"><img src="https://img.shields.io/badge/live-needl.dev-fc6d26" alt="Live at needl.dev"></a>
+  <img src="https://img.shields.io/badge/Google%20Cloud%20Run-deployed-4285F4?logo=googlecloud&logoColor=white" alt="Deployed on Google Cloud Run">
   <img src="https://img.shields.io/badge/GitLab%20Duo-agent%20flows-fc6d26?logo=gitlab&logoColor=white" alt="GitLab Duo agent flows">
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
 </p>
@@ -180,7 +181,7 @@ Under the app is a standalone TypeScript package, `@needl/integrations`, which d
 - [Integrations](docs/providers.md): events, signing schemes and setup per provider
 - [LTL semantics](docs/ltl-semantics.md): exactly what the monitor guarantees
 - [Safety policy](docs/safety-product-policy.md): which rules Needl accepts and why
-- [Deployment](docs/deployment.md): hosting on Vercel, environment and secrets
+- [Deployment](docs/deployment.md): hosting on Google Cloud Run and Vercel, environment and secrets
 - [Library](docs/library.md): using `@needl/integrations` directly
 
 ## Development

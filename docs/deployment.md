@@ -1,6 +1,32 @@
 # Needl deployment
 
-Needl runs on Vercel as project `needl`, at:
+## Google Cloud Run
+
+Needl runs on Google Cloud Run as service `needl` in project `quickstart-1711587858152`, region `us-east4` (next to the Neon database in AWS us-east-1):
+
+```text
+https://needl-455397901143.us-east4.run.app
+```
+
+The `Dockerfile` at the repository root builds the same app the local server runs (`apps/web/server.ts`: the built frontend plus the whole `/api` surface). Deploy from the repository root:
+
+```bash
+gcloud run deploy needl --source . --region us-east4 --project quickstart-1711587858152 \
+  --allow-unauthenticated --env-vars-file cloudrun.env.yaml \
+  --min-instances 0 --max-instances 2 --memory 1Gi --cpu-throttling
+```
+
+`cloudrun.env.yaml` is kept out of the repository; it sets the variables listed under [Environment](#environment) with `BETTER_AUTH_URL` set to the URL people sign in at and `NEEDL_TRUSTED_ORIGINS` listing every URL that serves the app. The service scales to zero and only has CPU while handling a request, so it never keeps the database awake on its own. Time-bounded rules advance on requests, as on Vercel; point a scheduler (Cloud Scheduler or any cron) at `/api/cron/tick` with `Authorization: Bearer <CRON_SECRET>` to catch deadlines with nobody on the site.
+
+Cloud Run and Vercel share one database, so both serve the same workspaces, rules and connections.
+
+### Rotating the secret key
+
+`NEEDL_SECRET_KEY` encrypts the webhook secrets and GitLab tokens stored in the database. To change it without re-entering them, set the new key as `NEEDL_SECRET_KEY_NEXT` next to the current one and deploy: on start, Needl re-seals every stored secret under the next key (and logs how many it moved), while opening secrets with either key. Afterwards the next key can replace `NEEDL_SECRET_KEY` on every host.
+
+## Vercel
+
+Needl also runs on Vercel as project `needl`, at:
 
 ```text
 https://needl.dev

@@ -6,6 +6,7 @@ import { RuntimeMonitor } from "../../../src/ltl/runtime.js";
 import type { DeduplicatingEventSink, DeduplicationScope } from "../../../src/receiver/types.js";
 import type { DemoReplay, AssertionDraft } from "../src/domain.js";
 import { validateProductAssertionCollection } from "../src/collection.js";
+import type { SecretBox } from "./secrets.js";
 import { upgradeLegacyDraft } from "../src/ruleDrafts.js";
 import type { MonitorCheckpoint } from "../../../src/ltl/runtime-types.js";
 import type { DatabaseRuntime, NeedlDatabase } from "./database.js";
@@ -302,6 +303,31 @@ export class NeedlRepository implements DeduplicatingEventSink {
     const row = await this.db.selectFrom("translationProposals").select(["inputText", "proposalJson", "status"]).where("id", "=", proposalId).where("tenantId", "=", tenantId).executeTakeFirst();
     if (row === undefined) throw new Error("Translation proposal was not found in this workspace");
     return { inputText: row.inputText, proposal: JSON.parse(row.proposalJson), status: row.status };
+  }
+
+  /**
+   * Moves every stored secret to the box's current key during a key rotation. A secret is only rewritten after it
+   * opened with one of the box's keys, and only if nobody changed it in the meantime.
+   */
+  async resealSecrets(box: SecretBox): Promise<{ readonly resealed: number; readonly unreadable: number }> {
+    const rows = await this.db.selectFrom("integrationConfigs").select(["id", "secretCiphertext"]).where("secretCiphertext", "is not", null).execute();
+    let resealed = 0;
+    let unreadable = 0;
+    for (const row of rows) {
+      const sealed = row.secretCiphertext!;
+      if (box.isCurrent(sealed)) continue;
+      let plaintext: string;
+      try {
+        plaintext = box.open(sealed);
+      } catch {
+        unreadable += 1;
+        continue;
+      }
+      const result = await this.db.updateTable("integrationConfigs").set({ secretCiphertext: box.seal(plaintext) })
+        .where("id", "=", row.id).where("secretCiphertext", "=", sealed).executeTakeFirst();
+      resealed += Number(result.numUpdatedRows);
+    }
+    return { resealed, unreadable };
   }
 
   async upsertIntegration(input: {

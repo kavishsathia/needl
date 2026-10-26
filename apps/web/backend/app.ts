@@ -41,6 +41,10 @@ export async function createNeedlApp(options: { readonly serveStatic: boolean; r
   const auth = betterAuth(authOptions);
   const repository = new NeedlRepository(runtime, Number(process.env.NEEDL_TRANSLATION_DAILY_LIMIT ?? 5));
   const secretBox = SecretBox.fromEnvironment();
+  if (secretBox.rotating) {
+    const { resealed, unreadable } = await repository.resealSecrets(secretBox);
+    process.stdout.write(`Secret key rotation: ${resealed} secret(s) moved to the next key, ${unreadable} unreadable\n`);
+  }
   const ingestion = new SignedIngestionService(repository, process.env, secretBox);
   const investigations = new GitLabInvestigationService(repository);
   const flowConnection = new FlowConnectionService(repository);

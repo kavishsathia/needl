@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kavishsathia/needl/actions/workflows/ci.yml"><img src="https://github.com/kavishsathia/needl/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://gitlab.com/gitlab-ai-hackathon/transcend-october-2026/43480893/showcase/-/pipelines"><img src="https://gitlab.com/gitlab-ai-hackathon/transcend-october-2026/43480893/showcase/badges/main/pipeline.svg" alt="Pipeline"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/node-%E2%89%A522.13-339933?logo=node.js&logoColor=white" alt="Node 22.13 or later">
